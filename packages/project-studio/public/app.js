@@ -53,6 +53,8 @@ async function selectProject(id) {
   try { state.messages = (await API.getMessages(id)).messages ?? []; }
   catch { state.messages = []; }
   renderSidebar();
+  renderToolbar();   // <-- bug fix: toolbar buttons (template / agent / export) must
+                     //     be re-enabled after a project is selected
   renderMain();
   await refreshTextFields();
 }
@@ -117,29 +119,59 @@ function renderToolbar() {
   }
 
   exportBtn.disabled = !p || !p.templateId;
+  // Re-wire on every render so handlers always match the current DOM.
+  wireToolbar();
 }
 
+// Wire toolbar elements — re-bind on every renderToolbar() so any DOM
+// reuse / re-render can't strand stale event handlers. (Joey reported
+// template + agent picks not responding in v0.6.2.)
 function wireToolbar() {
-  document.getElementById('btn-pick-template').onclick = openGallery;
-  document.getElementById('agent-select').onchange = async (e) => {
-    if (!state.selected) return;
-    await API.setAgent(state.selected.id, e.target.value || null);
-    state.selected = (await API.getProject(state.selected.id)).project;
-    renderToolbar();
-  };
-  document.getElementById('btn-export').onclick = async () => {
-    if (!state.selected) return;
-    if (!confirm(`Export "${state.selected.name}" to MP4?\n\n(v0.4 still uses the stub renderer; real Hyperframes wiring lands in v0.5.)`)) return;
-    const r = await API.exportMp4(state.selected.id);
-    if (r.error) { toast('Export failed: ' + r.error, 'error'); return; }
-    state.selected = r.project;
-    toast('Exported → ' + r.output_path, 'success');
-    renderToolbar();
-    refreshProjects();
-  };
-  document.getElementById('proj-name').addEventListener('blur', () => {
-    if (state.selected) document.getElementById('proj-name').value = state.selected.name;
-  });
+  const pickBtn = document.getElementById('btn-pick-template');
+  if (pickBtn) {
+    pickBtn.onclick = (e) => {
+      e.preventDefault();
+      if (!state.selected) {
+        toast('Pick a project first', 'error');
+        return;
+      }
+      openGallery();
+    };
+  }
+  const agentSel = document.getElementById('agent-select');
+  if (agentSel) {
+    agentSel.onchange = async (e) => {
+      if (!state.selected) return;
+      await API.setAgent(state.selected.id, e.target.value || null);
+      state.selected = (await API.getProject(state.selected.id)).project;
+      renderToolbar();
+    };
+  }
+  const exportBtn = document.getElementById('btn-export');
+  if (exportBtn) {
+    exportBtn.onclick = async () => {
+      if (!state.selected) return;
+      if (!confirm(`Export "${state.selected.name}" to MP4?\n\n(Real Hyperframes wiring lands in v0.7.)`)) return;
+      const r = await API.exportMp4(state.selected.id);
+      if (r.error) { toast('Export failed: ' + r.error, 'error'); return; }
+      state.selected = r.project;
+      toast('Exported → ' + r.output_path, 'success');
+      renderToolbar();
+      refreshProjects();
+    };
+  }
+  const nameInput = document.getElementById('proj-name');
+  if (nameInput) {
+    nameInput.onblur = () => {
+      if (state.selected) nameInput.value = state.selected.name;
+    };
+  }
+  const sidebarToggle = document.getElementById('btn-sidebar-toggle');
+  if (sidebarToggle) {
+    sidebarToggle.onclick = () => {
+      document.body.classList.toggle('sidebar-collapsed');
+    };
+  }
 }
 
 // ============== main: 4-column body ==============
@@ -150,6 +182,7 @@ function renderMain() {
       <div class="sidebar-head">
         <h2>Projects</h2>
         <button class="new-project" id="btn-new">+ New</button>
+        <button class="sidebar-toggle" id="btn-sidebar-toggle" title="Collapse sidebar">‹</button>
       </div>
       <div class="project-list" id="project-list"></div>
     </aside>
@@ -197,9 +230,11 @@ function renderMain() {
           <h2>Pick or create a project</h2>
           <p>Each project = one HTML video.</p></div></div>`}
   `;
-  // Re-attach sidebar handlers
+  // Re-attach sidebar handlers (renderMain rebuilt the DOM)
   renderSidebar();
   document.getElementById('btn-new').onclick = openNewModal;
+  const togBtn = document.getElementById('btn-sidebar-toggle');
+  if (togBtn) togBtn.onclick = () => document.body.classList.toggle('sidebar-collapsed');
   if (state.selected) {
     renderChatLog();
     renderComposer();

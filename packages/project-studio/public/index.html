@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>html-video · Studio</title>
-<link rel="stylesheet" href="/tokens.css?v=0.6.2" />
+<link rel="stylesheet" href="/tokens.css?v=0.6.3" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet" />
@@ -64,16 +64,29 @@
 
   /* ===== Body: 4 columns ===== */
   .body { display: grid;
-    grid-template-columns: 200px minmax(280px, 0.9fr) minmax(260px, 0.7fr) minmax(380px, 1.2fr);
-    overflow: hidden; }
+    grid-template-columns: var(--sidebar-w, 200px) minmax(280px, 0.9fr) minmax(260px, 0.7fr) minmax(380px, 1.2fr);
+    grid-template-rows: 100%;       /* keep children bounded by viewport — composer must stay visible */
+    overflow: hidden;
+    transition: grid-template-columns .18s ease; }
+  .body > * { min-height: 0; min-width: 0; }
+  body.sidebar-collapsed .body { --sidebar-w: 40px; }
 
   /* ===== Sidebar (Projects) ===== */
   .sidebar { background: var(--bg-panel); border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; min-width: 0; }
+    display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
   .sidebar-head { display: flex; align-items: center; padding: 12px 14px;
-    border-bottom: 1px solid var(--border); }
+    border-bottom: 1px solid var(--border); gap: 6px; }
   .sidebar-head h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--text-muted); font-family: var(--font-mono); flex: 1; }
+    color: var(--text-muted); font-family: var(--font-mono); flex: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar-toggle { background: transparent; border: 0; color: var(--text-muted);
+    cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); font-size: 12px;
+    line-height: 1; }
+  .sidebar-toggle:hover { color: var(--text); background: var(--bg-subtle); }
+  body.sidebar-collapsed .sidebar-head h2,
+  body.sidebar-collapsed .new-project { display: none; }
+  body.sidebar-collapsed .project-list { display: none; }
+  body.sidebar-collapsed .sidebar-toggle { transform: rotate(180deg); }
   .new-project { background: var(--accent); color: var(--accent-fg); border: 0;
     padding: 5px 10px; border-radius: var(--radius-sm); font-size: 12px; cursor: pointer;
     font-weight: 500; }
@@ -360,7 +373,7 @@
       <div class="logo">H</div>
       <div>
         <h1>html-video</h1>
-        <div class="v">studio · v0.4</div>
+        <div class="v">studio · v0.6</div>
       </div>
     </div>
     <input class="name-input" id="proj-name" placeholder="(no project)" disabled />
@@ -389,6 +402,7 @@
       <div class="sidebar-head">
         <h2>Projects</h2>
         <button class="new-project" id="btn-new">+ New</button>
+        <button class="sidebar-toggle" id="btn-sidebar-toggle" title="Collapse sidebar">‹</button>
       </div>
       <div class="project-list" id="project-list"></div>
     </aside>
@@ -426,6 +440,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.6.2"></script>
+<script type="module" src="/app.js?v=0.6.3"></script>
 </body>
 </html>
