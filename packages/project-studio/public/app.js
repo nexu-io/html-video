@@ -644,11 +644,19 @@ function renderChatLog() {
       const msgIdx = Number(btn.dataset.confirmMsg);
       const action = btn.dataset.action;
       const m = state.messages[msgIdx];
-      if (!m || m.confirmResolved) return;
-      m.confirmResolved = action === 'generate' ? '✓ 开始生成' : '✏️ 改一下';
-      const ta = document.getElementById('composer-input');
-      if (ta) ta.value = action === 'generate' ? '[hv-confirm:generate]' : '[hv-confirm:edit]';
-      await sendMessage();
+      if (!m) return;
+      // In-flight guard only — don't permanently mark resolved here. Whether
+      // the card stays locked is recomputed from history each render
+      // (renderMessage inspects whether the click actually produced output).
+      if (m.confirmInFlight) return;
+      m.confirmInFlight = true;
+      try {
+        const ta = document.getElementById('composer-input');
+        if (ta) ta.value = action === 'generate' ? '[hv-confirm:generate]' : '[hv-confirm:edit]';
+        await sendMessage();
+      } finally {
+        m.confirmInFlight = false;
+      }
     };
   });
   log.scrollTop = log.scrollHeight;
@@ -705,13 +713,38 @@ function renderMessage(m, idx) {
   }
   const confirmP = parseHvConfirm(raw);
   if (confirmP.confirm) {
+    // Only lock the card when the click actually led somewhere:
+    //   - "✏️ 改一下" → next assistant turn re-emitted hv-form (the edit landed)
+    //   - "✓ 开始生成" → next assistant turn produced real output
+    //                   (preview-event / ✓ HTML preview / storyboard summary)
+    // If the click triggered an empty reply or generate failed, treat the
+    // card as live so the user can press the button again.
     let resolved = m.confirmResolved;
     if (!resolved) {
-      const nextUser = state.messages.slice(idx + 1).find((x) => x.role === 'user');
+      const after = state.messages.slice(idx + 1);
+      const nextUser = after.find((x) => x.role === 'user');
       if (nextUser) {
         const t = (nextUser.content ?? '').trim();
-        if (t === '[hv-confirm:generate]') resolved = '✓ 开始生成';
-        else if (t === '[hv-confirm:edit]') resolved = '✏️ 改一下';
+        if (t === '[hv-confirm:generate]') {
+          // Did anything productive happen between this user click and the
+          // next user turn?
+          const userIdx = after.indexOf(nextUser);
+          const between = after.slice(userIdx + 1);
+          const sawSuccess = between.some((x) => {
+            if (x.role === 'preview-event') return true;
+            if (x.role === 'assistant') {
+              const c = (x.content ?? '').trim();
+              if (!c) return false;
+              if (/^⚠️/.test(c)) return false;
+              if (/^✓\s/.test(c)) return true;
+              if (/storyboard generated|HTML preview updated/i.test(c)) return true;
+            }
+            return false;
+          });
+          if (sawSuccess) resolved = '✓ 开始生成';
+        } else if (t === '[hv-confirm:edit]') {
+          resolved = '✏️ 改一下';
+        }
       }
     }
     const confirmHtml = renderConfirmCard(confirmP.confirm, resolved, idx);
