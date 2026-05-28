@@ -1006,25 +1006,71 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     }
     p.push(`Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a stable key (brand_name, headline, item_1, cta…). No prose outside code blocks.`);
     p.push('');
+    // Frame-count safety: claude --print starts truncating / stalling around
+    // 8+ frames worth of HTML. Cap multi-frame generation to 6, tell the
+    // model so it can plan accordingly.
+    const requestedFrames = Math.max(1, Math.min(6, Number(collected.frame_count ?? '4') || 4));
     if (isMulti) {
-      p.push(`Output (multi-frame storyboard) — emit IN THIS ORDER:`);
-      p.push(`1. ONE \`\`\`json#content-graph block with schemaVersion:1, intent (single-frame|explainer|data-viz|promo|comparison|other), synopsis, nodes:[{id,kind:text|data|entity,durationSec,...}], edges:[{from,to,kind:sequence|dependency|contrast}].`);
-      p.push(`2. ONE complete HTML document per node, each in a fenced \`\`\`html#<nodeId> block. Each frame is self-contained.`);
+      p.push(`Output (multi-frame storyboard) — emit IN THIS EXACT ORDER and SHAPE:`);
+      p.push(`1. ONE \`\`\`json#content-graph block.`);
+      p.push(`2. ONE \`\`\`html#<nodeId> block per node.`);
+      p.push('');
+      p.push(`Aim for ${requestedFrames} frames. Each frame should be self-contained, full-bleed ${resolution}, with its own opening animation. Nothing between blocks.`);
+      p.push('');
+      // Skeleton for multi-frame — empirically claude --print returns 1 byte
+      // without an example, ~10KB with one. Show the exact shape, even with
+      // placeholder content; the model fills it in.
+      p.push(`Skeleton (replace placeholders with the inputs above; expand styling per the chosen type / style):`);
+      p.push('```json#content-graph');
+      p.push(JSON.stringify({
+        schemaVersion: 1,
+        intent: 'explainer',
+        synopsis: '<one-line description>',
+        nodes: Array.from({ length: requestedFrames }, (_, i) => ({
+          id: `frame_${i + 1}`,
+          kind: i === 0 ? 'text' : i === requestedFrames - 1 ? 'entity' : (i % 2 ? 'data' : 'text'),
+          durationSec: Math.max(2, Math.floor(Number(collected.duration ?? '15') / requestedFrames)),
+        })),
+        edges: Array.from({ length: requestedFrames - 1 }, (_, i) => ({
+          from: `frame_${i + 1}`,
+          to: `frame_${i + 2}`,
+          kind: 'sequence',
+        })),
+      }, null, 2));
+      p.push('```');
+      p.push('');
+      p.push('```html#frame_1');
+      p.push(`<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:system-ui,sans-serif}
+.stage{width:100vw;height:100vh;display:grid;place-items:center;text-align:center;padding:6vw}
+h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;transform:translateY(24px)}
+@keyframes in{to{opacity:1;transform:none}}
+</style></head><body>
+<div class="stage"><h1 data-hv-text="headline">PLACEHOLDER</h1></div>
+</body></html>`);
+      p.push('```');
+      p.push('');
+      p.push(`(continue with the same shape for the remaining frames — \`\`\`html#frame_2 … \`\`\`html#frame_${requestedFrames})`);
+      if (baseHtml && baseHtml.length > 0) {
+        p.push('');
+        p.push(`Prior preview HTML to draw style from:`);
+        p.push('```html');
+        p.push(baseHtml.slice(0, 3000));
+        p.push('```');
+      }
     } else {
       p.push(`Output (single-frame): begin your reply with \`\`\`html and end with \`\`\`. Nothing outside the block.`);
-    }
-    p.push('');
-    if (baseHtml && baseHtml.length > 0) {
-      p.push(`Prior preview HTML (iterate on its visual style if it fits, or replace if a different vibe is better):`);
-      p.push('```html');
-      p.push(baseHtml.slice(0, 4000));
-      p.push('```');
-    } else {
-      // Empirically, claude --print returns nothing on a "create a video" prompt
-      // with no reference HTML at all. A tiny skeleton anchors the response.
-      p.push(`Skeleton to extend (replace placeholder text with the inputs above, expand styling to match the type / style):`);
-      p.push('```html');
-      p.push(`<!doctype html>
+      p.push('');
+      if (baseHtml && baseHtml.length > 0) {
+        p.push(`Prior preview HTML (iterate on its visual style if it fits, or replace if a different vibe is better):`);
+        p.push('```html');
+        p.push(baseHtml.slice(0, 4000));
+        p.push('```');
+      } else {
+        p.push(`Skeleton to extend (replace placeholder with the inputs above; expand styling per the chosen type / style):`);
+        p.push('```html');
+        p.push(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:system-ui,sans-serif}
 .stage{width:100vw;height:100vh;display:grid;place-items:center;text-align:center;padding:6vw}
@@ -1033,7 +1079,8 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1.2s ease forwards;opacity:0
 </style></head><body>
 <div class="stage"><h1 data-hv-text="headline">PLACEHOLDER</h1></div>
 </body></html>`);
-      p.push('```');
+        p.push('```');
+      }
     }
     p.push('');
     if (tmpl) {
