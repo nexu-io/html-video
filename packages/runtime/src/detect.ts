@@ -24,6 +24,18 @@ async function probeVersion(bin: string, args: string[]): Promise<string | null>
 }
 
 export async function detectOne(def: AgentDef): Promise<DetectedAgent> {
+  // ---- HTTP agents (anthropic-api etc) ----
+  if (def.kind === 'http') {
+    const probe = def.httpProbe ? await def.httpProbe() : { available: false };
+    return {
+      id: def.id,
+      name: def.name,
+      bin: def.bin,
+      available: probe.available,
+      ...(probe.version !== undefined && { version: probe.version }),
+      ...(def.installUrl !== undefined && { installUrl: def.installUrl }),
+    };
+  }
   const path = await which(def.bin);
   if (!path) {
     return {

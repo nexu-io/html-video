@@ -5,15 +5,17 @@
  */
 
 export interface AgentDef {
-  /** Stable id — `claude` / `cursor-agent` / `codex` / `opencode` etc */
+  /** Stable id — `claude` / `cursor-agent` / `codex` / `opencode` / `anthropic-api` etc */
   id: string;
   /** Human label */
   name: string;
-  /** CLI binary name (looked up via PATH) */
+  /** CLI binary name (looked up via PATH). For `kind: "http"` agents this is a
+   *  pseudo name that doctor() displays but never spawns — set it to something
+   *  recognisable like "anthropic-api". */
   bin: string;
-  /** Args to print version (used in `doctor`) */
+  /** Args to print version (used in `doctor`). Ignored for http agents. */
   versionArgs: string[];
-  /** Build the argv list given the user prompt */
+  /** Build the argv list given the user prompt. Ignored for http agents. */
   buildArgs(prompt: string, ctx: AgentInvokeContext): string[];
   /**
    * How agent emits to stdout:
@@ -28,6 +30,29 @@ export interface AgentDef {
   env?: Record<string, string>;
   /** Where to find install instructions */
   installUrl?: string;
+  /**
+   * Runtime kind (default `child`).
+   *   - `child`: spawn `bin` as a child process (the v0.1 behaviour)
+   *   - `http`: skip spawn, call `httpHandler` instead. Used for direct
+   *     API agents (e.g. Anthropic Messages, OpenAI ChatCompletions).
+   */
+  kind?: 'child' | 'http';
+  /**
+   * For `kind: "http"` agents — performs the request and streams events.
+   * Should never throw; instead emit `{ type: 'error', message }` and finish
+   * with `{ type: 'message_end' }`.
+   */
+  httpHandler?: (
+    prompt: string,
+    ctx: AgentInvokeContext,
+    onEvent: (e: import('./types.js').AgentEvent) => void,
+    abortSignal: AbortSignal,
+  ) => Promise<{ exitCode: number }>;
+  /**
+   * Whether the http agent is configured / reachable. Used by doctor() in
+   * place of a `which`/`--version` probe. Returns `{ available, error?, hint? }`.
+   */
+  httpProbe?: () => Promise<{ available: boolean; version?: string | null; hint?: string }>;
 }
 
 export interface AgentInvokeContext {

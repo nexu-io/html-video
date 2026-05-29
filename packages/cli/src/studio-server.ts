@@ -350,7 +350,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const tmpl = project.templateId ? ctx.templates.get(project.templateId) : null;
         // No template required — agent can synthesize from scratch when none picked.
 
-        const agentId = project.agentId ?? 'claude';
+        // Default to anthropic-api (HTTP) when nothing's pinned — talking to
+        // the Messages API directly avoids the `claude --print` 1-byte
+        // empty-reply failure mode on long creative outputs. claude CLI is
+        // still selectable if the user prefers it.
+        const agentId = project.agentId ?? 'anthropic-api';
         const agentDef = findAgent(agentId);
         if (!agentDef) {
           return json(res, 400, { error: `agent "${agentId}" not registered` });

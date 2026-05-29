@@ -16,6 +16,30 @@ export interface SpawnOptions {
 
 export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   const { def, prompt, context, onEvent } = opts;
+
+  // ---- http agents (anthropic-api etc): no child process, just fetch ----
+  if (def.kind === 'http' && def.httpHandler) {
+    const ac = new AbortController();
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', () => ac.abort());
+    }
+    const done = def.httpHandler(prompt, context, (ev) => onEvent?.(ev), ac.signal)
+      .then(({ exitCode }) => {
+        onEvent?.({ type: 'message_end', reason: exitCode === 0 ? 'ok' : 'error' });
+        return { exitCode, signal: null as NodeJS.Signals | null };
+      })
+      .catch((err: Error) => {
+        onEvent?.({ type: 'error', message: err.message });
+        onEvent?.({ type: 'message_end', reason: 'error' });
+        return { exitCode: -1, signal: null as NodeJS.Signals | null };
+      });
+    return {
+      pid: 0,
+      stop: () => ac.abort(),
+      done,
+    };
+  }
+
   const args = def.buildArgs(prompt, context);
   const env = { ...process.env, ...(def.env ?? {}) };
 
