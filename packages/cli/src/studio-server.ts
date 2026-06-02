@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
 import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
 interface StudioHandle {
@@ -570,6 +571,41 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
         if (!userText && attachments.length === 0) {
           return json(res, 400, { error: 'content or attachments required' });
+        }
+
+        // External content sources: any URL (web article or GitHub repo) in the
+        // user's message is fetched server-side and turned into a text asset, so
+        // the offline agent can base the video on it. Reuses the attachment
+        // pipeline (kind:'text' flows into the prompt downstream). Lossless
+        // degradation: a fetch that fails is logged and skipped, never a 400.
+        for (const sourceUrl of extractUrls(userText)) {
+          try {
+            const src = await fetchSource(sourceUrl);
+            const label = src.kind === 'repo' ? 'GitHub repo' : 'Web article';
+            const updated = await ctx.orchestrator.addInlineAsset(
+              id,
+              src.markdown,
+              'text',
+              `${label}: ${src.title || sourceUrl}`,
+            );
+            const asset = updated.assets[updated.assets.length - 1];
+            if (asset?.path) {
+              let host = sourceUrl;
+              try { host = new URL(sourceUrl).hostname; } catch { /* keep raw */ }
+              attachments.push({
+                path: asset.path,
+                kind: 'text',
+                filename: `${host}.md`,
+                size: src.markdown.length,
+              });
+              process.stderr.write(
+                `[studio:fetch-source] ${src.kind} ${sourceUrl} → ${src.markdown.length} chars${src.truncated ? ' (truncated)' : ''}\n`,
+              );
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            process.stderr.write(`[studio:fetch-source] skip ${sourceUrl}: ${msg}\n`);
+          }
         }
 
         // Re-fetch project after potential addFileAsset side-effects
@@ -1802,6 +1838,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       p.push(`Attachments:`);
       for (const a of attachments) p.push(`- [${a.kind}] ${a.filename} — ${a.path}`);
       p.push(`Use these as actual assets where appropriate (logo, screenshot, data file).`);
+      p.push(`Text attachments (e.g. .md files) holding article or repository content are the SOURCE MATERIAL — read them and base the video's actual content (facts, names, numbers, narrative) on them, don't just decorate with them.`);
       p.push('');
     }
     p.push(`Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a stable key (brand_name, headline, item_1, cta…). No prose outside code blocks.`);

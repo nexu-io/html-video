@@ -47,8 +47,8 @@ const DICT = {
     'composer.placeholder.focus':
       'Edit only this frame (click ✕ on the chip above to release)…',
     'composer.placeholder.no_template':
-      'Describe a video — style, content, mood. Or pick a template above for a quick start.',
-    'composer.placeholder.with_template': 'Describe the video — content, names, data, mood…',
+      'Describe a video, or paste an article link / GitHub repo to build one from it.',
+    'composer.placeholder.with_template': 'Describe the video — content, names, data… or paste an article link / GitHub repo.',
     'composer.hint': 'Cmd / Ctrl + Enter · drag / paste files',
     'composer.send': 'Send',
     'composer.attach': 'Attach file',
@@ -244,8 +244,8 @@ const DICT = {
     'composer.placeholder.detecting_agents': '描述视频（正在探测 agent）…',
     'composer.placeholder.no_agent': '装 claude CLI 后即可聊天…',
     'composer.placeholder.focus': '只修改这一帧的内容（点掉上方芯片可恢复整片）…',
-    'composer.placeholder.no_template': '描述视频 — 风格、内容、氛围。或上方挑一个模板快开。',
-    'composer.placeholder.with_template': '描述视频 — 内容、名字、数据、氛围…',
+    'composer.placeholder.no_template': '描述视频，或粘一个文章链接 / GitHub repo 据此生成。',
+    'composer.placeholder.with_template': '描述视频 — 内容、名字、数据…或粘文章链接 / GitHub repo。',
     'composer.hint': 'Cmd / Ctrl + Enter · 拖拽 / 粘贴文件',
     'composer.send': '发送',
     'composer.attach': '附加文件',
