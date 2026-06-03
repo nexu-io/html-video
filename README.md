@@ -65,16 +65,18 @@ Every template below is a real, animated single-file HTML video — these are li
 
 HTML→Video is a real category — but every engine is opinionated, and each wants you to learn *its* authoring model:
 
-| Engine | Paradigm | Tradeoff |
-|---|---|---|
-| [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm |
-| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs |
-| [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | TypeScript generators on canvas | Best for explainers, code-first |
-| [Manim](https://github.com/3b1b/manim) & friends | Math / 3D first | Niche |
+| Engine | Paradigm | Tradeoff | In html-video |
+|---|---|---|---|
+| [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm | ✅ **Shipped** — the default engine; all templates render through it |
+| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | 🗺️ Planned |
+| [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | TypeScript generators on canvas | Best for explainers, code-first | 🗺️ Planned |
+| [Manim](https://github.com/3b1b/manim) & friends | Math / 3D first | Niche | 🗺️ Researching |
 
 Picking the right engine per use case, learning each model, and stitching them into one workflow costs real engineering time. Most teams pick one and live with its limits.
 
 **html-video is the meta-layer that sits above all of them** — you talk to your agent, it picks the engine and template and renders the video. No new DSL to learn.
+
+> **Status:** the pluggable-engine architecture is in place, but today **Hyperframes is the only wired-up backend**. Remotion, Motion Canvas / Revideo, and Manim are on the roadmap — the adapter interface is designed for them, the adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable.
 
 ---
 
