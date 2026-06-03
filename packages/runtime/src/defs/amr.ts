@@ -15,20 +15,52 @@ const exec = promisify(execFile);
  * authenticates once in the Open Design app (`vela login`, browser OAuth) — we
  * reuse that login state, never ask for an API key.
  *
- * `vela` ships INSIDE the Open Design app bundle, not on PATH, so detection
- * falls back to the known bundle locations. Login state lives in
- * ~/.vela/config.json (profile → runtimeKey/apiUrl/user); we treat a profile
- * with a runtimeKey + `vela whoami` success as "logged in".
+ * Binary resolution (so every user can use AMR, not just OD installers):
+ *   1. PATH (`vela`)
+ *   2. Open Design.app bundle (reuse an existing OD install)
+ *   3. @powerformer/vela-cli npm package — ships per-platform `vela` binaries,
+ *      so html-video bundles AMR support without any external install.
+ *   ($OPEN_DESIGN_VELA_CLI_BIN overrides everything, matching OD's env knob.)
  *
- * v0.1 (this file): detection + login gate + spawn argv. The ACP JSON-RPC
- * client that drives initialize → session/new → session/prompt and reads
- * streamed session/update is wired in a dedicated spawn path (stage 02).
+ * Login state lives in ~/.vela/config.json (profile → runtimeKey/apiUrl/user);
+ * each user signs in with their OWN OD/AMR account (browser OAuth via
+ * `vela login`) — html-video never holds a key. We treat a profile with a
+ * runtimeKey + `vela whoami` success as "logged in".
+ *
+ * Stage 2 (this revision): bundled-binary distribution via vela-cli.
+ * The ACP JSON-RPC client (initialize → session/new → session/prompt → streamed
+ * session/update) lands in stage 4.
  */
+
+const VELA_CLI_BIN_ENV = 'OPEN_DESIGN_VELA_CLI_BIN';
 
 const VELA_BUNDLE_FALLBACKS = [
   '/Applications/Open Design.app/Contents/Resources/open-design/bin/vela',
   join(homedir(), 'Applications/Open Design.app/Contents/Resources/open-design/bin/vela'),
 ];
+
+/** Resolve `vela` from the bundled @powerformer/vela-cli npm package (per-platform
+ *  binaries). Returns an absolute path, or null if the package isn't installed /
+ *  has no binary for this platform. */
+async function resolveBundledVela(): Promise<string | null> {
+  const envOverride = process.env[VELA_CLI_BIN_ENV]?.trim();
+  if (envOverride) return envOverride;
+  try {
+    const mod = (await import('@powerformer/vela-cli')) as unknown as {
+      resolveVelaCliBin?: (opts?: { strict?: boolean }) => unknown;
+    };
+    if (typeof mod.resolveVelaCliBin !== 'function') return null;
+    const resolved = await Promise.resolve(mod.resolveVelaCliBin({ strict: false }));
+    if (typeof resolved === 'string') return resolved.trim() || null;
+    if (resolved && typeof resolved === 'object') {
+      const p = (resolved as { path?: unknown }).path;
+      if (typeof p === 'string') return p.trim() || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 interface VelaProfile {
   runtimeKey?: string;
@@ -55,6 +87,7 @@ export const amr: AgentDef = {
   name: 'Open Design AMR',
   bin: 'vela',
   binFallbacks: VELA_BUNDLE_FALLBACKS,
+  resolveBinFallback: resolveBundledVela,
   versionArgs: ['--version'],
   // ACP stdio runtime: starts a private OpenCode server, talks JSON-RPC.
   buildArgs: () => ['agent', 'run', '--runtime', 'opencode'],

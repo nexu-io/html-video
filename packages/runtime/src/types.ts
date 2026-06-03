@@ -18,6 +18,11 @@ export interface AgentDef {
    *  lives in Open Design.app, not on PATH. List real candidate paths; the
    *  first existing one wins and is used as the spawn binary. */
   binFallbacks?: string[];
+  /** Last-resort async binary resolver, tried after PATH + binFallbacks miss.
+   *  Lets an agent pull its binary from a bundled npm package (e.g. AMR resolves
+   *  `vela` via @powerformer/vela-cli, which ships per-platform binaries) so the
+   *  product works without any external install. Return an absolute path or null. */
+  resolveBinFallback?: () => Promise<string | null>;
   /** Args to print version (used in `doctor`). Ignored for http agents. */
   versionArgs: string[];
   /** Build the argv list given the user prompt. Ignored for http agents. */

@@ -15,7 +15,7 @@ async function which(bin: string): Promise<string | null> {
   }
 }
 
-/** PATH lookup first; then any absolute binFallbacks that exist + are runnable. */
+/** PATH → static binFallbacks → async resolveBinFallback (e.g. bundled npm pkg). */
 async function resolveBin(def: AgentDef): Promise<string | null> {
   const onPath = await which(def.bin);
   if (onPath) return onPath;
@@ -25,6 +25,17 @@ async function resolveBin(def: AgentDef): Promise<string | null> {
       return candidate;
     } catch {
       /* not there / not executable — try next */
+    }
+  }
+  if (def.resolveBinFallback) {
+    try {
+      const resolved = await def.resolveBinFallback();
+      if (resolved) {
+        accessSync(resolved, constants.X_OK);
+        return resolved;
+      }
+    } catch {
+      /* resolver threw or path not runnable — treat as not found */
     }
   }
   return null;
