@@ -40,6 +40,33 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     };
   }
 
+  // ---- ACP agents (AMR / vela): bidirectional JSON-RPC over stdio ----
+  if (def.streamFormat === 'acp-json-rpc') {
+    const ac = new AbortController();
+    if (opts.signal) opts.signal.addEventListener('abort', () => ac.abort());
+    const done = (async () => {
+      const { resolveBin } = await import('./detect.js');
+      const { runAcpAgent } = await import('./acp-client.js');
+      const bin = await resolveBin(def);
+      if (!bin) {
+        onEvent?.({ type: 'error', message: `${def.name}: binary "${def.bin}" not found` });
+        onEvent?.({ type: 'message_end', reason: 'error' });
+        return { exitCode: -1, signal: null as NodeJS.Signals | null };
+      }
+      const { exitCode } = await runAcpAgent({
+        bin,
+        args: def.buildArgs(prompt, context),
+        prompt,
+        cwd: context.cwd,
+        ...(def.env && { env: def.env }),
+        onEvent: (ev) => onEvent?.(ev),
+        signal: ac.signal,
+      });
+      return { exitCode, signal: null as NodeJS.Signals | null };
+    })();
+    return { pid: 0, stop: () => ac.abort(), done };
+  }
+
   const args = def.buildArgs(prompt, context);
   const env = { ...process.env, ...(def.env ?? {}) };
 

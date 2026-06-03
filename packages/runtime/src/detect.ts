@@ -16,7 +16,7 @@ async function which(bin: string): Promise<string | null> {
 }
 
 /** PATH → static binFallbacks → async resolveBinFallback (e.g. bundled npm pkg). */
-async function resolveBin(def: AgentDef): Promise<string | null> {
+export async function resolveBin(def: AgentDef): Promise<string | null> {
   const onPath = await which(def.bin);
   if (onPath) return onPath;
   for (const candidate of def.binFallbacks ?? []) {
