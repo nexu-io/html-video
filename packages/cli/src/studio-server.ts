@@ -60,6 +60,12 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       const url = new URL(req.url, 'http://x');
       const m = req.method ?? 'GET';
 
+      if (url.pathname === '/favicon.ico') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
       // ============== API ==============
 
       // List projects

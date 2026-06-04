@@ -1,15 +1,39 @@
 import { execFile } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
+import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import { AGENT_DEFS } from './registry.js';
 import type { AgentDef, DetectedAgent } from './types.js';
 
 const exec = promisify(execFile);
 
+function pickPathMatch(stdout: string): string | null {
+  const matches = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (matches.length === 0) return null;
+  if (process.platform !== 'win32') return matches[0] ?? null;
+
+  return matches.find((p) => ['.exe', '.cmd', '.bat'].includes(extname(p).toLowerCase()))
+    ?? matches[0]
+    ?? null;
+}
+
+function quoteCmdArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:\\-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '\\"')}"`;
+}
+
+function isWindowsCommandShim(bin: string): boolean {
+  return process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(bin).toLowerCase());
+}
+
 async function which(bin: string): Promise<string | null> {
   try {
-    const { stdout } = await exec('which', [bin], { timeout: 2000 });
-    return stdout.trim() || null;
+    const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
+    const { stdout } = await exec(lookup, [bin], { timeout: 2000 });
+    return pickPathMatch(stdout);
   } catch {
     return null;
   }
@@ -21,7 +45,7 @@ export async function resolveBin(def: AgentDef): Promise<string | null> {
   if (onPath) return onPath;
   for (const candidate of def.binFallbacks ?? []) {
     try {
-      accessSync(candidate, constants.X_OK);
+      accessSync(candidate, constants.F_OK);
       return candidate;
     } catch {
       /* not there / not executable — try next */
@@ -31,7 +55,7 @@ export async function resolveBin(def: AgentDef): Promise<string | null> {
     try {
       const resolved = await def.resolveBinFallback();
       if (resolved) {
-        accessSync(resolved, constants.X_OK);
+        accessSync(resolved, constants.F_OK);
         return resolved;
       }
     } catch {
@@ -43,7 +67,13 @@ export async function resolveBin(def: AgentDef): Promise<string | null> {
 
 async function probeVersion(bin: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await exec(bin, args, { timeout: 5000 });
+    const command = isWindowsCommandShim(bin)
+      ? {
+          file: 'cmd.exe',
+          args: ['/d', '/s', '/c', [bin, ...args].map(quoteCmdArg).join(' ')],
+        }
+      : { file: bin, args };
+    const { stdout } = await exec(command.file, command.args, { timeout: 5000 });
     return stdout.trim().split('\n')[0] ?? null;
   } catch {
     return null;

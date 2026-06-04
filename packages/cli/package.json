@@ -11,10 +11,10 @@
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/bin.js",
+    "build": "tsc -p tsconfig.json && node scripts/chmod-bin.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node dist/smoke.js",
-    "test": "node --test test/"
+    "test": "node ../../scripts/run-tests-if-present.mjs"
   },
   "dependencies": {
     "@html-video/content-graph": "workspace:*",

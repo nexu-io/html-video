@@ -1,5 +1,22 @@
 import { spawn as cpSpawn } from 'node:child_process';
+import { extname } from 'node:path';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
+
+function quoteCmdArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:\\-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '\\"')}"`;
+}
+
+function spawnTarget(bin: string, args: string[]): { bin: string; args: string[] } {
+  const ext = extname(bin).toLowerCase();
+  if (process.platform === 'win32' && ['.cmd', '.bat'].includes(ext)) {
+    return {
+      bin: 'cmd.exe',
+      args: ['/d', '/s', '/c', [bin, ...args].map(quoteCmdArg).join(' ')],
+    };
+  }
+  return { bin, args };
+}
 
 /**
  * Spawn an agent CLI and stream events to the listener.
@@ -68,82 +85,92 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     return { pid: 0, stop: () => ac.abort(), done };
   }
 
-  const args = def.buildArgs(prompt, context);
-  const env = { ...process.env, ...(def.env ?? {}) };
+  let child: ReturnType<typeof cpSpawn> | null = null;
+  const done = (async () => {
+    const { resolveBin } = await import('./detect.js');
+    const bin = await resolveBin(def);
+    if (!bin) {
+      onEvent?.({ type: 'error', message: `${def.name}: binary "${def.bin}" not found` });
+      onEvent?.({ type: 'message_end', reason: 'error' });
+      return { exitCode: -1, signal: null as NodeJS.Signals | null };
+    }
 
-  const child = cpSpawn(def.bin, args, {
-    cwd: context.cwd,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+    const args = def.buildArgs(prompt, context);
+    const env = { ...process.env, ...(def.env ?? {}) };
+    const target = spawnTarget(bin, args);
 
-  if (def.promptViaStdin && child.stdin) {
-    child.stdin.write(prompt);
-    child.stdin.end();
-  }
+    child = cpSpawn(target.bin, target.args, {
+      cwd: context.cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
 
-  let stdoutBuf = '';
-  let stderrBuf = '';
+    if (def.promptViaStdin && child.stdin) {
+      child.stdin.write(prompt);
+      child.stdin.end();
+    }
 
-  child.stdout?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString('utf8');
-    stdoutBuf += text;
-    if (def.streamFormat === 'plain') {
-      onEvent?.({ type: 'text', chunk: text });
-    } else if (def.streamFormat === 'claude-stream' || def.streamFormat === 'json-event-stream') {
-      // v0.2 hook: parse NDJSON and emit structured events
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const obj = JSON.parse(line);
-          if (typeof obj === 'object' && obj && 'type' in obj) {
-            // claude stream-json events have richer shape; treat unknown as text
-            onEvent?.({ type: 'text', chunk: JSON.stringify(obj) + '\n' });
+    let stderrBuf = '';
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString('utf8');
+      if (def.streamFormat === 'plain') {
+        onEvent?.({ type: 'text', chunk: text });
+      } else if (def.streamFormat === 'claude-stream' || def.streamFormat === 'json-event-stream') {
+        // v0.2 hook: parse NDJSON and emit structured events
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line);
+            if (typeof obj === 'object' && obj && 'type' in obj) {
+              // claude stream-json events have richer shape; treat unknown as text
+              onEvent?.({ type: 'text', chunk: JSON.stringify(obj) + '\n' });
+            }
+          } catch {
+            onEvent?.({ type: 'text', chunk: line + '\n' });
           }
-        } catch {
-          onEvent?.({ type: 'text', chunk: line + '\n' });
         }
       }
+    });
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString('utf8');
+    });
+
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', () => {
+        try {
+          child?.kill('SIGTERM');
+        } catch {
+          // ignore
+        }
+      });
     }
-  });
 
-  child.stderr?.on('data', (chunk: Buffer) => {
-    stderrBuf += chunk.toString('utf8');
-  });
-
-  if (opts.signal) {
-    opts.signal.addEventListener('abort', () => {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // ignore
-      }
+    return await new Promise<{ exitCode: number; signal: NodeJS.Signals | null }>((resolve) => {
+      child?.on('close', (code, signal) => {
+        if (code !== 0) {
+          onEvent?.({
+            type: 'error',
+            message: `agent exit code ${code}${stderrBuf ? `: ${stderrBuf.slice(0, 500)}` : ''}`,
+          });
+        }
+        onEvent?.({ type: 'message_end', reason: code === 0 ? 'ok' : 'error' });
+        resolve({ exitCode: code ?? 0, signal });
+      });
+      child?.on('error', (err) => {
+        onEvent?.({ type: 'error', message: err.message });
+        resolve({ exitCode: -1, signal: null });
+      });
     });
-  }
-
-  const done = new Promise<{ exitCode: number; signal: NodeJS.Signals | null }>((resolve) => {
-    child.on('close', (code, signal) => {
-      if (code !== 0) {
-        onEvent?.({
-          type: 'error',
-          message: `agent exit code ${code}${stderrBuf ? `: ${stderrBuf.slice(0, 500)}` : ''}`,
-        });
-      }
-      onEvent?.({ type: 'message_end', reason: code === 0 ? 'ok' : 'error' });
-      resolve({ exitCode: code ?? 0, signal });
-    });
-    child.on('error', (err) => {
-      onEvent?.({ type: 'error', message: err.message });
-      resolve({ exitCode: -1, signal: null });
-    });
-  });
+  })();
 
   return {
-    pid: child.pid ?? 0,
+    pid: 0,
     stop: () => {
       try {
-        child.kill('SIGTERM');
+        child?.kill('SIGTERM');
       } catch {
         // ignore
       }

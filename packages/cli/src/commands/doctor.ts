@@ -1,4 +1,5 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { accessSync } from 'node:fs';
 import type { CliContext } from '../context.js';
 import { ok } from '../output.js';
 
@@ -12,9 +13,10 @@ interface Check {
 
 function which(cmd: string): string | null {
   try {
-    return execSync(`which ${cmd}`, { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim() || null;
+    const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
+    const output = execFileSync(lookup, [cmd], { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const firstMatch = output.split(/\r?\n/)[0] ?? '';
+    return firstMatch.trim() || null;
   } catch {
     return null;
   }
@@ -22,13 +24,22 @@ function which(cmd: string): string | null {
 
 function version(cmd: string, args = '--version'): string | null {
   try {
-    return execSync(`${cmd} ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+    const output = execFileSync(cmd, args.split(' '), { stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()
       .trim()
-      .split('\n')[0]
-      ?? null;
+      .split('\n')[0];
+    return output ?? null;
   } catch {
     return null;
+  }
+}
+
+function existsOnDisk(path: string): boolean {
+  try {
+    accessSync(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -55,24 +66,29 @@ export async function runDoctor(ctx: CliContext): Promise<void> {
     });
   }
 
-  // chromium / chrome (for HF puppeteer)
+  // chromium / chrome (for HF playwright)
   const chromePaths = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/usr/bin/chromium',
     '/usr/bin/google-chrome',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   ];
-  const chromiumOk = chromePaths.some((p) => {
-    try {
-      execSync(`test -x "${p}"`);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  const chromiumPath =
+    which('chromium') ||
+    which('chromium-browser') ||
+    which('google-chrome') ||
+    which('chrome') ||
+    which('msedge') ||
+    chromePaths.find(existsOnDisk) ||
+    null;
   checks.push({
     name: 'chromium',
-    status: chromiumOk ? 'ok' : 'warning',
-    detail: chromiumOk ? 'Chrome found in standard location' : 'Chrome/Chromium not detected; HF render will need a browser',
+    status: chromiumPath ? 'ok' : 'warning',
+    value: chromiumPath ?? undefined,
+    detail: chromiumPath ? 'Chrome/Chromium-compatible browser detected' : 'Chrome/Chromium not detected; HF render will need a browser',
   });
 
   // Engines
