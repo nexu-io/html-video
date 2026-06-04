@@ -4,12 +4,12 @@
   <img src="docs/assets/hero.png" alt="html-video — HTML becomes video, on your laptop" width="100%" />
 </p>
 
-> **HTML becomes video — on your laptop.** Bring your local coding agent (Claude Code · Cursor · Codex · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — one agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
+> **HTML becomes video — on your laptop.** Bring your local coding agent (Open Design · Claude Code · Cursor · Codex · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — then renders it to a real MP4 right on your machine. One agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
-  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-5%20backends-111?style=flat-square" /></a>
-  <a href="#template-gallery"><img alt="Templates" src="https://img.shields.io/badge/templates-15-3ce6ac?style=flat-square" /></a>
+  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-6%20backends-111?style=flat-square" /></a>
+  <a href="#showcase"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
   <a href="#turn-a-link-into-a-video"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#soundtrack"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
   <a href="#quick-start"><img alt="Quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-22a34a?style=flat-square" /></a>
@@ -57,7 +57,7 @@ Every template below is a real, animated single-file HTML video — these are li
 </tr>
 </table>
 
-…and 9 more, including multi-scene product promos, kinetic type, Swiss-grid data cards, decision-tree explainers, and warm-grain editorial. Browse them live in the studio gallery.
+…and 15 more, including multi-scene product promos, kinetic type, Swiss-grid and Vignelli data cards, decision-tree explainers, Takram-organic motion, and warm-grain editorial. Browse all 21 live in the studio gallery.
 
 ---
 
@@ -67,16 +67,18 @@ HTML→Video is a real category — but every engine is opinionated, and each wa
 
 | Engine | Paradigm | Tradeoff | In html-video |
 |---|---|---|---|
-| [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm | ✅ **Shipped** — the default engine; all templates render through it |
+| [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm | ✅ **Shipped** — the default engine; renders real MP4 via headless Chromium + ffmpeg |
 | [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | 🗺️ Planned |
 | [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | TypeScript generators on canvas | Best for explainers, code-first | 🗺️ Planned |
 | [Manim](https://github.com/3b1b/manim) & friends | Math / 3D first | Niche | 🗺️ Researching |
 
 Picking the right engine per use case, learning each model, and stitching them into one workflow costs real engineering time. Most teams pick one and live with its limits.
 
-**html-video is the meta-layer that sits above all of them** — you talk to your agent, it picks the engine and template and renders the video. No new DSL to learn.
+**html-video is the meta-layer that sits above all of them.** You talk to your agent; it picks the engine, picks the template, fills in your content, and renders the video. The engine is an implementation detail behind a single adapter interface — one `render(input, ctx)` contract that any backend can satisfy. Add a new engine and every template, every agent, and the whole studio workflow get it for free. No new DSL to learn, no rewrite when you switch engines.
 
-> **Status:** the pluggable-engine architecture is in place, but today **Hyperframes is the only wired-up backend**. Remotion, Motion Canvas / Revideo, and Manim are on the roadmap — the adapter interface is designed for them, the adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable.
+The same idea powers [Open Design](https://github.com/nexu-io/open-design) in the *design* space — an agent meta-layer over many tools. html-video is the *motion* counterpart from the same team.
+
+> **Status:** the pluggable-engine architecture is in place, and the **Hyperframes engine is fully wired up and renders real MP4** — headless Chromium records the animated HTML frame-by-frame and ffmpeg encodes it (libx264). Remotion, Motion Canvas / Revideo, and Manim are on the roadmap: the adapter interface is designed for them, but their adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable today.
 
 ---
 
@@ -84,9 +86,10 @@ Picking the right engine per use case, learning each model, and stitching them i
 
 | | |
 |---|---|
-| **Coding agents (5)** | Claude Code · Cursor Agent · Codex CLI · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
+| **Coding agents (6)** | Open Design (Vela) · Claude Code · Cursor Agent · Codex CLI · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
+| **Real MP4 render** | Headless Chromium records the animated HTML and ffmpeg encodes it (libx264) — locally, no cloud render, no per-clip fee. |
 | **Article / repo → video** | Paste a URL or GitHub repo; the studio fetches it server-side (handles WeChat 公众号 articles) and builds the video from the real content. |
-| **15 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
+| **21 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
 | **Multi-frame storyboards** | A content-graph drives multi-scene videos; edit per-frame text inline, reorder, re-render. |
 | **AI soundtrack** | Optional background music + narration via MiniMax, mixed into the MP4 at export. |
 | **Studio + CLI** | A local browser studio *and* a scriptable `html-video` CLI. |
@@ -94,9 +97,44 @@ Picking the right engine per use case, learning each model, and stitching them i
 
 ---
 
+## How it works
+
+One sentence (or one link) goes in; a real MP4 comes out. The pipeline is the same whether you start from a prompt, an article, or a repo:
+
+```
+  prompt / link / repo
+        │
+        ▼
+  ① source fetch        studio pulls the URL or repo server-side, flattens it to Markdown
+        │
+        ▼
+  ② agent loop          your agent reads the material + the picked template's style and emits
+        │               a content-graph (the storyboard) + one HTML block per frame
+        ▼
+  ③ content-graph       multi-frame IR — nodes (entity / data / text) + edges (sequence /
+        │               dependency / contrast); topo-sorted into frame order & timing
+        ▼
+  ④ per-frame HTML      each node becomes a self-contained animated HTML frame on disk
+        │
+        ▼
+  ⑤ Hyperframes render  headless Chromium loads each frame, records it (auto-extending to
+        │               cover the frame's own animation), → webm per frame
+        ▼
+  ⑥ ffmpeg              each webm → mp4 (libx264), then concat into one video;
+        │               optional MiniMax music + narration mixed in
+        ▼
+      your.mp4
+```
+
+Steps ②–④ are where the "meta-layer" lives: the agent decides the storyboard and the engine decides how to draw it, and neither leaks into the other. Step ⑤ is engine-specific — swapping in Remotion or Motion Canvas later replaces only that box, leaving the storyboard and the agent loop untouched. Everything runs on your machine; the only network calls are the optional source fetch and the optional soundtrack.
+
+Single-frame videos take a fast path that skips the content-graph — one template, one HTML, straight to render.
+
+---
+
 ## Turn a link into a video
 
-This is what most people reach for: hand your agent a link, get a video back. The agents themselves have no network access, so the studio fetches the source **server-side** and feeds the real content into the generation prompt — no copy-pasting article bodies.
+This is what most people reach for: hand your agent a link, get a video back. The agents run as local CLIs with no network access of their own, so the studio fetches the source **server-side** and feeds the real content into the generation prompt — no copy-pasting article bodies, and pages behind a login-free server render (like WeChat 公众号) just work.
 
 ```
 You:   做一个解读视频  https://mp.weixin.qq.com/s/…
@@ -108,7 +146,7 @@ Agent: 好，我读完了《用嘴剪视频的时代来了？…》这篇文章 
 - **GitHub repo** → description, top-level structure, and README pulled via the public API — great for "explain this open-source project" videos.
 - **Just a prompt** → describe the topic and the agent writes the content from scratch.
 
-Whatever the source, it becomes the material the video is actually built from.
+Whatever the source, it becomes the material the video is actually built from — not decoration around a canned template. The agent reads the fetched content, decides how many scenes it needs, and writes a **content-graph storyboard**: the key points become frames, the relationships between them (this follows that, this contrasts with that) become edges, and the picked template's visual style is applied per frame. So a 1,500-word article turns into a paced multi-scene explainer whose every line traces back to something in the source, and a repo turns into a structured walkthrough of what the project actually is.
 
 ---
 
@@ -133,17 +171,18 @@ node packages/cli/dist/bin.js search-templates --intent "github stars race" --to
 
 ## Supported agents
 
-Auto-detected on your `PATH`; switch the active one from the studio's top bar.
+Auto-detected on your `PATH`; switch the active one from the studio's top bar. The studio leads with **Open Design (Vela)** — one login, many models, lower cost — then falls back to the first *available* agent so a fresh project always has a working backend.
 
 | Agent | Detection | Invocation |
 |---|---|---|
+| **Open Design (Vela)** | `vela` / bundled in the Open Design app | ACP over stdio — one login in Open Design, pick any model |
 | **Claude Code** | `claude` | `claude --print`, prompt via stdin |
 | **Cursor Agent** | `cursor-agent` | `cursor-agent --print` |
 | **Codex CLI** | `codex` | `codex exec`, prompt via stdin |
 | **Hermes** | `hermes` | Hermes ACP CLI |
-| **Anthropic API** | BYOK | Direct Messages API — the default when no CLI is pinned |
+| **Anthropic API** | BYOK | Direct Messages API — works with no CLI installed |
 
-No CLI installed? Set an Anthropic key and the studio talks to the Messages API directly.
+Nothing installed? Set an Anthropic key and the studio talks to the Messages API directly.
 
 ---
 
@@ -158,6 +197,19 @@ Both are mixed into the exported MP4 (music ducked under the voice, optional fad
 
 ---
 
+## Template gallery
+
+The 21 templates aren't a random grab-bag — each one is a self-contained, agent-readable unit described by a `template.html-video.yaml` manifest the studio scans at startup. A manifest carries everything the agent needs to pick and drive the template without opening the HTML:
+
+- **What it's for** — `category`, `tags`, and a `best_for` list (e.g. *"Corporate slide"*, *"Minimal report card"*) that `search-templates` matches your intent against.
+- **What it outputs** — supported resolutions, aspect ratios, fps, duration bounds, whether it has an alpha channel or audio.
+- **What goes in** — an `inputs` JSON schema, so the agent knows exactly which text/data slots to fill.
+- **License provenance** — an SPDX id plus explicit `attribution_required` / `redistribution_allowed` / `commercial_use` flags, and an `assets_attribution` block pointing at the upstream source URL.
+
+That last part is deliberate. Every template is **license-clean by construction**: forks carry their original license, the repo-root [`NOTICE.md`](templates/NOTICE.md) records each source and SPDX, and nothing without a clear permissive license ships. So you can put any of them in commercial work without an audit. Templates span data viz (NYT-style charts, Swiss/Vignelli grids), titles & VFX (glitch, kinetic type, typewriter cursor), heroes & cinematics (liquid gradients, light-leak, warm grain), product promos (15s / 30s multi-scene), and explainer scaffolds (decision trees) — and the format is open, so community templates drop in the same way.
+
+---
+
 ## Architecture
 
 ```
@@ -166,11 +218,11 @@ packages/
 │                          MiniMax provider + ffmpeg audio mux
 ├── content-graph/         Multi-frame storyboard IR (nodes + edges, topo-sort)
 ├── runtime/               Agent runtime — detect / spawn / stream
-│                          (Claude · Cursor · Codex · Hermes · Anthropic API)
-├── adapter-hyperframes/   First reference engine adapter (HTML + CSS + GSAP)
+│                          (Open Design/Vela · Claude · Cursor · Codex · Hermes · Anthropic API)
+├── adapter-hyperframes/   Hyperframes engine adapter — real render via Chromium + ffmpeg
 ├── cli/                   `html-video` command + the studio HTTP server + source fetching
 └── project-studio/        Browser studio UI (chat, template gallery, frames, soundtrack, export)
-templates/                 15 curated video templates
+templates/                 21 curated, license-clean video templates
 research/                  RFCs (engine adapter / template metadata / agent skill / content-graph)
 ```
 
@@ -184,7 +236,8 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 - [x] Studio: live template gallery, agent switcher, per-frame text editing
 - [x] Source material: article / GitHub-repo → video
 - [x] AI soundtrack (MiniMax music + narration), mixed at export
-- [ ] Real Hyperframes upstream render (replace the adapter stub)
+- [x] Real MP4 render — Hyperframes engine via headless Chromium + ffmpeg
+- [x] Agent model selection — Open Design (Vela) backend, live model catalog
 - [ ] Adapters for Remotion / Motion Canvas / Revideo
 - [ ] Agent skill packages + a template marketplace
 
@@ -196,7 +249,7 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 |---|---|
 | [Open Design](https://github.com/nexu-io/open-design) | Sister project — the design-agent meta-layer; same team, shared philosophy |
 | [HTML Anything](https://github.com/nexu-io/html-anything) | Sister project — HTML for *static* deliverables; html-video is the *motion* side |
-| [Hyperframes](https://github.com/heygen-com/hyperframes) | First engine adapter; the HTML+GSAP rendering paradigm |
+| [Hyperframes](https://github.com/heygen-com/hyperframes) | The shipped engine adapter; the HTML+CSS+GSAP rendering paradigm and the source of several Apache-2.0 templates |
 
 ## License
 
