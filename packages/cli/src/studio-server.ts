@@ -867,6 +867,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           `[studio:msg] proj=${id} phase=${phaseInfo.phase} prompt=${fullPrompt.length}B user=${JSON.stringify(userText.slice(0, 80))} attachments=${attachments.length}\n`,
         );
 
+        // Mark this project as generating so a returning client knows the task
+        // is still alive. Cleared in the finally below (covers all exit paths).
+        GENERATING.add(id);
+        try {
+
         // SSE response
         res.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
@@ -1068,6 +1073,17 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         void project0;
         res.end();
         return;
+        } finally {
+          GENERATING.delete(id);
+        }
+      }
+
+      // Is a generation currently running for this project? Lets a returning
+      // client show "still generating…" instead of a blank where the live
+      // progress lines used to be.
+      const genStatusMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/generating$/);
+      if (genStatusMatch && genStatusMatch[1] && m === 'GET') {
+        return json(res, 200, { generating: GENERATING.has(genStatusMatch[1]) });
       }
 
       // ============== v0.8: content-graph + frames API ==============
@@ -1516,6 +1532,11 @@ interface ChatMessage {
 }
 
 const MESSAGES = new Map<string, ChatMessage[]>();
+
+/** Projects with a generation running right now (detached from any request).
+ *  Lets a client that switched away and came back learn the task is still alive
+ *  ("⏳ still generating…") instead of seeing the progress lines vanish. */
+const GENERATING = new Set<string>();
 
 async function loadMessages(ctx: CliContext, projectId: string): Promise<ChatMessage[]> {
   const cached = MESSAGES.get(projectId);

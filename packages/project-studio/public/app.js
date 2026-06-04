@@ -273,6 +273,15 @@ async function selectProject(id) {
   state.composing = false;
   try { state.messages = (await API.getMessages(id)).messages ?? []; }
   catch { state.messages = []; }
+  // If a generation is still running on the backend for this project, surface a
+  // live "still generating" line (the in-memory progress lines were lost on the
+  // switch; the result will appear in messages once it finishes — reload to see).
+  try {
+    const g = await fetch(`/api/projects/${id}/generating`).then((r) => r.json());
+    if (g?.generating && id === state.selectedId) {
+      state.messages.push({ role: 'preview-event', content: t('chat.still_generating'), ts: Date.now() });
+    }
+  } catch { /* non-fatal */ }
   renderSidebar();
   renderToolbar();   // <-- bug fix: toolbar buttons (template / agent / export) must
                      //     be re-enabled after a project is selected

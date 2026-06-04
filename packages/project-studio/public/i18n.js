@@ -63,6 +63,7 @@ const DICT = {
     'chat.summary.confirm_generate': '✓ Generate',
     'chat.summary.confirm_edit': '✏️ Edit',
     'chat.thinking': 'agent thinking',
+    'chat.still_generating': '⏳ This project is still generating in the background — its result will appear here when done (reload preview to refresh).',
     'chat.placeholder.gen_html': '📄 *generating HTML…*',
     'chat.placeholder.plan_graph': '🧭 *planning storyboard…*',
     'chat.empty_reply':
@@ -297,6 +298,7 @@ const DICT = {
     'chat.summary.confirm_generate': '✓ 确认生成',
     'chat.summary.confirm_edit': '✏️ 改一下',
     'chat.thinking': 'agent 思考中',
+    'chat.still_generating': '⏳ 这个项目仍在后台生成中 —— 完成后结果会出现在这里（点重载预览可刷新）。',
     'chat.placeholder.gen_html': '📄 *正在生成 HTML…*',
     'chat.placeholder.plan_graph': '🧭 *规划故事板…*',
     'chat.empty_reply':
