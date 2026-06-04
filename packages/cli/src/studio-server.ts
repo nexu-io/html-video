@@ -2503,14 +2503,30 @@ async function runSplitMultiFrameGenerate(
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
   graphPromptParts.push('');
   graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
-  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'}`);
+  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
   if (contentTurns.length > 0) {
     graphPromptParts.push(`- 内容 / content:`);
     for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
   }
+  // Inline the fetched article / repo / uploaded text — THIS is the subject of
+  // the video. Without it the planner only sees the type word and invents a
+  // video "about 概念解说" instead of about the user's actual source.
+  const sourceTexts = attachments.filter((a) => !!a.inlineText);
+  if (sourceTexts.length > 0) {
+    graphPromptParts.push('');
+    graphPromptParts.push(`SOURCE MATERIAL — the video MUST be about THIS content (real facts, names, numbers from it). This is the subject, not the type:`);
+    for (const a of sourceTexts) {
+      graphPromptParts.push(`--- ${a.filename} ---`);
+      graphPromptParts.push((a.inlineText ?? '').slice(0, 6000));
+    }
+  }
   if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
   graphPromptParts.push(`- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
   graphPromptParts.push('');
+  if (sourceTexts.length > 0) {
+    graphPromptParts.push(`GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`);
+    graphPromptParts.push('');
+  }
   graphPromptParts.push(`Schema (keep all keys; one node per frame; nodes[].id should be a short readable slug like "intro" / "stat_users" / "outro"):`);
   graphPromptParts.push('```json#content-graph');
   graphPromptParts.push(JSON.stringify({
