@@ -4,11 +4,11 @@
   <img src="docs/assets/hero.png" alt="html-video — HTML becomes video, on your laptop" width="100%" />
 </p>
 
-> **HTML becomes video — on your laptop.** Bring your local coding agent (Open Design · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — then renders it to a real MP4 right on your machine. One agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
+> **HTML becomes video — on your laptop.** Bring your local coding agent (Open Design · Windsurf CLI · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — then renders it to a real MP4 right on your machine. One agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
-  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-13%20backends-111?style=flat-square" /></a>
+  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-14%20backends-111?style=flat-square" /></a>
   <a href="#showcase"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
   <a href="#turn-a-link-into-a-video"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#soundtrack"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
@@ -90,7 +90,7 @@ The same idea powers [Open Design](https://github.com/nexu-io/open-design) in th
 
 | | |
 |---|---|
-| **Coding agents (13)** | Open Design (Vela) · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
+| **Coding agents (14)** | Open Design (Vela) · Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
 | **Real MP4 render** | Headless Chromium records the animated HTML and ffmpeg encodes it (libx264) — locally, no cloud render, no per-clip fee. |
 | **Article / repo → video** | Paste a URL or GitHub repo; the studio fetches it server-side (handles WeChat 公众号 articles) and builds the video from the real content. |
 | **21 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
@@ -156,6 +156,23 @@ Whatever the source, it becomes the material the video is actually built from �
 
 ## Quick start
 
+### Prerequisites
+
+| Requirement | Minimum | Check |
+|---|---|---|
+| **Node.js** | 20+ | `node --version` |
+| **pnpm** | 9+ | `pnpm --version` |
+| **ffmpeg** | Any recent | `ffmpeg -version` |
+| **Chromium** (or Playwright browsers) | — | `npx playwright install chromium` |
+
+The default rendering engine records animated HTML in a headless Chromium browser, then uses ffmpeg (libx264) to encode MP4. Install Playwright's Chromium if you don't have a system install:
+
+```bash
+npx playwright install chromium
+```
+
+### Install & run
+
 ```bash
 pnpm install
 pnpm -r build
@@ -180,6 +197,7 @@ Auto-detected on your `PATH`; switch the active one from the studio's top bar. T
 | Agent | Detection | Invocation |
 |---|---|---|
 | **Open Design (Vela)** | `vela` / bundled in the Open Design app | ACP over stdio — one login in Open Design, pick any model |
+| **Windsurf CLI** | `windsurf` | `windsurf --yolo`, ACP over stdio |
 | **Trae CLI** | `traecli` | `traecli acp serve --yolo`, ACP over stdio |
 | **Claude Code** | `claude` | `claude --print`, prompt via stdin |
 | **Cursor Agent** | `cursor-agent` | `cursor-agent --print` |
@@ -228,8 +246,8 @@ packages/
 ├── core/                  Project / Asset / ContentGraph types, registries, orchestrator,
 │                          MiniMax provider + ffmpeg audio mux
 ├── content-graph/         Multi-frame storyboard IR (nodes + edges, topo-sort)
-├── runtime/               Agent runtime — detect / spawn / stream
-│                          (Open Design/Vela · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API)
+│ runtime/               Agent runtime — detect / spawn / stream
+│                          (Open Design/Vela · Windsurf CLI · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API)
 ├── adapter-hyperframes/   Hyperframes engine adapter — real render via Chromium + ffmpeg
 ├── cli/                   `html-video` command + the studio HTTP server + source fetching
 └── project-studio/        Browser studio UI (chat, template gallery, frames, soundtrack, export)
