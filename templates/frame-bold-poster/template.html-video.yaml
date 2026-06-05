@@ -1,0 +1,133 @@
+spec_version: 1
+id: frame-bold-poster
+name: Bold Poster
+description: >
+  A 1970s European editorial poster, in motion. A red rule draws across under a mono
+  kicker, a giant Shrikhand figure rotates and drops in, a three-line headline rises
+  line-by-line each on its own tilt, an italic serif standfirst fades up, and an ink
+  footer rule draws in. Loud, confident, unmistakably print. Distilled from the
+  frontend-slides "Bold Poster" template.
+
+engine: hyperframes
+engine_version: ^0.4.0
+source_entry: source/index.html
+
+category: presentation
+subcategory: statement-title
+tags: [poster, editorial, bold, serif, red, print, manifesto, tilted, high-impact]
+
+best_for:
+  - "Brand manifesto / vision statement"
+  - "Editorial or cultural pitch opener"
+  - "A few words that should feel like a magazine cover"
+
+output:
+  formats: [mp4, webm]
+  default_format: mp4
+  resolution:
+    default: { width: 1920, height: 1080 }
+    supported_aspects: ["16:9", "9:16", "1:1"]
+  fps:
+    default: 60
+    supported: [30, 60]
+  duration:
+    type: variable
+    min_sec: 4
+    max_sec: 6
+  alpha: false
+  audio:
+    supported: true
+    expected_inputs: [bgm]
+
+inputs:
+  schema:
+    type: object
+    required: [headline]
+    properties:
+      kicker:
+        type: "string"
+        maxLength: 24
+        description: "Small uppercase mono label, top-left (e.g. Manifesto)"
+      date:
+        type: "string"
+        maxLength: 24
+        description: "Top-right mono metadata (e.g. Vol. 04 · 2026)"
+      figure:
+        type: "string"
+        maxLength: 4
+        description: "Giant red display figure (e.g. a number or 1-2 chars)"
+      headline:
+        type: "array"
+        items: { type: "string" }
+        maxItems: 3
+        description: "Up to 3 headline lines; line 2 renders in red"
+      standfirst:
+        type: "string"
+        maxLength: 160
+        description: "Italic serif sub-line under the headline"
+      footer_left:
+        type: "string"
+        maxLength: 32
+        description: "Footer left metadata"
+      footer_right:
+        type: "string"
+        maxLength: 32
+        description: "Footer right metadata (renders in red)"
+      duration_sec:
+        type: "number"
+        minimum: 4
+        maximum: 6
+        default: 5
+  examples:
+    - {"kicker": "Manifesto", "date": "Vol. 04 · 2026", "figure": "03", "headline": ["Make it", "loud.", "Make it last."], "standfirst": "Every slide should land like a printed page — heavy type, one red accent, ruled in ink.", "footer_left": "Bold Poster", "footer_right": "html-video"}
+
+license:
+  spdx: Apache-2.0
+  attribution_required: true
+  redistribution_allowed: true
+  commercial_use: true
+
+provenance:
+  # L1 — original design inspiration (real world)
+  origin:
+    name: "1970s European editorial / poster tradition"
+    kind: movement
+    reference: >
+      No single studio — the upstream template names vintage Italian sports magazines,
+      mid-century European brand annual reports, and wine-merchant catalogues as its
+      visual lineage. Recorded as a tradition, not a specific firm.
+  # L2 — the open-source skill we actually transformed from (license governs here)
+  via_skill:
+    name: frontend-slides
+    author: "Zara Zhang"
+    url: https://github.com/zarazhangrui/frontend-slides
+    license: MIT
+    source_file: "bold-template-pack/templates/bold-poster/design.md"
+  # L3 — what this template does
+  transformation: >
+    Static slide design spec → animated hyperframes timeline (red kicker rule draws in,
+    a giant Shrikhand figure rotates + drops, a three-line headline rises line-by-line
+    each tilted, an italic serif standfirst fades, an ink footer rule draws in) built as
+    original CSS keyframes. Palette (#FFFFFF / #1C1410 / #D8000F / #F5F2EF) and the
+    three-face type stack (Shrikhand / Libre Baskerville / Space Grotesk) follow the
+    upstream spec; sample copy is original; no upstream source HTML copied verbatim.
+
+author:
+  name: nexu-io
+  url: https://github.com/nexu-io
+  contact: open-design@nexu.io
+
+version: 0.1.0
+changelog:
+  - version: 0.1.0
+    date: 2026-06-05
+    notes: Distilled from the frontend-slides Bold Poster template into an animated html-video template.
+
+preview:
+  poster: preview.png
+
+performance:
+  reference_render:
+    duration_sec: 5
+    render_wall_clock_sec: 10
+    machine: "M2 MacBook Air"

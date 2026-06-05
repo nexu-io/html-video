@@ -77,7 +77,11 @@ export class MediaConfigStore {
   resolveMinimax(): MinimaxCredentials | null {
     const cfg = this.read().minimax;
     if (cfg?.apiKey) {
-      const baseUrl = (cfg.baseUrl || '').trim().replace(/\/$/, '') || 'https://api.minimaxi.chat/v1';
+      // Default to the international endpoint when none is set. The old
+      // api.minimaxi.chat host is RETIRED server-side (issue #4); MiniMax now
+      // splits into api.minimax.io (international) and api.minimaxi.com (China),
+      // and keys are region-bound — so the Settings UI asks the user to pick.
+      const baseUrl = (cfg.baseUrl || '').trim().replace(/\/$/, '') || 'https://api.minimax.io/v1';
       return { apiKey: cfg.apiKey, baseUrl };
     }
     return resolveMinimaxCredentials();

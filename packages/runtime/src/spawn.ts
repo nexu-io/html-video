@@ -1,4 +1,5 @@
 import { spawn as cpSpawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
 
 /**
@@ -85,8 +86,17 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   let stdoutBuf = '';
   let stderrBuf = '';
 
+  // Decode through StringDecoder, not chunk.toString('utf8'): a multi-byte
+  // UTF-8 character (e.g. any CJK glyph is 3 bytes) can straddle two `data`
+  // chunks, and decoding each chunk independently turns the split bytes into
+  // U+FFFD replacement chars (the "◆◆◆" mojibake in issue #9). StringDecoder
+  // buffers an incomplete trailing sequence until the next chunk completes it.
+  const outDecoder = new StringDecoder('utf8');
+  const errDecoder = new StringDecoder('utf8');
+
   child.stdout?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString('utf8');
+    const text = outDecoder.write(chunk);
+    if (!text) return;
     stdoutBuf += text;
     if (def.streamFormat === 'plain') {
       onEvent?.({ type: 'text', chunk: text });
@@ -109,7 +119,7 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   });
 
   child.stderr?.on('data', (chunk: Buffer) => {
-    stderrBuf += chunk.toString('utf8');
+    stderrBuf += errDecoder.write(chunk);
   });
 
   if (opts.signal) {
@@ -124,6 +134,14 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
 
   const done = new Promise<{ exitCode: number; signal: NodeJS.Signals | null }>((resolve) => {
     child.on('close', (code, signal) => {
+      // Flush any bytes the decoders were still holding (an incomplete trailing
+      // multi-byte sequence). Normally empty on a clean exit.
+      const outTail = outDecoder.end();
+      if (outTail) {
+        stdoutBuf += outTail;
+        if (def.streamFormat === 'plain') onEvent?.({ type: 'text', chunk: outTail });
+      }
+      stderrBuf += errDecoder.end();
       if (code !== 0) {
         onEvent?.({
           type: 'error',

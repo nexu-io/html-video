@@ -707,27 +707,45 @@ function renderMain() {
                 </div>
               </div>
 
-              <!-- ===== Narration / voiceover: its own draft + generate ===== -->
-              <div class="st-section">
-                <div class="st-section-title">${t('soundtrack.narration_label')}
-                  <span class="st-draft-group">
+              <!-- ===== Narration / voiceover ===== -->
+              <!-- Two explicit steps so users don't confuse "write the text"
+                   (AI drafts words, no audio) with "synthesize the voice"
+                   (calls MiniMax, produces an mp3). See issues #4 / #5. -->
+              <div class="st-section st-narration">
+                <div class="st-section-title">${t('soundtrack.narration_label')}</div>
+
+                <!-- Step 1: write the script (text only) -->
+                <div class="st-substep">
+                  <div class="st-substep-head">
+                    <span class="st-step-badge">1</span>
+                    <span class="st-step-label">${t('soundtrack.step_write')}</span>
+                    <span class="st-narration-which" id="st-narration-which"></span>
+                  </div>
+                  <textarea id="st-narration-text" rows="2" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
+                  <div class="st-draft-group">
                     <button type="button" class="st-draft" id="btn-st-draft-frame">${t('soundtrack.draft_frame')}</button>
                     <button type="button" class="st-draft" id="btn-st-draft-all">${t('soundtrack.draft_all')}</button>
-                  </span>
+                  </div>
                 </div>
-                <span class="st-narration-which" id="st-narration-which"></span>
-                <textarea id="st-narration-text" rows="2" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
-                <div class="st-voice-row">
-                  <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
-                  <select id="st-narration-voice" class="st-voice-select">
-                    ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
-                  </select>
-                  <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${t('soundtrack.fit_durations')}</button>
-                </div>
-                <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
-                <div class="st-section-actions">
-                  <button class="st-generate" id="btn-st-gen-narration">${t('soundtrack.gen_narration')}</button>
-                  <span class="st-status" id="st-narration-status"></span>
+
+                <!-- Step 2: synthesize the voice (audio) -->
+                <div class="st-substep">
+                  <div class="st-substep-head">
+                    <span class="st-step-badge">2</span>
+                    <span class="st-step-label">${t('soundtrack.step_voice')}</span>
+                  </div>
+                  <div class="st-voice-row">
+                    <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
+                    <select id="st-narration-voice" class="st-voice-select">
+                      ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${t('soundtrack.fit_durations')}</button>
+                  </div>
+                  <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
+                  <div class="st-section-actions">
+                    <button class="st-generate" id="btn-st-gen-narration">${t('soundtrack.gen_narration')}</button>
+                    <span class="st-status" id="st-narration-status"></span>
+                  </div>
                 </div>
               </div>
 
@@ -850,7 +868,14 @@ function wireSoundtrackPanel() {
     const fid = currentFrameId();
     if (whichEl) {
       const i = frames.findIndex((f) => f.graphNodeId === fid);
-      whichEl.textContent = has && i >= 0 ? `${t('soundtrack.frame_word')} ${i + 1}/${frames.length}` : '';
+      // Spell out which frame the script + "✨ draft this frame" act on, so it's
+      // obvious the per-frame buttons follow the selected frame (issues #5):
+      // users couldn't tell "draft this frame" only touched the active one.
+      whichEl.textContent = has && i >= 0
+        ? (frames.length > 1
+            ? t('soundtrack.editing_frame', { n: i + 1, total: frames.length })
+            : '')
+        : '';
     }
     // Only overwrite the textarea when it isn't the user's in-progress edit.
     if (document.activeElement !== narrationText) {
@@ -2553,6 +2578,8 @@ function openTemplatePreviewModal(tpl) {
     fps, duration: dur, aspect,
   });
 
+  renderTemplateSource(tpl);
+
   const frame = document.getElementById('tpl-preview-frame');
   const portrait = isPortraitTemplate(tpl);
   frame.classList.toggle('portrait', portrait);
@@ -2623,6 +2650,48 @@ function openTemplatePreviewModal(tpl) {
   };
   cancelBtn.onclick = closeTemplatePreviewModal;
   closeBtn.onclick = closeTemplatePreviewModal;
+}
+
+// Render the three-layer provenance (RFC-07) for the previewed template so the
+// upstream skill, its real author + license, and the original design lineage
+// are visible in the studio — not just buried in the template's yaml.
+function renderTemplateSource(tpl) {
+  const box = document.getElementById('tpl-preview-source');
+  if (!box) return;
+  const p = tpl.provenance;
+  const lic = tpl.license?.spdx;
+  if (!p && !lic) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const rows = [];
+  const via = p?.via_skill;
+  if (via?.name) {
+    // "Adapted from <skill link> · <author> · <license>"
+    const skill = via.url
+      ? `<a href="${esc(via.url)}" target="_blank" rel="noopener">${esc(via.name)}</a>`
+      : esc(via.name);
+    const bits = [skill];
+    if (via.author) bits.push(esc(via.author));
+    if (via.license) bits.push(`<span class="lic">${esc(via.license)}</span>`);
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_skill'))}</span><span class="val">${bits.join(' · ')}</span></div>`);
+  }
+  const origin = p?.origin;
+  if (origin?.name && origin.name.toLowerCase() !== 'none') {
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_origin'))}</span><span class="val">${esc(origin.name)}</span></div>`);
+  }
+  // License row only stands alone when it wasn't already shown next to the skill.
+  if (lic && !via?.license) {
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_license'))}</span><span class="val"><span class="lic">${esc(lic)}</span></span></div>`);
+  }
+  if (!rows.length) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = rows.join('');
+  box.hidden = false;
 }
 
 function closeTemplatePreviewModal() {
@@ -2761,8 +2830,15 @@ async function renderSettingsAudio(panel) {
         <input type="password" id="mm-api-key" placeholder="${esc(t('settings.audio.api_key_placeholder'))}" autocomplete="off" />
       </label>
       <label class="audio-field">
+        <span>${esc(t('settings.audio.region'))}</span>
+        <div class="audio-region" id="mm-region">
+          <button type="button" class="st-preset" data-url="https://api.minimax.io/v1">${esc(t('settings.audio.region_intl'))}</button>
+          <button type="button" class="st-preset" data-url="https://api.minimaxi.com/v1">${esc(t('settings.audio.region_cn'))}</button>
+        </div>
+      </label>
+      <label class="audio-field">
         <span>${esc(t('settings.audio.base_url'))}</span>
-        <input type="text" id="mm-base-url" placeholder="https://api.minimaxi.chat/v1" autocomplete="off" />
+        <input type="text" id="mm-base-url" placeholder="https://api.minimax.io/v1" autocomplete="off" />
       </label>
       <div class="audio-actions">
         <button class="audio-save primary-action" id="mm-save" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.audio.save'))}</button>
@@ -2793,6 +2869,17 @@ async function renderSettingsAudio(panel) {
     }
   };
   await refresh();
+
+  // Region quick-pick: fills the Base URL with the correct regional endpoint.
+  // MiniMax keys are region-bound (an api.minimax.io key won't auth against
+  // api.minimaxi.com and vice-versa), so picking the wrong region is the #1
+  // cause of voiceover failures (issue #4).
+  panel.querySelectorAll('#mm-region .st-preset').forEach((btn) => {
+    btn.onclick = () => {
+      baseInput.value = btn.dataset.url;
+      panel.querySelectorAll('#mm-region .st-preset').forEach((b) => b.classList.toggle('active', b === btn));
+    };
+  });
 
   panel.querySelector('#mm-save').onclick = async () => {
     const apiKey = keyInput.value.trim();

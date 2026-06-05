@@ -804,9 +804,18 @@
   .st-fit:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); }
   /* narration field header with inline draft buttons */
   .st-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .st-draft-group { display: inline-flex; gap: 6px; }
-  .st-narration-which { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--accent); margin: 2px 0; min-height: 12px; }
+  .st-draft-group { display: inline-flex; gap: 6px; margin-top: 2px; }
+  .st-narration-which { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  /* Two numbered sub-steps inside narration: write (text) → synthesize (audio),
+     so the ✨ draft buttons and the 🎙 synth button read as distinct actions. */
+  .st-substep { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px;
+    border-radius: var(--radius-sm); background: var(--bg-subtle); border: 1px solid var(--border); }
+  .st-substep-head { display: flex; align-items: center; gap: 7px; }
+  .st-step-badge { display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+    font-size: 10px; font-weight: 700; flex: 0 0 auto; }
+  .st-step-label { font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .audio-region { display: flex; gap: 6px; flex-wrap: wrap; }
   .st-draft { font-size: 11px; padding: 3px 10px; border-radius: var(--radius-sm); cursor: pointer;
     background: var(--bg); border: 1px solid var(--accent); color: var(--accent); transition: all .12s; }
   .st-draft:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); }
@@ -944,6 +953,19 @@
   .tpl-preview-frame.portrait iframe { width: 1080px; height: 1920px; }
   .tpl-preview-frame img.poster { position: absolute; inset: 0; width: 100%;
     height: 100%; object-fit: contain; background: #000; }
+  .tpl-preview-source { padding: 11px 18px; border-top: 1px solid var(--border);
+    background: var(--bg-panel); font-size: 12px; line-height: 1.5;
+    color: var(--text-dim, #8a8a8a); display: flex; flex-direction: column; gap: 3px; }
+  .tpl-preview-source .row { display: flex; gap: 7px; align-items: baseline; }
+  .tpl-preview-source .lbl { flex: 0 0 auto; min-width: 62px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px; font-size: 10.5px;
+    color: var(--text-dim, #8a8a8a); }
+  .tpl-preview-source .val { color: var(--text); }
+  .tpl-preview-source a { color: var(--accent); text-decoration: none; }
+  .tpl-preview-source a:hover { text-decoration: underline; }
+  .tpl-preview-source .lic { display: inline-block; padding: 1px 6px;
+    border: 1px solid var(--border); border-radius: 4px; font-size: 10.5px;
+    color: var(--text); }
   .tpl-preview-foot { padding: 14px 18px; border-top: 1px solid var(--border);
     display: flex; gap: 10px; align-items: center; justify-content: flex-end;
     background: var(--bg-panel); }
@@ -1105,6 +1127,7 @@
         <img id="tpl-preview-poster" class="poster" alt="" hidden />
       </div>
     </div>
+    <div class="tpl-preview-source" id="tpl-preview-source" hidden></div>
     <div class="tpl-preview-foot">
       <div class="meta" id="tpl-preview-meta"></div>
       <div class="grow"></div>
