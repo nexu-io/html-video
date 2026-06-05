@@ -21,6 +21,10 @@
   <a href="https://github.com/nexu-io/open-design"><img alt="By the Open Design team" src="https://img.shields.io/badge/by-nexu--io%2Fopen--design-ff7043?style=flat-square&logo=github&logoColor=white" /></a>
 </p>
 
+<p align="center">
+  <b>Open Design 团队官方出品</b> · <a href="https://open-design.ai">open-design.ai</a>
+</p>
+
 <p align="center"><a href="README.md">English</a> · <b>简体中文</b></p>
 
 ---
