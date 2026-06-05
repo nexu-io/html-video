@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/"
+    "test": "node ../../scripts/run-tests-if-present.mjs"
   },
   "dependencies": {
     "@html-video/content-graph": "workspace:*",
