@@ -8,8 +8,16 @@ const exec = promisify(execFile);
 
 async function which(bin: string): Promise<string | null> {
   try {
-    const { stdout } = await exec('which', [bin], { timeout: 2000 });
-    return stdout.trim() || null;
+    const command = process.platform === 'win32' ? 'where.exe' : 'which';
+    const { stdout } = await exec(command, [bin], { timeout: 2000 });
+    const matches = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (process.platform === 'win32') {
+      return matches.find((match) => /\.(exe|cmd|bat)$/i.test(match)) ?? matches[0] ?? null;
+    }
+    return matches[0] ?? null;
   } catch {
     return null;
   }
@@ -43,7 +51,7 @@ export async function resolveBin(def: AgentDef): Promise<string | null> {
 
 async function probeVersion(bin: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await exec(bin, args, { timeout: 5000 });
+    const { stdout } = await exec(bin, args, { timeout: 5000, shell: process.platform === 'win32' });
     return stdout.trim().split('\n')[0] ?? null;
   } catch {
     return null;

@@ -1,6 +1,21 @@
 import { spawn as cpSpawn } from 'node:child_process';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
 
+function stripWindowsProcessNoise(text: string): string {
+  // Windows helper commands sometimes leak localized "process terminated" lines
+  // through stdout. When they are decoded as UTF-8 they become mojibake and pollute
+  // the chat, but they are not agent content.
+  return text
+    .split(/\r?\n/)
+    .filter((line) => {
+      if (!line.trim()) return true;
+      if (/\bPID\s+\d+\b.*\bPID\s+\d+\b/i.test(line)) return false;
+      if (/^(SUCCESS|成功)[:：].*\bPID\s+\d+\b/i.test(line)) return false;
+      return true;
+    })
+    .join('\n');
+}
+
 /**
  * Spawn an agent CLI and stream events to the listener.
  * v0.1: only supports streamFormat='plain' fully (chunks emitted as text events).
@@ -75,6 +90,7 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     cwd: context.cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
   });
 
   if (def.promptViaStdin && child.stdin) {
@@ -86,7 +102,8 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   let stderrBuf = '';
 
   child.stdout?.on('data', (chunk: Buffer) => {
-    const text = chunk.toString('utf8');
+    const text = stripWindowsProcessNoise(chunk.toString('utf8'));
+    if (!text) return;
     stdoutBuf += text;
     if (def.streamFormat === 'plain') {
       onEvent?.({ type: 'text', chunk: text });

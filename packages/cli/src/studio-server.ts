@@ -1267,7 +1267,20 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const code = (e as { code?: string }).code ?? 'unknown';
-      json(res, 500, { error: msg, code });
+      process.stderr.write(`[studio:error] ${code}: ${msg}\n`);
+      if (res.headersSent) {
+        if (!res.writableEnded) {
+          try {
+            res.write(`data: ${JSON.stringify({ type: 'error', message: msg, code })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'message_end', reason: 'error' })}\n\n`);
+          } catch {
+            /* client disconnected */
+          }
+          res.end();
+        }
+      } else {
+        json(res, 500, { error: msg, code });
+      }
     }
   });
 
@@ -1486,7 +1499,7 @@ async function receiveMultipart(
     const name = nameMatch[1];
     const fnMatch = headers.match(/filename="([^"]+)"/);
     if (fnMatch && fnMatch[1]) {
-      const filename = fnMatch[1];
+      const filename = Buffer.from(fnMatch[1], 'binary').toString('utf8');
       const tmpPath = join(tmpdir(), `hv-upload-${randomUUID().slice(0, 8)}-${filename}`);
       await mkdir(dirname(tmpPath), { recursive: true });
       await fs.writeFile(tmpPath, Buffer.from(bodyRaw, 'binary'));
