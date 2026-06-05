@@ -128,6 +128,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               inputs_schema: t.inputs.schema,
               inputs_examples: t.inputs.examples,
               license: t.license,
+              provenance: t.provenance,
               preview: t.preview,
               preview_mode: mode,
               poster_url: posterUrl,

@@ -195,6 +195,35 @@ export interface PerformanceRef {
   machine: string;
 }
 
+/**
+ * Three-layer provenance (RFC-07). Records where a template's design actually
+ * came from so the studio can surface honest attribution:
+ *  - origin     — L1: the real-world design inspiration (a studio, person, or
+ *                 movement). `name: 'none'` / `kind: 'none'` when there is no
+ *                 specific upstream source (e.g. an original skill preset).
+ *  - via_skill  — L2: the open-source skill we actually transformed from; its
+ *                 license governs redistribution. author = the real copyright
+ *                 holder verified against the upstream LICENSE.
+ *  - transformation — L3: what html-video changed (free-text).
+ */
+export interface ProvenanceOrigin {
+  name: string;
+  kind?: 'studio' | 'person' | 'movement' | 'none';
+  reference?: string;
+}
+export interface ProvenanceViaSkill {
+  name: string;
+  author?: string;
+  url?: string;
+  license?: string;
+  source_file?: string;
+}
+export interface Provenance {
+  origin?: ProvenanceOrigin;
+  via_skill?: ProvenanceViaSkill;
+  transformation?: string;
+}
+
 export interface TemplateMetadata {
   spec_version: 1;
   id: string;
@@ -211,6 +240,8 @@ export interface TemplateMetadata {
   output: OutputCapabilities;
   inputs: { schema: object; examples: object[] };
   license: LicenseInfo;
+  /** Three-layer design attribution (RFC-07). See {@link Provenance}. */
+  provenance?: Provenance;
   assets_attribution?: AssetAttribution[];
   author: { name: string; url?: string; contact?: string };
   maintainers?: { github: string }[];

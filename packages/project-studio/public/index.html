@@ -953,6 +953,19 @@
   .tpl-preview-frame.portrait iframe { width: 1080px; height: 1920px; }
   .tpl-preview-frame img.poster { position: absolute; inset: 0; width: 100%;
     height: 100%; object-fit: contain; background: #000; }
+  .tpl-preview-source { padding: 11px 18px; border-top: 1px solid var(--border);
+    background: var(--bg-panel); font-size: 12px; line-height: 1.5;
+    color: var(--text-dim, #8a8a8a); display: flex; flex-direction: column; gap: 3px; }
+  .tpl-preview-source .row { display: flex; gap: 7px; align-items: baseline; }
+  .tpl-preview-source .lbl { flex: 0 0 auto; min-width: 62px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px; font-size: 10.5px;
+    color: var(--text-dim, #8a8a8a); }
+  .tpl-preview-source .val { color: var(--text); }
+  .tpl-preview-source a { color: var(--accent); text-decoration: none; }
+  .tpl-preview-source a:hover { text-decoration: underline; }
+  .tpl-preview-source .lic { display: inline-block; padding: 1px 6px;
+    border: 1px solid var(--border); border-radius: 4px; font-size: 10.5px;
+    color: var(--text); }
   .tpl-preview-foot { padding: 14px 18px; border-top: 1px solid var(--border);
     display: flex; gap: 10px; align-items: center; justify-content: flex-end;
     background: var(--bg-panel); }
@@ -1114,6 +1127,7 @@
         <img id="tpl-preview-poster" class="poster" alt="" hidden />
       </div>
     </div>
+    <div class="tpl-preview-source" id="tpl-preview-source" hidden></div>
     <div class="tpl-preview-foot">
       <div class="meta" id="tpl-preview-meta"></div>
       <div class="grow"></div>

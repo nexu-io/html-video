@@ -259,6 +259,9 @@ const DICT = {
     'tpl_preview.replace_confirm': 'Replace current template with "{name}"? Existing preview content stays put — the agent can rebuild on next chat.',
     'tpl_preview.applied': 'Template: {name}',
     'tpl_preview.fps_dur': '{fps}fps · {duration}s · {aspect}',
+    'tpl_preview.source_skill': 'Adapted from',
+    'tpl_preview.source_origin': 'Design lineage',
+    'tpl_preview.source_license': 'License',
   },
 
   zh: {
@@ -499,6 +502,9 @@ const DICT = {
     'tpl_preview.replace_confirm': '把当前模板替换为 "{name}"？现有预览不会被覆盖，下一轮 chat 时 agent 会按新模板重写。',
     'tpl_preview.applied': '已切换模板：{name}',
     'tpl_preview.fps_dur': '{fps}fps · {duration}秒 · {aspect}',
+    'tpl_preview.source_skill': '改编自',
+    'tpl_preview.source_origin': '设计渊源',
+    'tpl_preview.source_license': '许可证',
   },
 };
 

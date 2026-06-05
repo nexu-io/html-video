@@ -2578,6 +2578,8 @@ function openTemplatePreviewModal(tpl) {
     fps, duration: dur, aspect,
   });
 
+  renderTemplateSource(tpl);
+
   const frame = document.getElementById('tpl-preview-frame');
   const portrait = isPortraitTemplate(tpl);
   frame.classList.toggle('portrait', portrait);
@@ -2648,6 +2650,48 @@ function openTemplatePreviewModal(tpl) {
   };
   cancelBtn.onclick = closeTemplatePreviewModal;
   closeBtn.onclick = closeTemplatePreviewModal;
+}
+
+// Render the three-layer provenance (RFC-07) for the previewed template so the
+// upstream skill, its real author + license, and the original design lineage
+// are visible in the studio — not just buried in the template's yaml.
+function renderTemplateSource(tpl) {
+  const box = document.getElementById('tpl-preview-source');
+  if (!box) return;
+  const p = tpl.provenance;
+  const lic = tpl.license?.spdx;
+  if (!p && !lic) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  const rows = [];
+  const via = p?.via_skill;
+  if (via?.name) {
+    // "Adapted from <skill link> · <author> · <license>"
+    const skill = via.url
+      ? `<a href="${esc(via.url)}" target="_blank" rel="noopener">${esc(via.name)}</a>`
+      : esc(via.name);
+    const bits = [skill];
+    if (via.author) bits.push(esc(via.author));
+    if (via.license) bits.push(`<span class="lic">${esc(via.license)}</span>`);
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_skill'))}</span><span class="val">${bits.join(' · ')}</span></div>`);
+  }
+  const origin = p?.origin;
+  if (origin?.name && origin.name.toLowerCase() !== 'none') {
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_origin'))}</span><span class="val">${esc(origin.name)}</span></div>`);
+  }
+  // License row only stands alone when it wasn't already shown next to the skill.
+  if (lic && !via?.license) {
+    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_license'))}</span><span class="val"><span class="lic">${esc(lic)}</span></span></div>`);
+  }
+  if (!rows.length) {
+    box.hidden = true;
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = rows.join('');
+  box.hidden = false;
 }
 
 function closeTemplatePreviewModal() {
