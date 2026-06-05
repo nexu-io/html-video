@@ -17,9 +17,12 @@
 
 import { HtmlVideoError } from './errors.js';
 
-/** Default base URL — matches open-design (`api.minimaxi.chat`). The newer
- *  docs use `api.minimax.io`; override via OD_MINIMAX_BASE_URL when needed. */
-const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimaxi.chat/v1';
+/** Default base URL. The old `api.minimaxi.chat` host is RETIRED server-side
+ *  (issue #4). MiniMax now has two region-bound endpoints — international
+ *  `api.minimax.io` and China `api.minimaxi.com` — and a key only authenticates
+ *  against its own region. We default to international; override via
+ *  OD_MINIMAX_BASE_URL / MINIMAX_BASE_URL (or the Studio Settings UI). */
+const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimax.io/v1';
 
 /** Hard ceiling for a single MiniMax request. Music generation is slow but a
  *  request that hasn't returned in 2 minutes is hung, not slow. */
@@ -107,7 +110,7 @@ async function postAndDecode(
       'render-failed',
       isTimeout
         ? `minimax ${label} timed out after ${Math.round(MINIMAX_REQUEST_TIMEOUT_MS / 1000)}s (the API did not respond — try again, or check OD_MINIMAX_BASE_URL)`
-        : `minimax ${label} request failed: ${msg} (check OD_MINIMAX_BASE_URL — default is api.minimaxi.chat)`,
+        : `minimax ${label} request failed: ${msg} (check the API region — international is api.minimax.io, China is api.minimaxi.com; a key only works against its own region)`,
       true,
     );
   }

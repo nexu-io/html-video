@@ -804,9 +804,18 @@
   .st-fit:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); }
   /* narration field header with inline draft buttons */
   .st-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .st-draft-group { display: inline-flex; gap: 6px; }
-  .st-narration-which { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--accent); margin: 2px 0; min-height: 12px; }
+  .st-draft-group { display: inline-flex; gap: 6px; margin-top: 2px; }
+  .st-narration-which { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  /* Two numbered sub-steps inside narration: write (text) → synthesize (audio),
+     so the ✨ draft buttons and the 🎙 synth button read as distinct actions. */
+  .st-substep { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px;
+    border-radius: var(--radius-sm); background: var(--bg-subtle); border: 1px solid var(--border); }
+  .st-substep-head { display: flex; align-items: center; gap: 7px; }
+  .st-step-badge { display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+    font-size: 10px; font-weight: 700; flex: 0 0 auto; }
+  .st-step-label { font-size: 11.5px; font-weight: 600; color: var(--text); }
+  .audio-region { display: flex; gap: 6px; flex-wrap: wrap; }
   .st-draft { font-size: 11px; padding: 3px 10px; border-radius: var(--radius-sm); cursor: pointer;
     background: var(--bg); border: 1px solid var(--accent); color: var(--accent); transition: all .12s; }
   .st-draft:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); }
