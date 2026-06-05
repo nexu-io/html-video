@@ -1462,6 +1462,31 @@ type MultipartPart =
   | { kind: 'field'; name: string; value: string }
   | { kind: 'file'; name: string; filename: string; tmpPath: string };
 
+/**
+ * Recover the real filename from a multipart part header (issue #9).
+ *
+ * Two encodings can appear:
+ *  - `filename*=UTF-8''%E4%B8%AD%E6%96%87.md` (RFC 5987, percent-encoded) —
+ *    decode the percent-escapes after stripping the charset prefix.
+ *  - `filename="中文.md"` — the bytes are UTF-8, but the multipart body was
+ *    read as a latin1 string, so each UTF-8 byte became one latin1 char. Round
+ *    -trip latin1→utf8 to restore the original. If the name was plain ASCII the
+ *    round-trip is a no-op.
+ */
+export function decodeUploadFilename(star: string | undefined, plain: string | undefined): string {
+  if (star) {
+    // RFC 5987 ext-value: charset "'" [language] "'" value  (e.g.
+    // UTF-8''%E4%B8%AD.md  or  UTF-8'zh-CN'%E6%95%B0%E6%8D%AE.json).
+    const m = /^[\w-]*'[^']*'(.*)$/.exec(star.trim());
+    const enc = m?.[1] ?? star.trim();
+    try { return decodeURIComponent(enc); } catch { return enc; }
+  }
+  if (plain !== undefined) {
+    try { return Buffer.from(plain, 'latin1').toString('utf8'); } catch { return plain; }
+  }
+  return 'upload';
+}
+
 async function receiveMultipart(
   req: IncomingMessage,
   contentType: string,
@@ -1484,10 +1509,19 @@ async function receiveMultipart(
     const nameMatch = headers.match(/name="([^"]+)"/);
     if (!nameMatch || !nameMatch[1]) continue;
     const name = nameMatch[1];
-    const fnMatch = headers.match(/filename="([^"]+)"/);
-    if (fnMatch && fnMatch[1]) {
-      const filename = fnMatch[1];
-      const tmpPath = join(tmpdir(), `hv-upload-${randomUUID().slice(0, 8)}-${filename}`);
+    // RFC 5987 `filename*=UTF-8''...` (percent-encoded) wins when present;
+    // otherwise fall back to the plain `filename="..."`. The plain form carries
+    // raw UTF-8 BYTES, but the part was sliced out of a latin1 string above, so
+    // a CJK filename arrives mojibake'd — re-decode latin1→utf8 to restore it
+    // (issue #9). decodeUploadFilename handles both.
+    const fnStarMatch = headers.match(/filename\*=([^;\r\n]+)/i);
+    const fnMatch = headers.match(/filename="([^"]*)"/);
+    if (fnStarMatch || fnMatch) {
+      const filename = decodeUploadFilename(fnStarMatch?.[1], fnMatch?.[1]);
+      // Keep the tmp path ASCII-safe; the real (possibly CJK) name rides on the
+      // returned part, not the on-disk temp file.
+      const ext = (filename.match(/\.[A-Za-z0-9]{1,8}$/)?.[0]) ?? '';
+      const tmpPath = join(tmpdir(), `hv-upload-${randomUUID().slice(0, 8)}${ext}`);
       await mkdir(dirname(tmpPath), { recursive: true });
       await fs.writeFile(tmpPath, Buffer.from(bodyRaw, 'binary'));
       out.push({ kind: 'file', name, filename, tmpPath });
