@@ -3,19 +3,19 @@
  *
  * Per-frame strategy (orchestrator already loops per node and concats):
  *   1. Launch chromium headless at the configured resolution
- *   2. recordVideo into a tmp dir
- *   3. file:// load the frame HTML
- *   4. wait `durationSec` so any opening animation completes + plays
- *   5. close → playwright dumps a webm
- *   6. ffmpeg transmux/encode the webm to mp4 at `outputPath`
- *
- * Upstream Hyperframes was never required at runtime for this adapter —
- * our generated HTML is plain inline-CSS+JS, chromium runs it as-is.
+ *   2. Inject the Hyperframes runtime if available (templates using
+ *      data-composition-src need it; inline templates are unaffected)
+ *   3. recordVideo into a tmp dir
+ *   4. file:// load the frame HTML
+ *   5. wait `durationSec` so any opening animation completes + plays
+ *   6. close → playwright dumps a webm
+ *   7. ffmpeg transmux/encode the webm to mp4 at `outputPath`
  */
 
 import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -26,6 +26,10 @@ import type {
   RenderOutput,
 } from '@html-video/core';
 import { HtmlVideoError } from '@html-video/core';
+
+// ESM shim: adapter-hyperframes is an ES module but hyperframes is a CJS peer
+// dep. createRequire lets us resolve its runtime script path without an import.
+const require = createRequire(import.meta.url);
 
 const ADAPTER_VERSION = '0.2.0-playwright';
 
@@ -59,8 +63,20 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       `playwright not installed (run \`pnpm install\` from the monorepo root). ${err instanceof Error ? err.message : err}`,
     );
   });
-
   const recordDir = await mkdtemp(join(tmpdir(), 'hv-render-'));
+
+  // Resolve the Hyperframes runtime path early — templates that use
+  // data-composition-src need the runtime injected before page load.
+  // If hyperframes is not installed (optional peer dep), we fall back
+  // gracefully: inline-only templates still render fine.
+  let hyperframeRuntimePath: string | null = null;
+  try {
+    hyperframeRuntimePath = require.resolve('hyperframes/dist/hyperframe-runtime.js');
+  } catch {
+    // hyperframes peer dep not installed — templates that need it won't
+    // render their compositions, but standalone inline templates will work.
+  }
+
   let browser: import('playwright').Browser | undefined;
   let webmPath: string | undefined;
   try {
@@ -77,6 +93,9 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
 
     ctx.onProgress?.(30, 'loading frame');
     const fileUrl = pathToFileURL(input.template.sourcePath).href;
+    if (hyperframeRuntimePath) {
+      await page.addInitScript({ path: hyperframeRuntimePath });
+    }
     await page.goto(fileUrl, { waitUntil: 'load' });
     // Pages sometimes set up animations on the load tick — give a frame
     // for animations to actually start before we count the duration.
