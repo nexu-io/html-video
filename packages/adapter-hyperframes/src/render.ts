@@ -78,6 +78,35 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     ctx.onProgress?.(30, 'loading frame');
     const fileUrl = pathToFileURL(input.template.sourcePath).href;
     await page.goto(fileUrl, { waitUntil: 'load' });
+
+    // Wait for all web fonts to finish loading BEFORE recording. Templates
+    // pull display faces (Shrikhand, Libre Baskerville, Archivo Black, …) from
+    // Google Fonts with `font-display: swap`, which paints text in a fallback
+    // system font immediately and swaps in the real face once it downloads.
+    // If we start recording before the swap, the video shows a visible flash:
+    // the text renders in the fallback for the first frames, then the glyphs,
+    // widths and weights snap to the intended font mid-clip. `document.fonts.
+    // ready` resolves once every @font-face has settled (loaded or errored).
+    // Cap the wait so a slow/blocked font CDN can't stall the render forever —
+    // worst case we fall back to the previous behavior for that one frame.
+    ctx.onProgress?.(32, 'loading fonts');
+    await page
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+            if (!fonts || typeof fonts.ready?.then !== 'function') {
+              resolve();
+              return;
+            }
+            const done = () => resolve();
+            fonts.ready.then(done, done);
+            // Safety net in case `ready` never settles for some face.
+            setTimeout(done, 5000);
+          }),
+      )
+      .catch(() => {});
+
     // Pages sometimes set up animations on the load tick — give a frame
     // for animations to actually start before we count the duration.
     await page.waitForTimeout(100);
