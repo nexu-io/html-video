@@ -1842,14 +1842,34 @@ function detectPhase(
       inputs.contentTurns = [...collectContentTurns(history), trimmed];
       return { phase: 'iterate-content', inputs, postGen: true };
     }
-    // A fresh iteration instruction. If it clearly names what to change, route
-    // straight there; otherwise pop the edit-menu so we ask instead of guessing.
+    // A fresh post-generation instruction. The DEFAULT is the card-driven
+    // sub-flow, not a single-frame rewrite — a whitelist of trigger phrases was
+    // the bug (e.g. "换个模板重新生成一下" didn't match and silently fell back to
+    // a no-op preview rewrite). So:
+    //   - pinned frame  → single-frame iterate (the user explicitly scoped it).
+    //   - clearly names style / content / duration → jump straight there.
+    //   - everything else (incl. vague "改一下" / "换个模板" / "重新生成") → pop
+    //     the edit-menu and ask, rather than guess or no-op.
     const pinned = !!focusFrameId;
-    if (!pinned && /^(改一下|改改|重做|重新(弄|做|来|生成)|换一下|调整一下|优化一下|不满意|再来一版|重新搞)/.test(trimmed)) {
-      return { phase: 'edit-menu', inputs };
+    if (pinned) {
+      return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
     }
-    // Default: keep the existing free-form single-frame / pinned iterate.
-    return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
+    // Direct shortcuts when the instruction is unambiguous about WHAT to change.
+    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(trimmed)) {
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      return { phase: 'style', inputs, postGen: true };
+    }
+    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒/i.test(trimmed)) {
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      return { phase: 'format', inputs, postGen: true };
+    }
+    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(trimmed)) {
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      inputs.contentTurns = [...collectContentTurns(history), trimmed].filter((s) => !isControlPhrase(s));
+      return { phase: 'iterate-content', inputs, postGen: true };
+    }
+    // Default: ask via the edit-menu (never silently no-op).
+    return { phase: 'edit-menu', inputs };
   }
 
   // Walk backwards; what was the most recent CARD with a meta.phase tag?
