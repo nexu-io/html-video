@@ -64,6 +64,14 @@ export interface RenderConfig {
   resolution: { width: number; height: number };
   fps: number;
   duration: number | 'auto';
+  /**
+   * How to treat `duration`. 'explicit' = the user set a per-frame length; it is
+   * a hard cap, do NOT extend the recording to fit a longer animation. 'auto'
+   * (default) = a fallback the renderer may extend so an opening animation isn't
+   * cut mid-play. Multi-frame export sets 'explicit' (the format card collected a
+   * real per-frame value); single-frame fast preview leaves it 'auto'.
+   */
+  durationMode?: 'explicit' | 'auto';
   outputPath: string;
   alpha?: boolean;
   quality?: number | 'low' | 'medium' | 'high' | 'lossless';

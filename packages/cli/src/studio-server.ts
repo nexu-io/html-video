@@ -851,6 +851,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           userText,
           !!project.templateId,
           attachments.some((a) => !!a.inlineText),
+          focusFrameId,
         );
         const t0 = Date.now();
         // Save the prompt next to the project so we can inspect what we sent.
@@ -903,53 +904,52 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           phaseInfo.phase === 'generate' &&
           Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
 
-        // Iterate on a multi-frame project where the user wants a CONTENT change
-        // (not a visual tweak) and hasn't pinned a single frame: re-plan the
-        // whole storyboard instead of rewriting just one frame's HTML. Without
-        // this, "内容改一下，基于 X 来写" left the content-graph (and the other
-        // frames) on the old subject. Classify first (one short model call, only
-        // on this narrow path) so visual tweaks still take the cheap single
-        // rewrite below.
+        // Post-generation iteration: the card-driven sub-flow resolved to a
+        // concrete change. Re-use the existing storyboard rather than guessing.
+        //   restyle         → keep graph text, re-render every frame in the newly
+        //                      picked style.
+        //   iterate-content → re-plan the whole storyboard around new content.
+        //   iterate-format  → re-time and re-render with the new per-frame length.
         const isMultiFrameProject =
           (project.frames ?? []).length > 1 ||
           Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
         let rewriteInputs: PhaseInputs | undefined;
-        if (phaseInfo.phase === 'iterate' && !focusFrameId && isMultiFrameProject) {
-          const openingTopic =
-            history.find((m) => m.role === 'user')?.content?.trim().slice(0, 200) ?? '';
-          let synopsis: string | undefined;
-          try {
-            const g = await ctx.orchestrator.readContentGraph(id);
-            synopsis = g?.synopsis;
-          } catch { /* no graph yet — fine */ }
-          const intent = await classifyIterateIntent(
-            agentDef,
-            userText,
-            { frameCount: (project.frames ?? []).length || Number(phaseInfo.inputs.collected?.frame_count ?? '3'), openingTopic, currentSynopsis: synopsis },
-            projectDir,
-            agentModel,
-          );
-          process.stderr.write(`[studio:msg] proj=${id} iterate-intent=${intent} user=${JSON.stringify(userText.slice(0, 60))}\n`);
-          if (intent === 'rewrite-all') {
-            // Carry the user's NEW instruction into contentTurns so the graph is
-            // re-planned around the new subject (e.g. "Open Design") rather than
-            // re-deriving the stale synopsis. Drop control phrases ("重做"/"继续").
-            const turns = [...collectContentTurns(history), userText].filter((s) => !isControlPhrase(s));
-            rewriteInputs = {
-              ...phaseInfo.inputs,
-              pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
-              pickedStyle: lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
-              contentTurns: turns,
-            };
-          }
+        let restyleOnly = false;
+        if (phaseInfo.phase === 'restyle' && isMultiFrameProject) {
+          // Keep text, change visual style. pickedStyle is the user's new pick.
+          restyleOnly = true;
+          rewriteInputs = {
+            ...phaseInfo.inputs,
+            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+            pickedStyle: phaseInfo.inputs.pickedStyle || userText.trim(),
+            contentTurns: collectContentTurns(history),
+          };
+        } else if (phaseInfo.phase === 'iterate-content' && isMultiFrameProject) {
+          // Re-plan around the user's new content instruction.
+          const turns = [...collectContentTurns(history), userText].filter((s) => !isControlPhrase(s));
+          rewriteInputs = {
+            ...phaseInfo.inputs,
+            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+            pickedStyle: lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
+            contentTurns: turns,
+          };
+        } else if (phaseInfo.phase === 'iterate-format' && isMultiFrameProject) {
+          // New per-frame timing was submitted; keep content + style, re-render.
+          restyleOnly = true; // reuse the existing graph text; only timing/visual recompute
+          rewriteInputs = {
+            ...phaseInfo.inputs,
+            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+            pickedStyle: lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
+            contentTurns: collectContentTurns(history),
+          };
         }
 
         if (isMultiGenerate || rewriteInputs) {
-          // rewrite-all warns the user that hand-tuned frames will be replaced —
-          // soft notice, no confirmation gate (the regeneration proceeds).
           if (rewriteInputs) {
             const n = (project.frames ?? []).length || Number(phaseInfo.inputs.collected?.frame_count ?? '3');
-            const notice = `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
+            const notice = restyleOnly
+              ? `🎨 沿用文案，按新风格重做全部 ${n} 帧…\n`
+              : `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
             assistantText += notice;
             sseWrite({ type: 'text', chunk: notice });
           }
@@ -965,6 +965,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               inputs: rewriteInputs ?? phaseInfo.inputs,
               attachments,
               openingTopic: resolveOpeningTopic(project, history),
+              restyleOnly,
               onProgress: (msg) => {
                 assistantText += msg + '\n';
                 textChunks += 1;
@@ -973,7 +974,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               onSse: sseWrite,
             });
             summaryLine = rewriteInputs
-              ? `✓ ${result.frameCount}-frame storyboard regenerated (intent: ${result.intent})`
+              ? `✓ ${result.frameCount}-frame storyboard ${restyleOnly ? 'restyled' : 'regenerated'} (intent: ${result.intent})`
               : `✓ ${result.frameCount}-frame storyboard generated (intent: ${result.intent})`;
             sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: result.frameCount });
             sseWrite({ type: 'message_end', reason: 'ok' });
@@ -1732,7 +1733,12 @@ type ConvPhase =
   | 'format-edit'
   | 'confirm'
   | 'generate'
-  | 'iterate';
+  | 'iterate'
+  // Post-generation iteration sub-flow:
+  | 'edit-menu'        // ask what to change (style / content / duration)
+  | 'restyle'          // re-render every frame in a new style, text unchanged
+  | 'iterate-content'  // re-plan the storyboard around new content
+  | 'iterate-format';  // re-time / re-render with a new per-frame length
 
 /** Did the user pick the "choose from design templates" style option? */
 function isFromTemplateStyle(style: string): boolean {
@@ -1746,12 +1752,18 @@ interface PhaseInputs {
   contentTurns?: string[];            // free-text user messages between type-pick and style/format
 }
 
+/** A phase reached during post-generation iteration carries postGen=true so the
+ * prompt builder re-uses a card but bases the final regeneration on the existing
+ * storyboard rather than starting fresh. */
+type PhaseResult = { phase: ConvPhase; inputs: PhaseInputs; postGen?: boolean };
+
 function detectPhase(
   history: ChatMessage[],
   userText: string,
   hasTemplate: boolean,
   hasSourceMaterial = false,
-): { phase: ConvPhase; inputs: PhaseInputs } {
+  focusFrameId = '',
+): PhaseResult {
   const trimmed = userText.trim();
   const inputs: PhaseInputs = {};
 
@@ -1789,8 +1801,54 @@ function detectPhase(
     }
   }
 
-  // Has any successful generation already happened? Then this is iteration.
+  // Post-generation iteration. Previously ANY message after a generation was
+  // forced to phase 'iterate', which only ever did a vague single-frame rewrite
+  // of preview.html — so "换个风格" / "改内容" looked like nothing happened
+  // (the user's recurring "后面的指令好像都没用了"). Instead, run a small
+  // card-driven sub-flow: a vague "改一下" pops an edit-menu (change style /
+  // content / duration); picking an option re-uses the existing style / content
+  // / format cards; the final regeneration is based on the existing storyboard.
   if (hadGenerationYet(history)) {
+    const last = lastAssistantCardWithMeta(history);
+    // Mid-iteration: the user is answering one of the edit sub-flow cards.
+    if (last?.metaPhase === 'edit-menu') {
+      // Route the menu choice. Match by label keywords (works for clicks, which
+      // send the option label, and for free text).
+      if (/风格|style|视觉|配色|换个?样子/i.test(trimmed)) {
+        inputs.pickedType = lastCardPickByPhase(history, 'type');
+        return { phase: 'style', inputs, postGen: true };
+      }
+      if (/时长|时间|duration|长度|快|慢|秒|节奏/i.test(trimmed)) {
+        inputs.pickedType = lastCardPickByPhase(history, 'type');
+        return { phase: 'format', inputs, postGen: true };
+      }
+      // default / "内容 / content / 文案 / 主题 / 重写"
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      inputs.contentTurns = collectContentTurns(history);
+      return { phase: 'content', inputs, postGen: true };
+    }
+    // The user is answering a re-shown card during iteration.
+    if (last?.metaPhase === 'style') {
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      inputs.pickedStyle = trimmed;
+      return { phase: 'restyle', inputs, postGen: true };
+    }
+    if (last?.metaPhase === 'format' || last?.kind === 'hv-form') {
+      inputs.collected = lastFormSubmission(history);
+      return { phase: 'iterate-format', inputs, postGen: true };
+    }
+    if (last?.kind === 'content-question') {
+      inputs.pickedType = lastCardPickByPhase(history, 'type');
+      inputs.contentTurns = [...collectContentTurns(history), trimmed];
+      return { phase: 'iterate-content', inputs, postGen: true };
+    }
+    // A fresh iteration instruction. If it clearly names what to change, route
+    // straight there; otherwise pop the edit-menu so we ask instead of guessing.
+    const pinned = !!focusFrameId;
+    if (!pinned && /^(改一下|改改|重做|重新(弄|做|来|生成)|换一下|调整一下|优化一下|不满意|再来一版|重新搞)/.test(trimmed)) {
+      return { phase: 'edit-menu', inputs };
+    }
+    // Default: keep the existing free-form single-frame / pinned iterate.
     return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
   }
 
@@ -1857,9 +1915,18 @@ function detectPhase(
     // (b) a "skip / I'm done" signal.
     const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed)
       || trimmed.length <= 3;
+    // "Free rein" answers — the user is handing the subject's details to the
+    // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机"). These should advance the
+    // flow (and pop the style card) just like a skip, instead of being treated
+    // as more content to collect — which left the user stuck re-typing "风格选择".
+    // Substring match (not anchored) with a length guard so it doesn't swallow a
+    // real sentence that merely contains "随便".
+    const isFreeRein =
+      trimmed.length <= 16 &&
+      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(trimmed);
     // With source material attached there's nothing to collect — advance as
     // soon as the user says anything (the article already is the content).
-    if (isSkip || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
+    if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
       // Move forward: style if no template, else format.
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = [...collectContentTurns(history), trimmed];
@@ -2044,8 +2111,14 @@ function lastFormSubmission(history: ChatMessage[]): Record<string, string> | un
 
 /** Has a successful generation already happened in this conversation? */
 function hadGenerationYet(history: ChatMessage[]): boolean {
+  // Only count a real storyboard/video generation, not any assistant turn that
+  // happens to contain a "✓". The old broad check (`✓\s`) matched the persisted
+  // summary lines of the iteration sub-flow itself, so once you'd generated, the
+  // flow could never leave 'iterate'. Look for concrete generation markers.
   return history.some(
-    (m) => m.role === 'assistant' && /```html|```json#content-graph|✓\s/i.test(m.content),
+    (m) =>
+      m.role === 'assistant' &&
+      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(m.content),
   );
 }
 
@@ -2252,7 +2325,28 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   // the topic, so we should not interrogate the user about what the video is
   // about. The source rides into every phase's prompt via `attachments`.
   const hasSourceMaterial = attachments.some((a) => !!a.inlineText);
-  const { phase, inputs } = detectPhase(history, userText, !!tmpl, hasSourceMaterial);
+  const { phase, inputs } = detectPhase(history, userText, !!tmpl, hasSourceMaterial, args.focusFrameId ?? '');
+
+  // ---- edit-menu: post-generation "what do you want to change?" card ----
+  if (phase === 'edit-menu') {
+    const em: string[] = [];
+    em.push(`The user wants to change the already-generated video but hasn't said what. Reply with ONE short line in their language asking what to change, then ONE fenced \`\`\`hv-options block. Use this EXACT JSON — keep "meta" verbatim:`);
+    em.push('```hv-options');
+    em.push(JSON.stringify({
+      meta: { phase: 'edit-menu' },
+      question: '想改哪方面？',
+      options: [
+        { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
+        { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
+        { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
+      ],
+      allow_freeform: true,
+    }, null, 2));
+    em.push('```');
+    em.push('');
+    em.push(`Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.`);
+    return em.join('\n');
+  }
 
   // ---- opener: hv-options card with meta.phase = "type" ----
   if (phase === 'opener') {
@@ -2869,69 +2963,28 @@ interface SplitGenerateArgs {
   attachments: Attachment[];
   /** The user's original opening subject, locked across phases. */
   openingTopic?: string;
+  /**
+   * Restyle mode: keep the EXISTING content-graph text verbatim and only
+   * re-render each frame's HTML in the new style. Skips the Step-1 graph
+   * re-plan. Used by the post-generation "换风格 / 改时长" sub-flows.
+   */
+  restyleOnly?: boolean;
   /** Called for human-readable progress lines. */
   onProgress: (msg: string) => void;
   /** Called for structured SSE events. */
   onSse: (obj: unknown) => void;
 }
 
-type IterateIntent = 'rewrite-all' | 'edit-visual' | 'edit-frame';
-
-/**
- * Classify what an iterate-phase instruction wants on a MULTI-FRAME project
- * when no specific frame is pinned. The studio used to treat every iterate as
- * a single-frame / preview rewrite, so "内容改一下，基于 Open Design 来写" only
- * touched one frame's HTML and never re-planned the content-graph — the other
- * frames kept the old subject. This routes a content/subject change to a full
- * storyboard regeneration instead.
- *
- *   rewrite-all  → change the content/subject/topic, "基于 X 重写" → re-plan the
- *                  whole storyboard (graph + every frame).
- *   edit-visual  → palette / font / motion / pacing / layout only, narrative
- *                  unchanged → keep the existing single preview rewrite.
- *   edit-frame   → a change scoped to one specific frame (but the user didn't
- *                  pin it) → keep current behavior, the UI can ask them to pin.
- *
- * Defaults to `edit-visual` on any ambiguity: a misread there only means we
- * skip a regeneration (cheap, recoverable), whereas a wrong `rewrite-all`
- * would discard frames the user may have hand-tuned.
- */
-async function classifyIterateIntent(
-  def: import('@html-video/runtime').AgentDef,
-  userText: string,
-  hints: { frameCount: number; openingTopic: string; currentSynopsis?: string },
-  cwd: string,
-  model?: string,
-): Promise<IterateIntent> {
-  const prompt = [
-    `You are classifying a single edit instruction for an existing ${hints.frameCount}-frame HTML video.`,
-    `The video's locked subject is: "${hints.openingTopic}".`,
-    hints.currentSynopsis ? `Current storyboard synopsis: "${hints.currentSynopsis}".` : '',
-    `The user just said: "${userText}".`,
-    ``,
-    `Classify the instruction into EXACTLY one of:`,
-    `- rewrite-all : changes the CONTENT / subject / topic / script of the whole video (e.g. "内容改一下，基于 Open Design 来写", "换个主题", "重写文案", "make it about our product", "change the topic"). The narrative itself changes.`,
-    `- edit-visual : changes only VISUALS — colour, font, motion, speed, spacing, layout — narrative unchanged (e.g. "背景换深色", "字大一点", "more minimal", "slower").`,
-    `- edit-frame  : a change aimed at ONE specific frame (e.g. "第二帧的标题改成…", "fix the last slide").`,
-    ``,
-    `Reply with EXACTLY one word: rewrite-all OR edit-visual OR edit-frame. No punctuation, no explanation.`,
-  ].filter(Boolean).join('\n');
-
-  let raw = '';
-  try {
-    raw = (await callAgentSimple(def, prompt, cwd, model)).trim().toLowerCase();
-  } catch {
-    return 'edit-visual';
-  }
-  if (/rewrite-all|rewrite|重写|整片|换成|换个?主题|基于/.test(raw)) return 'rewrite-all';
-  if (/edit-frame|单帧|这一?帧|某一?帧/.test(raw)) return 'edit-frame';
-  return 'edit-visual';
-}
+// NOTE: the old classifyIterateIntent (LLM guesses rewrite-all/edit-visual/
+// edit-frame from one sentence) was removed. The post-generation flow no longer
+// guesses: detectPhase routes a vague "改一下" to an explicit edit-menu card
+// (style / content / duration) and the user's pick drives restyle /
+// iterate-content / iterate-format.
 
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
-  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, onProgress, onSse } = args;
+  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, restyleOnly, onProgress, onSse } = args;
   const collected = inputs.collected ?? {};
   const pickedType = inputs.pickedType ?? '';
   const pickedStyle = inputs.pickedStyle ?? '';
@@ -2981,7 +3034,19 @@ async function runSplitMultiFrameGenerate(
     ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
     : pickedStyle;
 
-  // ---- Step 1: ask for the content graph only ----
+  // ---- Step 1: obtain the content graph ----
+  let graph: import('@html-video/content-graph').ContentGraph;
+  if (restyleOnly) {
+    // Restyle / re-time: keep the EXISTING storyboard text verbatim, skip the
+    // re-plan entirely. Only Step 2 (per-frame HTML) re-runs, in the new style.
+    const existing = await ctx.orchestrator.readContentGraph(projectId);
+    if (!existing || !Array.isArray(existing.nodes) || existing.nodes.length === 0) {
+      throw new Error('restyle requested but the project has no existing storyboard to reuse');
+    }
+    graph = existing as import('@html-video/content-graph').ContentGraph;
+    onProgress(`✓ 沿用现有文案：${graph.nodes.length} 帧`);
+    onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
+  } else {
   onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
   const graphPromptParts: string[] = [];
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
@@ -3050,7 +3115,6 @@ async function runSplitMultiFrameGenerate(
   if (!graphMatch || !graphMatch[1]) {
     throw new Error(`agent did not return a content-graph (got ${graphText.length} bytes, head: ${graphText.slice(0, 80)})`);
   }
-  let graph: import('@html-video/content-graph').ContentGraph;
   try {
     graph = parseGraphJsonTolerant(graphMatch[1].trim()) as import('@html-video/content-graph').ContentGraph;
   } catch (e) {
@@ -3062,6 +3126,7 @@ async function runSplitMultiFrameGenerate(
   await ctx.orchestrator.writeContentGraph(projectId, graph);
   onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
+  }
 
   // ---- Step 2: one call per node, output a single ```html block ----
   for (let i = 0; i < graph.nodes.length; i++) {
@@ -3075,6 +3140,10 @@ async function runSplitMultiFrameGenerate(
     fp.push(`Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`);
     fp.push('');
     fp.push(`Frame ${i + 1} of ${graph.nodes.length}: ${frameContext}`);
+    if (restyleOnly) {
+      // Keep the exact words; only the visual style changes.
+      fp.push(`RESTYLE: keep this frame's TEXT EXACTLY as given above — same headline, subtitle, numbers, wording. Do NOT rewrite, translate, or reword anything. Change ONLY the visual style (layout, colour, typography, motion) to: ${styleLabel || pickedStyle || '(the new style)'}.`);
+    }
     if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
       fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`);
     }

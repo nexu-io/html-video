@@ -262,7 +262,11 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       // +0.4s settle so the final animation frame is actually captured; cap at
       // 30s so a stray huge value can't make a frame run away.
       const needed = Math.min(30, (animMs + 400) / 1000);
-      if (needed > totalDuration) {
+      // Only extend when the duration is a soft 'auto' fallback. When the user
+      // set an explicit per-frame length (multi-frame export), it's a hard cap —
+      // honoring it keeps "每帧 4s" at 4s instead of letting one long animation
+      // stretch the frame toward the 30s ceiling.
+      if (input.config.durationMode !== 'explicit' && needed > totalDuration) {
         ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s for animation`);
         totalDuration = needed;
       }
@@ -335,11 +339,21 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   // recorder start jitter can't clip the first real animation frame — a couple
   // of still frames at the head are harmless, a missing opening beat is not.
   const seekSec = leadInMs > 200 ? Math.max(0, (leadInMs - 120) / 1000) : 0;
+  // When the user set an explicit per-frame length, the output must be EXACTLY
+  // that long. The recorded webm can come up a little short (recorder start
+  // jitter, the lead-in trim, a sub-duration animation that finished early), so
+  // pad the tail by holding the last frame (`tpad stop_mode=clone`) up to the
+  // target. -t then trims to the precise length. For 'auto' we keep the old
+  // behavior (just -t, no padding) — there the duration is a soft fallback.
+  const explicit = input.config.durationMode === 'explicit';
   await runFfmpeg([
     '-y',
     // -ss before -i = fast input seek, drops the frozen lead-in entirely.
     ...(seekSec > 0 ? ['-ss', seekSec.toFixed(3)] : []),
     '-i', webmPath!,
+    // Pad-then-trim so an explicit per-frame length lands exactly (e.g. user
+    // asked 4s, animation ran 2.8s → hold the final frame to fill 4s).
+    ...(explicit ? ['-vf', `tpad=stop_mode=clone:stop_duration=${totalDuration}`] : []),
     // Force exact duration: playwright's recordVideo sometimes overshoots
     // by the time it takes to close the context. -t trims to the requested
     // length (seconds, accepts fractions).
