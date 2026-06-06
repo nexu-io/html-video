@@ -82,6 +82,31 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     });
     const page = await context.newPage();
 
+    // Freeze all CSS/SMIL animations the instant the document starts parsing,
+    // BEFORE any @keyframes can begin counting down. Single-file templates are
+    // pure CSS `animation: … forwards` timelines with no JS trigger — they
+    // start running on the wall clock the moment the element is styled, i.e.
+    // right after goto(). Meanwhile we then spend ~2–3s waiting for the Google
+    // Fonts faces (Shrikhand et al.) to download. Without this freeze the whole
+    // opening (text fading in while the real face is still downloading, then
+    // the swap) plays out during that font wait and gets recorded. Pausing all
+    // animations up front lets us hold the timeline at frame 0 until fonts are
+    // ready, then release it so capture and motion start together — the same
+    // shape as the multi-composition paused→drive path below.
+    await page.addInitScript(() => {
+      const style = document.createElement('style');
+      style.id = '__hv_freeze';
+      style.textContent =
+        '*, *::before, *::after { animation-play-state: paused !important;' +
+        ' -webkit-animation-play-state: paused !important; }';
+      const attach = () => (document.head || document.documentElement).appendChild(style);
+      if (document.head || document.documentElement) attach();
+      else document.addEventListener('DOMContentLoaded', attach, { once: true });
+      (window as unknown as { __hvUnfreeze?: () => void }).__hvUnfreeze = () => {
+        document.getElementById('__hv_freeze')?.remove();
+      };
+    });
+
     ctx.onProgress?.(30, 'loading frame');
     // Multi-composition templates ship an entry index.html that only stitches
     // sub-scenes via `data-composition-src="compositions/x.html"`; loaded raw
@@ -108,24 +133,91 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // system font immediately and swaps in the real face once it downloads.
     // If we start recording before the swap, the video shows a visible flash:
     // the text renders in the fallback for the first frames, then the glyphs,
-    // widths and weights snap to the intended font mid-clip. `document.fonts.
-    // ready` resolves once every @font-face has settled (loaded or errored).
-    // Cap the wait so a slow/blocked font CDN can't stall the render forever —
+    // widths and weights snap to the intended font mid-clip.
+    //
+    // `document.fonts.ready` alone is NOT enough here, and this was the bug in
+    // the first cut of this fix. We load the page with `domcontentloaded` (so a
+    // CORS-blocked A-Roll video can't freeze the opening — see above), which
+    // means at this point the Google Fonts <link> stylesheet has usually not
+    // come back yet. Until that CSS arrives, its @font-face rules are not in
+    // `document.fonts` at all, so `fonts.ready` sees an empty set and resolves
+    // INSTANTLY — recording starts, then the CSS lands, the faces download, and
+    // the swap happens mid-clip anyway. So we must, in order:
+    //   1. wait for every stylesheet <link> to load (or error) — this is what
+    //      actually registers the @font-face rules into document.fonts;
+    //   2. explicitly fonts.load() each registered face — `display: swap` does
+    //      NOT auto-download a face until something paints with it, and our
+    //      off-screen/pre-animation text may not have triggered that yet;
+    //   3. then await fonts.ready, plus one rAF, so layout settles on the real
+    //      glyph metrics before frame 0.
+    // Everything is capped so a slow/blocked font CDN can't stall forever —
     // worst case we fall back to the previous behavior for that one frame.
     ctx.onProgress?.(32, 'loading fonts');
     await page
       .evaluate(
         () =>
           new Promise<void>((resolve) => {
-            const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+            const doc = document as Document & { fonts?: FontFaceSet };
+            const fonts = doc.fonts;
             if (!fonts || typeof fonts.ready?.then !== 'function') {
               resolve();
               return;
             }
-            const done = () => resolve();
-            fonts.ready.then(done, done);
-            // Safety net in case `ready` never settles for some face.
-            setTimeout(done, 5000);
+
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              // One more frame so the relayout on the real face is painted.
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            };
+            // Hard cap: a blocked CDN must never stall the render.
+            const cap = setTimeout(finish, 8000);
+
+            // 1. Wait for stylesheet <link>s to load (registers @font-face).
+            const links = Array.from(
+              document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+            );
+            const linkDone = links.map((link) => {
+              // An already-loaded sheet exposes cssRules without throwing.
+              try {
+                if (link.sheet && link.sheet.cssRules) return Promise.resolve();
+              } catch {
+                /* not ready yet — fall through to event wait */
+              }
+              return new Promise<void>((r) => {
+                const done = () => r();
+                link.addEventListener('load', done, { once: true });
+                link.addEventListener('error', done, { once: true });
+                // Per-link safety so one wedged link can't hold the batch.
+                setTimeout(done, 6000);
+              });
+            });
+
+            Promise.all(linkDone)
+              .then(() => {
+                // 2. Force every registered face to actually download. Under
+                // `display: swap` the browser otherwise defers the fetch.
+                const loads: Promise<unknown>[] = [];
+                fonts.forEach((face) => {
+                  try {
+                    loads.push(face.load().catch(() => undefined));
+                  } catch {
+                    /* some faces reject load() pre-paint — ignore */
+                  }
+                });
+                return Promise.all(loads);
+              })
+              // 3. Now ready() reflects the real face set.
+              .then(() => fonts.ready)
+              .then(() => {
+                clearTimeout(cap);
+                finish();
+              })
+              .catch(() => {
+                clearTimeout(cap);
+                finish();
+              });
           }),
       )
       .catch(() => {});
@@ -193,12 +285,21 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       })
       .catch(() => false);
 
-    // Only multi-composition templates park their timeline until we drive it,
-    // so only they have a dead lead-in (page load + cold font fetch, ~3–4s)
-    // recorded before motion begins; mark it for ffmpeg to trim. Single-file
-    // templates auto-run their CSS/GSAP animations at load, so their webm has
-    // no lead-in — trimming would cut into the real opening, leave leadInMs=0.
-    if (drove) leadInMs = Date.now() - tWebmStart;
+    // Release the animation freeze now that fonts are ready. Every template —
+    // single-file CSS keyframes and multi-composition GSAP alike — has been
+    // held at frame 0 since before goto(), so the entire recorded lead-in
+    // (page load + cold font fetch, ~2–4s) is a still hold of the first frame
+    // with no motion. Unfreezing here is the true t=0 of the animation, so the
+    // lead-in is always dead and always safe to trim. (Previously only
+    // multi-composition templates were parked, so single-file ones recorded
+    // their opening during the font wait and showed the fallback-font flash.)
+    await page
+      .evaluate(() => {
+        (window as unknown as { __hvUnfreeze?: () => void }).__hvUnfreeze?.();
+      })
+      .catch(() => {});
+    leadInMs = Date.now() - tWebmStart;
+    void drove; // playback already driven above for multi-composition timelines
 
     ctx.onProgress?.(40, `recording ${totalDuration}s`);
     // Stream a single coarse progress tick per second so the user sees
