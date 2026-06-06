@@ -844,6 +844,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           userText,
           attachments,
           focusFrameId: focusFrameId || undefined,
+          openingTopic: resolveOpeningTopic(project, history),
         });
         const phaseInfo = detectPhase(
           history,
@@ -963,6 +964,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               priorHtml,
               inputs: rewriteInputs ?? phaseInfo.inputs,
               attachments,
+              openingTopic: resolveOpeningTopic(project, history),
               onProgress: (msg) => {
                 assistantText += msg + '\n';
                 textChunks += 1;
@@ -1669,6 +1671,8 @@ interface BuildPromptArgs {
   attachments: Attachment[];
   /** When set, iterate-phase prompts target only this frame's HTML. */
   focusFrameId?: string;
+  /** The user's original opening subject, locked across phases. */
+  openingTopic?: string;
 }
 
 interface Attachment {
@@ -1984,6 +1988,30 @@ function collectContentTurns(history: ChatMessage[]): string[] {
   return out.filter((t) => t !== '__TYPE_PICK__');
 }
 
+/**
+ * The video's LOCKED subject, in the user's own words. The opening message
+ * ("帮我生成一个关于 Open Design 的介绍视频") names the subject, but it never
+ * reached the generate / storyboard prompts: collectContentTurns() only keeps
+ * turns after the type-pick card, so a later vague answer like "随机" became the
+ * entire content input and the video came out about randomness instead of Open
+ * Design. This recovers the opening subject so every downstream prompt can lock
+ * onto it.
+ *
+ * Prefer the persisted project.intent, but the studio UI creates projects with
+ * a name only (intent is almost always empty), so fall back to the first user
+ * message in history — which is the genuine opening request. Strip the
+ * attachment summary suffix appended to message content.
+ */
+function resolveOpeningTopic(project: { intent?: string }, history: ChatMessage[]): string {
+  const fromIntent = project.intent?.trim();
+  if (fromIntent) return fromIntent.slice(0, 200);
+  const firstUser = history.find((m) => m.role === 'user')?.content ?? '';
+  const clean = (firstUser.split('\n\n📎')[0] ?? '').trim();
+  // Don't lock onto a bare control phrase ("继续" / "ok") if that's somehow first.
+  if (!clean || isControlPhrase(clean)) return '';
+  return clean.slice(0, 200);
+}
+
 // Legacy helper retained for backward calls — now delegates to detectPhase's
 // metadata-aware lookup.
 function lastAssistantCardKind(history: ChatMessage[]): 'hv-options' | 'hv-form' | 'hv-confirm' | null {
@@ -2209,7 +2237,7 @@ function isMultiFrameType(pickedType: string): boolean {
 }
 
 function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
-  const { tmpl, exampleHtml, priorHtml, history, userText, attachments } = args;
+  const { tmpl, exampleHtml, priorHtml, history, userText, attachments, openingTopic } = args;
 
   // When a template is selected, its own source HTML is the style ground truth —
   // NOT a prior render. Otherwise a project that was previously rendered in some
@@ -2516,6 +2544,14 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const p: string[] = [];
     p.push(`Generate the HTML video file(s) the user just confirmed.`);
     p.push('');
+    // Lock the subject to the user's opening request. The content turns below
+    // can be as thin as "随机" — without this the video drifts onto that literal
+    // word (a "promote Open Design" request became a randomness explainer).
+    if (openingTopic) {
+      p.push(`VIDEO SUBJECT (LOCKED): the user opened with "${openingTopic}". The video MUST be about THIS subject.`);
+      p.push(`If a content line below is a vague placeholder like "随机 / 随便 / anything / 你定 / whatever", it means "YOU choose the concrete details (selling points, framing, copy) — but the SUBJECT stays "${openingTopic}"". NEVER treat "随机" as the literal topic; do NOT make a video about randomness.`);
+      p.push('');
+    }
     p.push(`Inputs (use these LITERALLY — do NOT make up brand names or facts beyond what is stated):`);
     p.push(`- 类型 / type: ${pickedType || '(未指定)'}`);
     if (contentTurns.length > 0) {
@@ -2831,6 +2867,8 @@ interface SplitGenerateArgs {
   priorHtml: string;
   inputs: PhaseInputs;
   attachments: Attachment[];
+  /** The user's original opening subject, locked across phases. */
+  openingTopic?: string;
   /** Called for human-readable progress lines. */
   onProgress: (msg: string) => void;
   /** Called for structured SSE events. */
@@ -2893,7 +2931,7 @@ async function classifyIterateIntent(
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
-  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, onProgress, onSse } = args;
+  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, onProgress, onSse } = args;
   const collected = inputs.collected ?? {};
   const pickedType = inputs.pickedType ?? '';
   const pickedStyle = inputs.pickedStyle ?? '';
@@ -2950,6 +2988,13 @@ async function runSplitMultiFrameGenerate(
   graphPromptParts.push('');
   graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
   graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
+  // Lock the storyboard to the user's opening subject (unless a SOURCE MATERIAL
+  // block below supersedes it). This is the path the user actually hits, and
+  // where "随机" turned into a randomness explainer instead of the Open Design
+  // promo they asked for.
+  if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
+    graphPromptParts.push(`- 主题 / subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
+  }
   if (contentTurns.length > 0) {
     graphPromptParts.push(`- 内容 / content:`);
     for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
@@ -3030,6 +3075,9 @@ async function runSplitMultiFrameGenerate(
     fp.push(`Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`);
     fp.push('');
     fp.push(`Frame ${i + 1} of ${graph.nodes.length}: ${frameContext}`);
+    if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
+      fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`);
+    }
     fp.push(`Duration: ${node.durationSec ?? perFrameDurationSec}s`);
     fp.push(`Type: ${pickedType}`);
     if (styleLabel) fp.push(`Style: ${styleLabel}`);
