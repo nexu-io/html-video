@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnAgent } from '../dist/index.js';
@@ -46,6 +46,68 @@ test(
       const { exitCode } = await handle.done;
       assert.equal(exitCode, 0, error);
       assert.equal(collected, 'shim-ok');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'Windows npm .cmd shims preserve percent argv through spawnAgent',
+  { skip: process.platform !== 'win32' },
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'hv-npm-cmd-shim-'));
+    const shim = join(dir, 'argv-agent.cmd');
+    const packageDir = join(dir, 'node_modules', 'argv-agent', 'bin');
+    const script = join(packageDir, 'argv-agent.js');
+    const node = process.execPath;
+    await mkdir(packageDir, { recursive: true });
+    await writeFile(
+      script,
+      'console.log(JSON.stringify(process.argv.slice(2)));\n',
+      'utf8',
+    );
+    await writeFile(
+      shim,
+      [
+        '@ECHO off',
+        'SETLOCAL',
+        'IF EXIST "%dp0%\\node.exe" (',
+        '  SET "_prog=%dp0%\\node.exe"',
+        ') ELSE (',
+        `  SET "_prog=${node}"`,
+        ')',
+        'endLocal & "%_prog%" "%dp0%\\node_modules\\argv-agent\\bin\\argv-agent.js" %*',
+        '',
+      ].join('\r\n'),
+      'utf8',
+    );
+
+    const argv = ['%USERPROFILE%', '100% done', 'bang!'];
+    const def: AgentDef = {
+      id: 'test-npm-cmd-shim',
+      name: 'test-npm-cmd-shim',
+      bin: shim,
+      versionArgs: ['--version'],
+      buildArgs: () => argv,
+      streamFormat: 'plain',
+    };
+
+    let collected = '';
+    let error = '';
+    try {
+      const handle = spawnAgent({
+        def,
+        prompt: '',
+        context: { cwd: dir },
+        onEvent: (ev) => {
+          if (ev.type === 'text') collected += ev.chunk;
+          if (ev.type === 'error') error += ev.message;
+        },
+      });
+      const { exitCode } = await handle.done;
+      assert.equal(exitCode, 0, error);
+      assert.deepEqual(JSON.parse(collected), argv);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

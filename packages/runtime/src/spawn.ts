@@ -1,5 +1,7 @@
 import { spawn as cpSpawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { platform } from 'node:os';
+import { dirname, join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { resolveCommandSync } from './detect.js';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
@@ -185,6 +187,9 @@ function commandForSpawn(
     return { bin, args };
   }
 
+  const npmShim = commandForNpmShim(bin, args);
+  if (npmShim) return npmShim;
+
   const comspec = process.env.ComSpec || 'cmd.exe';
   const commandLine = ['call', quoteCmdArg(bin), ...args.map(quoteCmdArg)].join(' ');
   return {
@@ -192,6 +197,28 @@ function commandForSpawn(
     args: ['/d', '/c', commandLine],
     windowsVerbatimArguments: true,
   };
+}
+
+function commandForNpmShim(
+  bin: string,
+  args: string[],
+): { bin: string; args: string[] } | null {
+  let text: string;
+  try {
+    text = readFileSync(bin, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const match = text.match(/"%dp0%\\node_modules\\([^"]+)"\s+%\*/i);
+  if (!match?.[1]) return null;
+
+  const shimDir = dirname(bin);
+  const bundledNode = join(shimDir, 'node.exe');
+  const nodeBin = existsSync(bundledNode) ? bundledNode : (resolveCommandSync('node') ?? 'node');
+  const scriptPath = join(shimDir, 'node_modules', match[1]);
+  if (!existsSync(scriptPath)) return null;
+  return { bin: nodeBin, args: [scriptPath, ...args] };
 }
 
 function quoteCmdArg(arg: string): string {
