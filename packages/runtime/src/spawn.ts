@@ -1,7 +1,7 @@
 import { spawn as cpSpawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { platform } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { resolveCommandSync } from './detect.js';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
@@ -210,15 +210,35 @@ function commandForNpmShim(
     return null;
   }
 
-  const match = text.match(/"%dp0%\\node_modules\\([^"]+)"\s+%\*/i);
-  if (!match?.[1]) return null;
-
   const shimDir = dirname(bin);
+  const scriptPath = resolveNpmShimScript(text, shimDir);
+  if (!scriptPath || !existsSync(scriptPath)) return null;
+
   const bundledNode = join(shimDir, 'node.exe');
   const nodeBin = existsSync(bundledNode) ? bundledNode : (resolveCommandSync('node') ?? 'node');
-  const scriptPath = join(shimDir, 'node_modules', match[1]);
-  if (!existsSync(scriptPath)) return null;
   return { bin: nodeBin, args: [scriptPath, ...args] };
+}
+
+function resolveNpmShimScript(text: string, shimDir: string): string | null {
+  const dp0Vars = new Map<string, string>();
+  const setDp0Re = /^\s*set\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*%~dp0\s*$/gim;
+  for (const match of text.matchAll(setDp0Re)) {
+    if (match[1]) dp0Vars.set(match[1].toLowerCase(), shimDir);
+  }
+
+  const dp0ExecRe = /"%~dp0\\?([^"]*?node_modules\\[^"]+)"\s+%\*/gi;
+  for (const match of text.matchAll(dp0ExecRe)) {
+    if (match[1]) return normalize(join(shimDir, match[1]));
+  }
+
+  const varExecRe = /"%([A-Za-z_][A-Za-z0-9_]*)%\\?([^"]*?node_modules\\[^"]+)"\s+%\*/gi;
+  for (const match of text.matchAll(varExecRe)) {
+    const base = match[1] ? dp0Vars.get(match[1].toLowerCase()) : undefined;
+    const relative = match[2];
+    if (!base || !relative) continue;
+    return normalize(join(base, relative));
+  }
+  return null;
 }
 
 function quoteCmdArg(arg: string): string {
