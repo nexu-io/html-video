@@ -1,5 +1,6 @@
 import { spawn as cpSpawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import { resolveCommandSync } from './detect.js';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
 
 /**
@@ -71,8 +72,9 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
 
   const args = def.buildArgs(prompt, context);
   const env = { ...process.env, ...(def.env ?? {}) };
+  const bin = resolveCommandSync(def.bin) ?? def.bin;
 
-  const child = cpSpawn(def.bin, args, {
+  const child = cpSpawn(bin, args, {
     cwd: context.cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
