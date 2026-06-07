@@ -1,4 +1,5 @@
 import { spawn as cpSpawn } from 'node:child_process';
+import { platform } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 import { resolveCommandSync } from './detect.js';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
@@ -73,11 +74,15 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   const args = def.buildArgs(prompt, context);
   const env = { ...process.env, ...(def.env ?? {}) };
   const bin = resolveCommandSync(def.bin) ?? def.bin;
+  const command = commandForSpawn(bin, args);
 
-  const child = cpSpawn(bin, args, {
+  const child = cpSpawn(command.bin, command.args, {
     cwd: context.cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
+    ...(command.windowsVerbatimArguments !== undefined && {
+      windowsVerbatimArguments: command.windowsVerbatimArguments,
+    }),
   });
 
   if (def.promptViaStdin && child.stdin) {
@@ -170,5 +175,27 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     },
     done,
   };
+}
+
+function commandForSpawn(
+  bin: string,
+  args: string[],
+): { bin: string; args: string[]; windowsVerbatimArguments?: boolean } {
+  if (platform() !== 'win32' || !/\.(?:cmd|bat)$/i.test(bin)) {
+    return { bin, args };
+  }
+
+  const comspec = process.env.ComSpec || 'cmd.exe';
+  const commandLine = ['call', quoteCmdArg(bin), ...args.map(quoteCmdArg)].join(' ');
+  return {
+    bin: comspec,
+    args: ['/d', '/c', commandLine],
+    windowsVerbatimArguments: true,
+  };
+}
+
+function quoteCmdArg(arg: string): string {
+  if (arg.length === 0) return '""';
+  return `"${arg.replace(/"/g, '""')}"`;
 }
 
