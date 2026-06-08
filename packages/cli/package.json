@@ -11,7 +11,7 @@
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/bin.js",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node dist/smoke.js",
     "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\""
