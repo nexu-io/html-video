@@ -5,19 +5,48 @@
  *
  * Credential precedence when resolving (config file wins over env, since the
  * GUI is the explicit user choice):
- *   media-config.json  →  OD_MINIMAX_API_KEY / MINIMAX_API_KEY env
+ *   media-config.json  →  env (provider-specific keys)
  *
- * Mirrors open-design's `.od/media-config.json` shape loosely; we only need
- * MiniMax here. The file holds the raw key, so it lives in the gitignored
- * `.html-video/` runtime dir, never the repo.
+ * Two TTS providers are supported (background music is MiniMax-only):
+ *   - minimax    — speech + music; region-bound keys (issue #4)
+ *   - senseaudio — speech only (api.senseaudio.cn)
+ * The file holds raw keys, so it lives in the gitignored `.html-video/` runtime
+ * dir, never the repo.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveMinimaxCredentials, type MinimaxCredentials } from '@html-video/core';
+import {
+  resolveMinimaxCredentials,
+  resolveSenseAudioCredentials,
+  type MinimaxCredentials,
+  type SenseAudioCredentials,
+} from '@html-video/core';
+
+export type AudioProvider = 'minimax' | 'senseaudio';
+
+interface ProviderConfig {
+  apiKey?: string;
+  baseUrl?: string;
+}
 
 interface MediaConfig {
-  minimax?: { apiKey?: string; baseUrl?: string };
+  minimax?: ProviderConfig;
+  senseaudio?: ProviderConfig;
+}
+
+/** Default base URL per provider when the user didn't pick one. */
+const DEFAULT_BASE_URL: Record<AudioProvider, string> = {
+  // International endpoint; the old api.minimaxi.chat host is RETIRED (issue #4).
+  minimax: 'https://api.minimax.io/v1',
+  senseaudio: 'https://api.senseaudio.cn/v1',
+};
+
+export interface ProviderStatus {
+  configured: boolean;
+  source: 'config' | 'env' | 'none';
+  maskedKey: string;
+  baseUrl: string;
 }
 
 export class MediaConfigStore {
@@ -43,14 +72,20 @@ export class MediaConfigStore {
     writeFileSync(this.path, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   }
 
+  private resolveEnv(provider: AudioProvider): { apiKey: string; baseUrl: string } | null {
+    return provider === 'minimax' ? resolveMinimaxCredentials() : resolveSenseAudioCredentials();
+  }
+
+  // --- Generic, provider-keyed API ---------------------------------------
+
   /** What the Settings UI shows: whether a key is set + masked key + base URL.
    *  Never returns the raw key. Reports the source (config file vs env). */
-  getMinimaxStatus(): { configured: boolean; source: 'config' | 'env' | 'none'; maskedKey: string; baseUrl: string } {
-    const cfg = this.read().minimax;
+  getStatus(provider: AudioProvider): ProviderStatus {
+    const cfg = this.read()[provider];
     if (cfg?.apiKey) {
       return { configured: true, source: 'config', maskedKey: mask(cfg.apiKey), baseUrl: cfg.baseUrl ?? '' };
     }
-    const env = resolveMinimaxCredentials();
+    const env = this.resolveEnv(provider);
     if (env) {
       return { configured: true, source: 'env', maskedKey: mask(env.apiKey), baseUrl: env.baseUrl };
     }
@@ -58,33 +93,48 @@ export class MediaConfigStore {
   }
 
   /** Persist a key (and optional base URL) entered in the UI. */
-  setMinimax(apiKey: string, baseUrl?: string): void {
+  set(provider: AudioProvider, apiKey: string, baseUrl?: string): void {
     const cfg = this.read();
-    cfg.minimax = { apiKey: apiKey.trim() };
+    const entry: ProviderConfig = { apiKey: apiKey.trim() };
     const b = (baseUrl ?? '').trim();
-    if (b) cfg.minimax.baseUrl = b;
+    if (b) entry.baseUrl = b;
+    cfg[provider] = entry;
     this.write(cfg);
   }
 
-  /** Forget the stored MiniMax key (env fallback, if any, still applies). */
-  clearMinimax(): void {
+  /** Forget the stored key for a provider (env fallback, if any, still applies). */
+  clear(provider: AudioProvider): void {
     const cfg = this.read();
-    delete cfg.minimax;
+    delete cfg[provider];
     this.write(cfg);
   }
 
   /** Resolve usable credentials: config file first, then env. null if neither. */
-  resolveMinimax(): MinimaxCredentials | null {
-    const cfg = this.read().minimax;
+  resolve(provider: AudioProvider): { apiKey: string; baseUrl: string } | null {
+    const cfg = this.read()[provider];
     if (cfg?.apiKey) {
-      // Default to the international endpoint when none is set. The old
-      // api.minimaxi.chat host is RETIRED server-side (issue #4); MiniMax now
-      // splits into api.minimax.io (international) and api.minimaxi.com (China),
-      // and keys are region-bound — so the Settings UI asks the user to pick.
-      const baseUrl = (cfg.baseUrl || '').trim().replace(/\/$/, '') || 'https://api.minimax.io/v1';
+      const baseUrl = (cfg.baseUrl || '').trim().replace(/\/$/, '') || DEFAULT_BASE_URL[provider];
       return { apiKey: cfg.apiKey, baseUrl };
     }
-    return resolveMinimaxCredentials();
+    return this.resolveEnv(provider);
+  }
+
+  // --- Back-compat MiniMax-named shims (used elsewhere in studio-server) ----
+
+  getMinimaxStatus(): ProviderStatus {
+    return this.getStatus('minimax');
+  }
+  setMinimax(apiKey: string, baseUrl?: string): void {
+    this.set('minimax', apiKey, baseUrl);
+  }
+  clearMinimax(): void {
+    this.clear('minimax');
+  }
+  resolveMinimax(): MinimaxCredentials | null {
+    return this.resolve('minimax');
+  }
+  resolveSenseAudio(): SenseAudioCredentials | null {
+    return this.resolve('senseaudio');
   }
 }
 
