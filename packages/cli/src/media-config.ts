@@ -83,7 +83,13 @@ export class MediaConfigStore {
   getStatus(provider: AudioProvider): ProviderStatus {
     const cfg = this.read()[provider];
     if (cfg?.apiKey) {
-      return { configured: true, source: 'config', maskedKey: mask(cfg.apiKey), baseUrl: cfg.baseUrl ?? '' };
+      // Report the EFFECTIVE base URL — the same value resolve() will use — so
+      // the Settings UI shows which endpoint requests actually hit. A stored key
+      // with no base URL falls back to the provider default rather than blank;
+      // for MiniMax's region-bound keys this is the info needed to diagnose a
+      // wrong-region auth failure (issue #4).
+      const baseUrl = (cfg.baseUrl || '').trim().replace(/\/$/, '') || DEFAULT_BASE_URL[provider];
+      return { configured: true, source: 'config', maskedKey: mask(cfg.apiKey), baseUrl };
     }
     const env = this.resolveEnv(provider);
     if (env) {
