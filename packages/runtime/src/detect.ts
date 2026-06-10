@@ -6,10 +6,20 @@ import type { AgentDef, DetectedAgent } from './types.js';
 
 const exec = promisify(execFile);
 
+// Windows has no `which`; it ships `where.exe`. POSIX shells have `which`.
+// `where` can emit multiple lines (one per PATHEXT match) — take the first.
+const WHICH_CMD = process.platform === 'win32' ? 'where' : 'which';
+
 async function which(bin: string): Promise<string | null> {
   try {
-    const { stdout } = await exec('which', [bin], { timeout: 2000 });
-    return stdout.trim() || null;
+    // 8s, not 2s: detectAll() probes ~13 agents with Promise.all, so a dozen
+    // `where`/`which` processes spawn at once. Under that contention a single
+    // lookup can take several seconds on Windows; a tight 2s timeout would
+    // spuriously mark an installed agent (claude/codex) unavailable, which then
+    // makes the studio fall back to the API-key-only anthropic-api agent.
+    const { stdout } = await exec(WHICH_CMD, [bin], { timeout: 8000 });
+    const first = stdout.trim().split(/\r?\n/)[0]?.trim();
+    return first || null;
   } catch {
     return null;
   }
