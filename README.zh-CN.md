@@ -33,6 +33,12 @@
 
 下面每个模板都是一支真实、带动画的单文件 HTML 视频 —— 这些是实时渲染截图，不是效果图。挑一个，让 agent 填进你的内容，导出 MP4。
 
+渲染样片：[frame-product-promo.mp4](docs/assets/renders/frame-product-promo.mp4)（`frame-product-promo`，14.4 秒，1920×1080，60fps）。
+
+```bash
+node packages/cli/dist/bin.js project-render <project_id> --output docs/assets/renders/frame-product-promo.mp4 --stream-progress
+```
+
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/templates/frame-data-chart-nyt.png" alt="NYT 风格数据图表" /></td>
