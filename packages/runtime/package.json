@@ -25,6 +25,6 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@powerformer/vela-cli": "^0.0.15"
+    "@powerformer/vela-cli": "^0.0.16"
   }
 }
