@@ -95,7 +95,9 @@ export const amr: AgentDef = {
   // Identify html-video as the host so the vela CLI tags its command +
   // model_request analytics with source=html_video (revenue attribution).
   env: { AMR_CLIENT_SOURCE: 'html_video' },
-  installUrl: 'https://open-design.ai',
+  // AMR home; ?source=html_video lets vela's home page_view attribute the visit
+  // to html-video (same host dimension as the model-spend attribution above).
+  installUrl: 'https://open-design.ai/amr?source=html_video',
   // AMR rejects session/prompt until a model is set. Default to deepseek-v4-flash
   // (the "Lower cost / Many models" official pick); overridable per-call later.
   defaultModel: 'deepseek-v4-flash',
