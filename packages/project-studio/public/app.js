@@ -34,6 +34,28 @@ const NARRATION_VOICES = [
   { key: 'female_sweet',  voiceId: 'female-shaonv' },
 ];
 
+// SenseAudio system voices (api.senseaudio.cn). A curated seed of the 70+
+// official voices so the picker works out of the box; the live full catalog is
+// fetched from /api/config/senseaudio/voices when a key is configured. `label`
+// is the native voice name from the SenseAudio catalog (kept verbatim).
+const SENSEAUDIO_VOICES = [
+  { voiceId: 'female_0037_a', label: '自然少女' },
+  { voiceId: 'female_0036_a', label: '青春女声' },
+  { voiceId: 'female_0038_a', label: '亲切女孩' },
+  { voiceId: 'female_0023_a', label: '羞涩甜妹' },
+  { voiceId: 'female_0018_a', label: '森系少女' },
+  { voiceId: 'female_0030_c', label: '高能姐姐' },
+  { voiceId: 'male_0029_a',   label: '利落青年' },
+  { voiceId: 'male_0020_a',   label: '阳光甜弟' },
+  { voiceId: 'male_0004_a',   label: '儒雅道长' },
+  { voiceId: 'male_0027_a',   label: '亢奋主播' },
+  { voiceId: 'child_0001_a',  label: '可爱萌娃' },
+];
+
+// Provider state for the narration picker. Cached live SenseAudio voices (after
+// a successful /voices fetch) override the seed list above.
+const TTS_STATE = { provider: 'minimax', senseaudioVoices: null };
+
 const API = {
   projects: () => fetch('/api/projects').then(r => r.json()),
   createProject: b => fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json()),
@@ -831,6 +853,13 @@ function renderMain() {
                     <span class="st-step-label">${t('soundtrack.step_voice')}</span>
                   </div>
                   <div class="st-voice-row">
+                    <span class="st-voice-label">${t('soundtrack.provider_label')}</span>
+                    <select id="st-narration-provider" class="st-voice-select">
+                      <option value="minimax">${t('soundtrack.provider_minimax')}</option>
+                      <option value="senseaudio">${t('soundtrack.provider_senseaudio')}</option>
+                    </select>
+                  </div>
+                  <div class="st-voice-row">
                     <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
                     <select id="st-narration-voice" class="st-voice-select">
                       ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
@@ -929,6 +958,49 @@ function wireSoundtrackPanel() {
   const draftFrameBtn = document.getElementById('btn-st-draft-frame');
   const draftAllBtn = document.getElementById('btn-st-draft-all');
   const whichEl = document.getElementById('st-narration-which');
+  const providerSel = document.getElementById('st-narration-provider');
+  const voiceSel = document.getElementById('st-narration-voice');
+
+  // Repopulate the voice <select> for the active TTS provider. MiniMax uses a
+  // fixed curated list; SenseAudio uses its live catalog (falling back to the
+  // curated seed) once a key has been configured + fetched.
+  function populateVoices() {
+    if (!voiceSel) return;
+    const prev = voiceSel.value;
+    let opts;
+    if (TTS_STATE.provider === 'senseaudio') {
+      const live = TTS_STATE.senseaudioVoices;
+      const list = (live && live.length ? live : SENSEAUDIO_VOICES);
+      opts = list.map((v) => ({ id: v.voiceId, label: v.label || v.name || v.voiceId }));
+    } else {
+      opts = NARRATION_VOICES.map((v) => ({ id: v.voiceId, label: t('soundtrack.voice_' + v.key) }));
+    }
+    voiceSel.innerHTML = opts.map((o) => `<option value="${o.id}">${o.label}</option>`).join('');
+    if (opts.some((o) => o.id === prev)) voiceSel.value = prev;
+  }
+
+  // Fetch the live SenseAudio catalog (best-effort; needs a configured key).
+  async function refreshSenseAudioVoices() {
+    try {
+      const r = await fetch('/api/config/senseaudio/voices');
+      if (!r.ok) return;
+      const data = await r.json();
+      if (Array.isArray(data.voices) && data.voices.length) {
+        TTS_STATE.senseaudioVoices = data.voices.map((v) => ({ voiceId: v.voiceId, label: v.name || v.voiceId }));
+        if (TTS_STATE.provider === 'senseaudio') populateVoices();
+      }
+    } catch { /* offline / no key — keep the seed list */ }
+  }
+
+  if (providerSel) {
+    providerSel.value = TTS_STATE.provider;
+    providerSel.onchange = () => {
+      TTS_STATE.provider = providerSel.value === 'senseaudio' ? 'senseaudio' : 'minimax';
+      populateVoices();
+      if (TTS_STATE.provider === 'senseaudio' && !TTS_STATE.senseaudioVoices) refreshSenseAudioVoices();
+    };
+  }
+  populateVoices();
 
   // Music style presets: click fills the prompt textarea (editable after).
   document.querySelectorAll('#st-music-presets .st-preset').forEach((btn) => {
@@ -1103,8 +1175,9 @@ function wireSoundtrackPanel() {
         .filter((s) => s.length > 0).join('\n');
       const nt = stitched || narrationText.value.trim();
       if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
-      const voiceSel = document.getElementById('st-narration-voice');
-      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
+      const voiceEl = document.getElementById('st-narration-voice');
+      const provider = TTS_STATE.provider === 'senseaudio' ? 'senseaudio' : 'minimax';
+      payload.narration = { text: nt, provider, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceEl?.value && { voiceId: voiceEl.value }) };
     }
 
     const label = btn?.textContent;
@@ -2972,34 +3045,57 @@ function renderSettingsPanel(tab) {
 }
 
 async function renderSettingsAudio(panel) {
-  panel.innerHTML = `
-    <h3>${esc(t('settings.audio.title'))}</h3>
-    <div class="panel-sub">${esc(t('settings.audio.subtitle'))}</div>
-    <div class="audio-config" id="audio-config">
-      <div class="audio-status" id="audio-status">${esc(t('settings.audio.loading'))}</div>
-      <label class="audio-field">
-        <span>${esc(t('settings.audio.api_key'))}</span>
-        <input type="password" id="mm-api-key" placeholder="${esc(t('settings.audio.api_key_placeholder'))}" autocomplete="off" />
-      </label>
+  // Two TTS providers share this panel; a toggle picks which one to configure.
+  // MiniMax also powers background music — SenseAudio is speech-only.
+  const provider = panel.dataset.audioProvider === 'senseaudio' ? 'senseaudio' : 'minimax';
+  const isSense = provider === 'senseaudio';
+  const endpoint = `/api/config/${provider}`;
+
+  const regionRow = isSense
+    ? ''
+    : `
       <label class="audio-field">
         <span>${esc(t('settings.audio.region'))}</span>
         <div class="audio-region" id="mm-region">
           <button type="button" class="st-preset" data-url="https://api.minimax.io/v1">${esc(t('settings.audio.region_intl'))}</button>
           <button type="button" class="st-preset" data-url="https://api.minimaxi.com/v1">${esc(t('settings.audio.region_cn'))}</button>
         </div>
+      </label>`;
+
+  panel.innerHTML = `
+    <h3>${esc(t('settings.audio.title'))}</h3>
+    <div class="panel-sub">${esc(t('settings.audio.subtitle'))}</div>
+    <div class="seg-toggle" id="audio-provider-toggle" style="display:flex;gap:6px;margin:8px 0 12px">
+      <button type="button" class="st-preset${isSense ? '' : ' active'}" data-provider="minimax">${esc(t('settings.audio.provider_minimax'))}</button>
+      <button type="button" class="st-preset${isSense ? ' active' : ''}" data-provider="senseaudio">${esc(t('settings.audio.provider_senseaudio'))}</button>
+    </div>
+    <div class="audio-config" id="audio-config">
+      <div class="audio-status" id="audio-status">${esc(t('settings.audio.loading'))}</div>
+      <label class="audio-field">
+        <span>${esc(t('settings.audio.api_key'))}</span>
+        <input type="password" id="mm-api-key" placeholder="${esc(isSense ? t('settings.audio.api_key_placeholder_sense') : t('settings.audio.api_key_placeholder'))}" autocomplete="off" />
       </label>
+      ${regionRow}
       <label class="audio-field">
         <span>${esc(t('settings.audio.base_url'))}</span>
-        <input type="text" id="mm-base-url" placeholder="https://api.minimax.io/v1" autocomplete="off" />
+        <input type="text" id="mm-base-url" placeholder="${isSense ? 'https://api.senseaudio.cn/v1' : 'https://api.minimax.io/v1'}" autocomplete="off" />
       </label>
       <div class="audio-actions">
         <button class="audio-save primary-action" id="mm-save" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.audio.save'))}</button>
         <button class="audio-clear" id="mm-clear">${esc(t('settings.audio.clear'))}</button>
         <span class="audio-save-state" id="mm-save-state"></span>
       </div>
-      <p class="panel-sub" style="font-size:11.5px;margin-top:4px">${esc(t('settings.audio.hint'))}</p>
+      <p class="panel-sub" style="font-size:11.5px;margin-top:4px">${esc(isSense ? t('settings.audio.hint_sense') : t('settings.audio.hint'))}</p>
     </div>
   `;
+
+  // Provider toggle: remember the choice on the panel + re-render.
+  panel.querySelectorAll('#audio-provider-toggle .st-preset').forEach((btn) => {
+    btn.onclick = () => {
+      panel.dataset.audioProvider = btn.dataset.provider;
+      renderSettingsAudio(panel);
+    };
+  });
 
   const statusEl = panel.querySelector('#audio-status');
   const keyInput = panel.querySelector('#mm-api-key');
@@ -3008,7 +3104,7 @@ async function renderSettingsAudio(panel) {
 
   const refresh = async () => {
     try {
-      const s = await fetch('/api/config/minimax').then((r) => r.json());
+      const s = await fetch(endpoint).then((r) => r.json());
       if (s.configured) {
         const src = s.source === 'env' ? t('settings.audio.source_env') : t('settings.audio.source_config');
         statusEl.innerHTML = `<span class="agent-status-dot ok"></span>${esc(t('settings.audio.configured', { key: s.maskedKey, source: src }))}`;
@@ -3022,10 +3118,10 @@ async function renderSettingsAudio(panel) {
   };
   await refresh();
 
-  // Region quick-pick: fills the Base URL with the correct regional endpoint.
-  // MiniMax keys are region-bound (an api.minimax.io key won't auth against
-  // api.minimaxi.com and vice-versa), so picking the wrong region is the #1
-  // cause of voiceover failures (issue #4).
+  // Region quick-pick (MiniMax only): fills the Base URL with the correct
+  // regional endpoint. MiniMax keys are region-bound (an api.minimax.io key
+  // won't auth against api.minimaxi.com and vice-versa), so picking the wrong
+  // region is the #1 cause of voiceover failures (issue #4).
   panel.querySelectorAll('#mm-region .st-preset').forEach((btn) => {
     btn.onclick = () => {
       baseInput.value = btn.dataset.url;
@@ -3038,7 +3134,7 @@ async function renderSettingsAudio(panel) {
     if (!apiKey) { saveState.textContent = t('settings.audio.need_key'); return; }
     saveState.textContent = t('settings.audio.saving');
     try {
-      const r = await fetch('/api/config/minimax', {
+      const r = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ apiKey, baseUrl: baseInput.value.trim() }),
@@ -3053,7 +3149,7 @@ async function renderSettingsAudio(panel) {
   };
 
   panel.querySelector('#mm-clear').onclick = async () => {
-    await fetch('/api/config/minimax', { method: 'DELETE' });
+    await fetch(endpoint, { method: 'DELETE' });
     keyInput.value = '';
     baseInput.value = '';
     saveState.textContent = '';

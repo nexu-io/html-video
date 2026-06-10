@@ -19,3 +19,10 @@ export {
   generateMusic,
 } from './minimax.js';
 export type { MinimaxCredentials, MinimaxAudioResult } from './minimax.js';
+export {
+  resolveSenseAudioCredentials,
+  generateTtsSenseAudio,
+  listSenseAudioVoices,
+} from './senseaudio.js';
+export type { SenseAudioCredentials, SenseAudioVoice } from './senseaudio.js';
+export type { GeneratedAudio, BearerAudioCredentials } from './audio-http.js';
