@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
+import { platform } from 'node:os';
 import { promisify } from 'node:util';
 import { AGENT_DEFS } from './registry.js';
 import type { AgentDef, DetectedAgent } from './types.js';
@@ -7,12 +9,51 @@ import type { AgentDef, DetectedAgent } from './types.js';
 const exec = promisify(execFile);
 
 async function which(bin: string): Promise<string | null> {
+  const direct = resolveCommandSync(bin);
+  if (direct) return direct;
   try {
-    const { stdout } = await exec('which', [bin], { timeout: 2000 });
-    return stdout.trim() || null;
+    const cmd = platform() === 'win32' ? 'where.exe' : 'which';
+    const { stdout } = await exec(cmd, [bin], { timeout: 2000 });
+    return stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) ?? null;
   } catch {
     return null;
   }
+}
+
+export function resolveCommandSync(bin: string): string | null {
+  try {
+    accessSync(bin, constants.X_OK);
+    return bin;
+  } catch {
+    if (isAbsolute(bin)) return null;
+  }
+
+  const pathEntries = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
+  const extensions =
+    platform() === 'win32'
+      ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+          .split(';')
+          .filter(Boolean)
+      : [''];
+  const candidates = platform() === 'win32' && /\.[^\\/]+$/.test(bin)
+    ? [bin]
+    : extensions.map((ext) => `${bin}${ext.toLowerCase()}`);
+
+  for (const dir of pathEntries) {
+    for (const candidate of candidates) {
+      const full = join(dir, candidate);
+      try {
+        accessSync(full, constants.X_OK);
+        return full;
+      } catch {
+        /* keep looking */
+      }
+    }
+  }
+  return null;
 }
 
 /** PATH → static binFallbacks → async resolveBinFallback (e.g. bundled npm pkg). */

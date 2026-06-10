@@ -1,5 +1,9 @@
 import { spawn as cpSpawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { platform } from 'node:os';
+import { dirname, join, normalize } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { resolveCommandSync } from './detect.js';
 import type { AgentDef, AgentEvent, AgentInvokeContext, SpawnHandle } from './types.js';
 
 /**
@@ -71,11 +75,16 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
 
   const args = def.buildArgs(prompt, context);
   const env = { ...process.env, ...(def.env ?? {}) };
+  const bin = resolveCommandSync(def.bin) ?? def.bin;
+  const command = commandForSpawn(bin, args);
 
-  const child = cpSpawn(def.bin, args, {
+  const child = cpSpawn(command.bin, command.args, {
     cwd: context.cwd,
     env,
     stdio: ['pipe', 'pipe', 'pipe'],
+    ...(command.windowsVerbatimArguments !== undefined && {
+      windowsVerbatimArguments: command.windowsVerbatimArguments,
+    }),
   });
 
   if (def.promptViaStdin && child.stdin) {
@@ -168,5 +177,72 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     },
     done,
   };
+}
+
+function commandForSpawn(
+  bin: string,
+  args: string[],
+): { bin: string; args: string[]; windowsVerbatimArguments?: boolean } {
+  if (platform() !== 'win32' || !/\.(?:cmd|bat)$/i.test(bin)) {
+    return { bin, args };
+  }
+
+  const npmShim = commandForNpmShim(bin, args);
+  if (npmShim) return npmShim;
+
+  const comspec = process.env.ComSpec || 'cmd.exe';
+  const commandLine = ['call', quoteCmdArg(bin), ...args.map(quoteCmdArg)].join(' ');
+  return {
+    bin: comspec,
+    args: ['/d', '/c', commandLine],
+    windowsVerbatimArguments: true,
+  };
+}
+
+function commandForNpmShim(
+  bin: string,
+  args: string[],
+): { bin: string; args: string[] } | null {
+  let text: string;
+  try {
+    text = readFileSync(bin, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const shimDir = dirname(bin);
+  const scriptPath = resolveNpmShimScript(text, shimDir);
+  if (!scriptPath || !existsSync(scriptPath)) return null;
+
+  const bundledNode = join(shimDir, 'node.exe');
+  const nodeBin = existsSync(bundledNode) ? bundledNode : (resolveCommandSync('node') ?? 'node');
+  return { bin: nodeBin, args: [scriptPath, ...args] };
+}
+
+function resolveNpmShimScript(text: string, shimDir: string): string | null {
+  const dp0Vars = new Map<string, string>();
+  const setDp0Re = /^\s*set\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*%~dp0\s*$/gim;
+  for (const match of text.matchAll(setDp0Re)) {
+    if (match[1]) dp0Vars.set(match[1].toLowerCase(), shimDir);
+  }
+
+  const dp0ExecRe = /"%~dp0\\?([^"]*?node_modules\\[^"]+)"\s+%\*/gi;
+  for (const match of text.matchAll(dp0ExecRe)) {
+    if (match[1]) return normalize(join(shimDir, match[1]));
+  }
+
+  const varExecRe = /"%([A-Za-z_][A-Za-z0-9_]*)%\\?([^"]*?node_modules\\[^"]+)"\s+%\*/gi;
+  for (const match of text.matchAll(varExecRe)) {
+    const base = match[1] ? dp0Vars.get(match[1].toLowerCase()) : undefined;
+    const relative = match[2];
+    if (!base || !relative) continue;
+    return normalize(join(base, relative));
+  }
+  return null;
+}
+
+function quoteCmdArg(arg: string): string {
+  if (arg.length === 0) return '""';
+  return `"${arg.replace(/"/g, '""')}"`;
 }
 
