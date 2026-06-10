@@ -1,0 +1,121 @@
+spec_version: 1
+id: frame-data-line
+name: Data Line Chart
+description: >
+  A native Remotion line chart: SVG path draws in with stroke-dashoffset
+  animation, gradient area fill beneath, data point dots pop in with staggered
+  timing, and a final trend arrow shows the overall direction. Pure system
+  fonts, offline-safe.
+
+engine: remotion
+engine_version: ^4.0.0
+source_entry: source/entry.ts
+native:
+  compositionId: DataLine
+
+category: data-viz
+subcategory: line-chart
+tags: [data, chart, line, trend, area, svg, remotion, native, animated, timeline]
+
+best_for:
+  - "Time-series trends with animated path drawing"
+  - "Monthly/quarterly metrics that tell a direction story"
+  - "Showing growth or decline with visible momentum"
+
+not_for:
+  - "More than ~24 data points (labels get cramped)"
+  - "Comparing multiple series (single line only)"
+
+output:
+  formats: [mp4, webm]
+  default_format: mp4
+  resolution:
+    default: { width: 1920, height: 1080 }
+    supported_aspects: ["16:9", "9:16", "1:1"]
+  fps:
+    default: 30
+    supported: [30, 60]
+  duration:
+    type: variable
+    min_sec: 3
+    max_sec: 10
+  alpha: true
+  audio:
+    supported: false
+    expected_inputs: []
+
+inputs:
+  schema:
+    type: object
+    required: [data]
+    properties:
+      data:
+        type: object
+        required: [points]
+        properties:
+          title: { type: "string", maxLength: 48, description: "Optional heading" }
+          unit: { type: "string", maxLength: 4, description: "Optional suffix (e.g. K, %)" }
+          minY: { type: "number", description: "Y-axis minimum. Auto if omitted" }
+          maxY: { type: "number", description: "Y-axis maximum. Auto if omitted" }
+          gridLines: { type: "number", description: "Grid lines count. Default 5" }
+          yFormat: { type: "string", enum: ["number", "percent", "currency"], description: "Default number" }
+          points:
+            type: "array"
+            minItems: 2
+            maxItems: 24
+            items:
+              type: object
+              required: [label, value]
+              properties:
+                label: { type: "string", maxLength: 12 }
+                value: { type: "number" }
+      background: { type: "string", description: "Default #0E0E10" }
+      foreground: { type: "string", description: "Default #F5F5F2" }
+      muted: { type: "string", description: "Default #888888" }
+      accent: { type: "string", description: "Line + dot color. Default #3B82F6" }
+      areaColor: { type: "string", description: "Area gradient color. Defaults to accent" }
+  examples:
+    - {"data": {"title": "Monthly Active Users", "unit": "K", "points": [{"label": "Jan", "value": 1200}, {"label": "Feb", "value": 2400}, {"label": "Mar", "value": 1800}, {"label": "Apr", "value": 4200}, {"label": "May", "value": 3600}, {"label": "Jun", "value": 6100}]}}
+    - {"data": {"title": "Conversion Rate", "yFormat": "percent", "points": [{"label": "Q1", "value": 0.032}, {"label": "Q2", "value": 0.045}, {"label": "Q3", "value": 0.041}, {"label": "Q4", "value": 0.058}]}, "accent": "#22C55E"}
+
+license:
+  spdx: Apache-2.0
+  attribution_required: true
+  redistribution_allowed: true
+  commercial_use: true
+
+provenance:
+  origin:
+    name: "none"
+    kind: none
+  via_skill:
+    name: "Hermes Studio"
+    author: "chenys"
+    url: https://github.com/chenys/hermes-studio
+    license: Apache-2.0
+    source_file: "src/video/scenes.tsx (SceneMonthlyTrend)"
+  transformation: >
+    Adapted from Hermes Studio SceneMonthlyTrend (SCPM KPI dashboard). Uses
+    stroke-dashoffset for line drawing, gradient area fill, spring data points,
+    and a trend arrow. Generalized from KPI scores to any time-series data.
+    Pure system fonts, responsive layout.
+
+author:
+  name: nexu-io
+  url: https://github.com/nexu-io
+  contact: open-design@nexu.io
+
+version: 0.1.0
+changelog:
+  - version: 0.1.0
+    date: 2026-06-09
+    notes: Native Remotion line chart template with animated path drawing.
+
+preview:
+  poster: preview.png
+
+performance:
+  reference_render:
+    duration_sec: 5
+    render_wall_clock_sec: 45
+    machine: "M2 MacBook Air"
