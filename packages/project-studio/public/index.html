@@ -23,16 +23,15 @@
   .toolbar { background: var(--bg-panel); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 18px; padding: 0 22px; min-width: 0; }
   .toolbar .brand { display: flex; align-items: center; gap: 10px; padding-right: 14px;
-    border-right: 1px solid var(--border); margin-right: 6px; }
+    border-right: 1px solid var(--border); margin-right: 6px; flex-shrink: 0; white-space: nowrap; }
   .toolbar .brand .logo { width: 28px; height: 28px; border-radius: var(--radius-sm);
     background: var(--accent); color: var(--accent-fg); display: grid; place-items: center;
     font-weight: 700; font-family: var(--font-serif); font-size: 16px; }
   .toolbar .brand h1 { font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
   .toolbar .brand .v { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
-  .toolbar .name-input { background: transparent; border: 0; color: var(--text);
-    font-size: 14px; font-weight: 500; padding: 5px 8px; border-radius: var(--radius-sm);
-    width: 220px; outline: none; transition: background .12s; }
-  .toolbar .name-input:hover { background: var(--bg-subtle); }
+  .toolbar .proj-title { font-size: 14px; font-weight: 500; padding: 5px 8px; color: var(--text);
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toolbar .proj-title.muted { color: var(--text-muted); font-weight: 400; }
 
   .toolbar-section { display: flex; align-items: center; gap: 8px; }
   .sec-label { font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
@@ -113,9 +112,17 @@
   .toolbar .agent-status.connected { background: var(--green-bg); color: var(--green); }
   .toolbar .agent-status.missing { background: var(--bg-subtle); color: var(--text-muted); }
   .toolbar .grow { flex: 1; }
+  .app-nav { display: flex; align-items: center; gap: 4px; margin-left: 6px; flex-shrink: 0; }
+  .app-nav-btn { background: transparent; border: 0; color: var(--text-muted);
+    padding: 6px 12px; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 500;
+    cursor: pointer; transition: color .12s, background .12s; white-space: nowrap; }
+  .app-nav-btn:hover { color: var(--text); background: var(--bg-subtle); }
+  .app-nav-btn.active { color: var(--text); background: var(--accent-soft); }
+  .toolbar-create-tools { display: contents; }
+  body.app-view-library .toolbar-create-tools { display: none; }
   .toolbar .export-btn { background: var(--accent); color: var(--accent-fg); border: 0;
     padding: 8px 18px; border-radius: var(--radius-sm); font-weight: 500; cursor: pointer;
-    font-size: 12.5px; transition: background .15s;
+    font-size: 12.5px; transition: background .15s; white-space: nowrap; flex-shrink: 0;
     box-shadow: inset 0 -1px 0 rgba(0,0,0,.08), 0 4px 10px rgba(201, 100, 66, .18); }
   .toolbar .export-btn:hover:not(:disabled) { background: var(--accent-hover); }
   .toolbar .export-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
@@ -131,9 +138,14 @@
   /* Discord stays icon-only no matter the width. */
   .toolbar .tb-link.tb-link-icon-only { padding: 6px; }
   .toolbar .tb-link.tb-link-icon-only .tb-link-label { display: none; }
-  @media (max-width: 1100px) {
+  /* The Create | My Videos nav added ~180px to the bar — drop the link
+     labels earlier so the create tools never get squeezed. */
+  @media (max-width: 1360px) {
     .toolbar .tb-link-label { display: none; }
     .toolbar .tb-link { padding: 6px; }
+  }
+  @media (max-width: 1200px) {
+    .toolbar { gap: 10px; }
   }
   .toolbar .icon-btn-toolbar { background: transparent; border: 1px solid transparent;
     color: var(--text-muted); cursor: pointer; padding: 6px;
@@ -1034,6 +1046,53 @@
   .small-modal button.primary { background: var(--accent); color: var(--accent-fg);
     border-color: var(--accent); font-weight: 500; }
   .small-modal button.primary:hover { background: var(--accent-hover); }
+
+  /* ===== My Videos library ===== */
+  .library-pane { grid-column: 1 / -1; display: flex; flex-direction: column;
+    min-height: 0; background: var(--bg); overflow: hidden; }
+  .library-head { display: flex; align-items: center; gap: 12px; padding: 18px 24px 12px;
+    border-bottom: 1px solid var(--border); background: var(--bg-panel); flex-shrink: 0; }
+  .library-head h2 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  .library-head .sub { font-size: 12px; color: var(--text-muted); }
+  .library-body { flex: 1; overflow: auto; padding: 20px 24px 28px; }
+  .library-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 320px; text-align: center; color: var(--text-muted); gap: 10px; }
+  .library-empty .ico { font-size: 42px; opacity: .85; }
+  .library-empty h3 { font-size: 16px; color: var(--text); font-weight: 600; }
+  .library-empty p { max-width: 420px; line-height: 1.55; }
+  .library-empty button { margin-top: 8px; background: var(--accent); color: var(--accent-fg);
+    border: 0; padding: 9px 18px; border-radius: var(--radius-sm); font-weight: 500; cursor: pointer; }
+  .library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .library-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column; transition: border-color .12s, box-shadow .12s; }
+  .library-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .library-card-thumb { aspect-ratio: 16/9; background: linear-gradient(135deg, var(--bg-subtle) 0%, var(--bg) 100%);
+    display: grid; place-items: center; font-size: 32px; color: var(--text-faint); border-bottom: 1px solid var(--border); }
+  .library-card-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .library-card-title { font-weight: 600; font-size: 13px; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .library-card-sub { font-size: 11px; color: var(--text-muted); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .library-card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .library-card-actions button, .library-card-actions a.lib-btn { font-size: 11.5px; padding: 5px 10px;
+    border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .library-card-actions button.primary, .library-card-actions a.lib-btn.primary {
+    background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 500; }
+  .library-player { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .library-player video { width: 100%; border-radius: var(--radius); background: #000;
+    border: 1px solid var(--border); }
+  .library-player-meta h3 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .library-player-meta .date { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+  .library-player-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .library-player-actions button, .library-player-actions a.lib-btn {
+    font-size: 12.5px; padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--bg-panel); color: var(--text); cursor: pointer; text-decoration: none; }
+  .library-player-actions button.primary, .library-player-actions a.lib-btn.primary {
+    background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 500; }
+  .library-back { background: transparent; border: 0; color: var(--text-muted); cursor: pointer;
+    font-size: 12px; padding: 4px 0; display: inline-flex; align-items: center; gap: 4px; }
+  .library-back:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -1048,7 +1107,13 @@
       </div>
     </div>
 
-    <input class="name-input" id="proj-name" data-i18n-attr="placeholder:app.no_project" disabled />
+    <nav class="app-nav" id="app-nav" aria-label="Main">
+      <button type="button" class="app-nav-btn active" id="nav-create" data-view="create" data-i18n="nav.create">Create</button>
+      <button type="button" class="app-nav-btn" id="nav-library" data-view="library" data-i18n="nav.library">My Videos</button>
+    </nav>
+
+    <div class="toolbar-create-tools" id="toolbar-create-tools">
+    <span class="proj-title muted" id="proj-name"></span>
 
     <div class="toolbar-section">
       <span class="sec-label" data-i18n="toolbar.template">Template</span>
@@ -1094,6 +1159,7 @@
     </button>
 
     <button class="export-btn" id="btn-export" disabled data-i18n="toolbar.export_mp4">Export MP4</button>
+    </div>
   </header>
 
   <div class="body" id="body">
