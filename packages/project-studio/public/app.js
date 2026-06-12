@@ -35,6 +35,7 @@ const NARRATION_VOICES = [
 ];
 
 const API = {
+  library: () => fetch('/api/library').then(r => r.json()),
   projects: () => fetch('/api/projects').then(r => r.json()),
   createProject: b => fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json()),
   getProject: id => fetch(`/api/projects/${id}`).then(r => r.json()),
@@ -75,6 +76,11 @@ const state = {
   // Phase C: per-frame native Remotion enhancement
   frameKinds: {},          // { [graphNodeId]: 'entity'|'data'|'text' } for the selected project
   enhancing: null,         // { nodeId, pct, stage } while a single-frame enhance render is in flight
+  // My Videos library
+  appView: 'create',       // 'create' | 'library'
+  libraryView: 'list',     // 'list' | 'player'
+  libraryItems: [],        // flattened exports from GET /api/library
+  libraryPlayer: null,     // { projectId, projectName, filename, displayName, createdAt }
 };
 
 // ============== boot ==============
@@ -198,14 +204,24 @@ async function startExportStream() {
             content: seconds ? t('export.done_seconds', { seconds }) : t('export.done_no_seconds'),
             ts: Date.now(),
           });
+          const exportItem = ev.project && ev.output_path
+            ? libraryItemFromProjectExport(ev.project, ev.output_path)
+            : null;
           state.messages.push({
             role: 'export-done',
             content: ev.output_path,
+            exportItem,
             ts: Date.now(),
           });
           renderChatLog();
           renderToolbar();
-          refreshProjects();
+          await refreshProjects();
+          if (exportItem) {
+            await navigateToLibraryPlayer(exportItem);
+            toast(t('export.ready_player'), 'success');
+          } else {
+            toast(t('export.ready_toast'), 'success');
+          }
         } else if (ev.type === 'export_failed') {
           state.exporting = false;
           state.exportProgress = null;
@@ -350,8 +366,19 @@ async function refreshProjects() {
 }
 
 async function selectProject(id) {
+  let res;
+  try {
+    res = await API.getProject(id);
+  } catch (e) {
+    toast(`${e?.message ?? e}`, 'error');
+    return;
+  }
+  if (!res?.project) {
+    toast(res?.error || t('library.project_missing'), 'error');
+    return;
+  }
   state.selectedId = id;
-  state.selected = (await API.getProject(id)).project;
+  state.selected = res.project;
   state.activeFrameId = null;  // reset frame selection on project switch
   state.iterateFocusFrameId = null;
   state.editTextMode = false;
@@ -374,9 +401,21 @@ async function selectProject(id) {
   // only an in-memory chat message and vanished on switch).
   const exports = state.selected?.exports ?? [];
   if (exports.length && exports[exports.length - 1]?.path) {
-    state.messages.push({ role: 'export-done', content: exports[exports.length - 1].path, ts: Date.now() });
+    const p = exports[exports.length - 1].path;
+    state.messages.push({
+      role: 'export-done',
+      content: p,
+      exportItem: libraryItemFromProjectExport(state.selected, p),
+      ts: Date.now(),
+    });
   } else if (state.selected?.lastOutputMp4Path) {
-    state.messages.push({ role: 'export-done', content: state.selected.lastOutputMp4Path, ts: Date.now() });
+    const p = state.selected.lastOutputMp4Path;
+    state.messages.push({
+      role: 'export-done',
+      content: p,
+      exportItem: libraryItemFromProjectExport(state.selected, p),
+      ts: Date.now(),
+    });
   }
   // If a generation is still running on the backend for this project, surface a
   // live "still generating" line (the in-memory progress lines were lost on the
@@ -387,9 +426,10 @@ async function selectProject(id) {
       state.messages.push({ role: 'preview-event', content: t('chat.still_generating'), ts: Date.now() });
     }
   } catch { /* non-fatal */ }
-  renderSidebar();
   renderToolbar();   // <-- bug fix: toolbar buttons (template / agent / export) must
                      //     be re-enabled after a project is selected
+  // renderMain rebuilds the create-workspace DOM (incl. #project-list) then
+  // calls renderSidebar — must run before sidebar when coming from library view.
   renderMain();
   await refreshTextFields();
 }
@@ -397,6 +437,7 @@ async function selectProject(id) {
 // ============== sidebar ==============
 function renderSidebar() {
   const list = document.getElementById('project-list');
+  if (!list) return; // library view — sidebar not mounted
   if (!state.projects.length) {
     list.innerHTML = `<div class="empty-list">${t('sidebar.empty_list')}</div>`;
     return;
@@ -495,16 +536,128 @@ function openProjectMenu(anchor) {
   }, 0);
 }
 
+// ============== My Videos library ==============
+function exportPlayUrl(projectId, filename, download = false) {
+  const base = `/preview/${encodeURIComponent(projectId)}/exports/${encodeURIComponent(filename)}`;
+  return download ? `${base}?download=1` : base;
+}
+
+// Mirrors core's formatExportDisplayName — fallback label when an export
+// record predates the displayName field.
+function formatExportDisplayName(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function libraryItemFromProjectExport(project, outputPath) {
+  if (!project?.id || !outputPath) return null;
+  const fname = outputPath.split('/').pop() || 'output.mp4';
+  const ex = (project.exports ?? []).find((e) => e.path === outputPath)
+    ?? (project.exports ?? []).slice(-1)[0];
+  const createdAt = ex?.createdAt ?? new Date().toISOString();
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    filename: ex?.filename ?? fname,
+    displayName: ex?.displayName ?? formatExportDisplayName(createdAt),
+    createdAt,
+  };
+}
+
+async function navigateToLibraryPlayer(item) {
+  if (!item) return;
+  state.appView = 'library';
+  document.body.classList.add('app-view-library');
+  state.libraryView = 'player';
+  state.libraryPlayer = item;
+  await refreshLibrary();
+  const fresh = state.libraryItems.find(
+    (x) => x.projectId === item.projectId && x.filename === item.filename,
+  );
+  if (fresh) state.libraryPlayer = fresh;
+  renderToolbar();
+  renderMain();
+}
+
+function formatLibraryDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString(getLocale() === 'zh' ? 'zh-CN' : undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+async function refreshLibrary() {
+  try {
+    const data = await API.library();
+    state.libraryItems = data.items ?? [];
+  } catch {
+    state.libraryItems = [];
+  }
+}
+
+async function switchAppView(view) {
+  if (view !== 'create' && view !== 'library') return;
+  state.appView = view;
+  document.body.classList.toggle('app-view-library', view === 'library');
+  if (view === 'library') {
+    state.libraryView = 'list';
+    state.libraryPlayer = null;
+    await refreshLibrary();
+  }
+  renderToolbar();
+  renderMain();
+}
+
+function openLibraryPlayer(item) {
+  state.libraryView = 'player';
+  state.libraryPlayer = item;
+  renderMain();
+}
+
+function backToLibraryList() {
+  state.libraryView = 'list';
+  state.libraryPlayer = null;
+  renderMain();
+}
+
+async function continueEditingFromLibrary(projectId) {
+  if (!projectId) {
+    toast(t('library.project_missing'), 'error');
+    return;
+  }
+  state.appView = 'create';
+  document.body.classList.remove('app-view-library');
+  state.libraryView = 'list';
+  state.libraryPlayer = null;
+  await selectProject(projectId);
+}
+
 // ============== toolbar ==============
 function renderToolbar() {
+  const navCreate = document.getElementById('nav-create');
+  const navLibrary = document.getElementById('nav-library');
+  if (navCreate) navCreate.classList.toggle('active', state.appView === 'create');
+  if (navLibrary) navLibrary.classList.toggle('active', state.appView === 'library');
+
   const p = state.selected;
-  const nameInput = document.getElementById('proj-name');
+  const nameEl = document.getElementById('proj-name');
   const pickBtn = document.getElementById('btn-pick-template');
   const exportBtn = document.getElementById('btn-export');
 
-  nameInput.disabled = !p;
-  nameInput.placeholder = p ? '' : t('app.no_project');
-  nameInput.value = p?.name ?? '';
+  if (p?.name) {
+    nameEl.textContent = p.name;
+    nameEl.classList.remove('muted');
+  } else {
+    nameEl.textContent = t('app.no_project');
+    nameEl.classList.add('muted');
+  }
 
   pickBtn.disabled = !p;
   if (p && p.templateId) {
@@ -687,6 +840,11 @@ function _agentMenuOutside(e) {
 // reuse / re-render can't strand stale event handlers. (Joey reported
 // template + agent picks not responding in v0.6.2.)
 function wireToolbar() {
+  const navCreate = document.getElementById('nav-create');
+  const navLibrary = document.getElementById('nav-library');
+  if (navCreate) navCreate.onclick = () => switchAppView('create');
+  if (navLibrary) navLibrary.onclick = () => switchAppView('library');
+
   const settingsBtn = document.getElementById('btn-settings');
   if (settingsBtn) settingsBtn.onclick = openSettingsModal;
   const pickBtn = document.getElementById('btn-pick-template');
@@ -727,12 +885,6 @@ function wireToolbar() {
       startExportStream();
     };
   }
-  const nameInput = document.getElementById('proj-name');
-  if (nameInput) {
-    nameInput.onblur = () => {
-      if (state.selected) nameInput.value = state.selected.name;
-    };
-  }
   const sidebarToggle = document.getElementById('btn-sidebar-toggle');
   if (sidebarToggle) {
     sidebarToggle.onclick = () => {
@@ -741,8 +893,92 @@ function wireToolbar() {
   }
 }
 
+function renderLibraryMain() {
+  const body = document.getElementById('body');
+  if (state.libraryView === 'player' && state.libraryPlayer) {
+    const item = state.libraryPlayer;
+    const src = exportPlayUrl(item.projectId, item.filename);
+    const dl = exportPlayUrl(item.projectId, item.filename, true);
+    body.innerHTML = `
+      <section class="library-pane">
+        <div class="library-head">
+          <button type="button" class="library-back" id="lib-back">${t('library.back')}</button>
+        </div>
+        <div class="library-body">
+          <div class="library-player">
+            <video id="library-video" src="${esc(src)}" controls playsinline></video>
+            <div class="library-player-meta">
+              <h3>${esc(item.displayName ?? item.projectName)}</h3>
+              <div class="date">${esc(item.projectName)} · ${esc(formatLibraryDate(item.createdAt))}</div>
+            </div>
+            <div class="library-player-actions">
+              <a class="lib-btn primary" href="${esc(dl)}" download>${t('library.download')}</a>
+              <button type="button" id="lib-continue">${t('library.continue_edit')}</button>
+              <button type="button" id="lib-back2">${t('library.back_list')}</button>
+            </div>
+          </div>
+        </div>
+      </section>`;
+    document.getElementById('lib-back').onclick = backToLibraryList;
+    document.getElementById('lib-back2').onclick = backToLibraryList;
+    document.getElementById('lib-continue').onclick = () => continueEditingFromLibrary(item.projectId);
+    return;
+  }
+
+  const items = state.libraryItems;
+  const cards = items.map((item) => `<article class="library-card" data-pid="${esc(item.projectId)}" data-fn="${esc(item.filename)}">
+      <div class="library-card-thumb" aria-hidden="true">🎬</div>
+      <div class="library-card-body">
+        <div class="library-card-title" title="${esc(item.displayName ?? item.projectName)}">${esc(item.displayName ?? item.projectName)}</div>
+        <div class="library-card-sub">${esc(item.projectName)}</div>
+        <div class="library-card-actions">
+          <button type="button" class="primary lib-play">${t('library.play')}</button>
+          <a class="lib-btn" href="${esc(exportPlayUrl(item.projectId, item.filename, true))}" download>${t('library.download')}</a>
+          <button type="button" class="lib-edit">${t('library.continue_edit')}</button>
+        </div>
+      </div>
+    </article>`).join('');
+
+  body.innerHTML = `
+    <section class="library-pane">
+      <div class="library-head">
+        <h2>${t('library.title')}</h2>
+        <span class="sub">${items.length ? t('library.count', { n: items.length }) : t('library.empty_sub')}</span>
+      </div>
+      <div class="library-body">
+        ${items.length
+          ? `<div class="library-grid">${cards}</div>`
+          : `<div class="library-empty">
+              <div class="ico">📼</div>
+              <h3>${t('library.empty_title')}</h3>
+              <p>${t('library.empty_body')}</p>
+              <button type="button" id="lib-go-create">${t('library.go_create')}</button>
+            </div>`}
+      </div>
+    </section>`;
+
+  const goCreate = document.getElementById('lib-go-create');
+  if (goCreate) goCreate.onclick = () => switchAppView('create');
+  body.querySelectorAll('.library-card').forEach((card) => {
+    const pid = card.dataset.pid;
+    const fn = card.dataset.fn;
+    const item = items.find((x) => x.projectId === pid && x.filename === fn);
+    if (!item) return;
+    card.querySelector('.lib-play')?.addEventListener('click', (e) => { e.stopPropagation(); openLibraryPlayer(item); });
+    card.querySelector('.lib-edit')?.addEventListener('click', (e) => { e.stopPropagation(); continueEditingFromLibrary(item.projectId); });
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('a, button')) return;
+      openLibraryPlayer(item);
+    });
+  });
+}
+
 // ============== main: 4-column body ==============
 function renderMain() {
+  if (state.appView === 'library') {
+    renderLibraryMain();
+    return;
+  }
   const body = document.getElementById('body');
   body.innerHTML = `
     <aside class="sidebar">
@@ -1486,7 +1722,12 @@ function renderChatLog() {
       const action = btn.dataset.exportAction;
       const card = btn.closest('.export-done');
       const path = card?.querySelector('.export-path code')?.textContent ?? '';
-      if (action === 'reveal') {
+      if (action === 'play') {
+        const item = state.messages.find((msg) => msg.exportItem?.filename === btn.dataset.fn
+          && msg.exportItem?.projectId === btn.dataset.pid)?.exportItem
+          ?? libraryItemFromProjectExport(state.selected, path);
+        if (item) await navigateToLibraryPlayer(item);
+      } else if (action === 'reveal') {
         await revealExportedFile();
       } else if (action === 'copy' && path) {
         try {
@@ -1530,15 +1771,19 @@ function renderMessage(m, idx) {
   if (m.role === 'thinking') return `<div class="msg thinking">${esc(m.content || t('chat.thinking'))}</div>`;
   if (m.role === 'export-done') {
     const path = m.content || '';
-    const fname = path.split('/').pop() || 'output.mp4';
+    const item = m.exportItem ?? libraryItemFromProjectExport(state.selected, path);
+    const fname = item?.filename ?? (path.split('/').pop() || 'output.mp4');
+    const label = item?.displayName ?? fname;
+    const pid = item?.projectId ?? state.selected?.id ?? '';
     return `<div class="msg export-done">
       <div class="export-title">${t('export.title')}</div>
       <div class="export-path"><code>${esc(path)}</code></div>
       <div class="export-actions">
+        <button class="btn-reveal" data-export-action="play" data-pid="${esc(pid)}" data-fn="${esc(fname)}">${t('library.play')}</button>
         <button class="btn-reveal" data-export-action="reveal">${t('export.reveal')}</button>
         <button class="btn-copy-path" data-export-action="copy">${t('export.copy_path')}</button>
       </div>
-      <div class="export-fname">${esc(fname)}</div>
+      <div class="export-fname">${esc(label)}</div>
     </div>`;
   }
   // assistant: try each card protocol in turn
