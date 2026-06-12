@@ -944,8 +944,6 @@ function renderLibraryMain() {
       <div class="library-head">
         <h2>${t('library.title')}</h2>
         <span class="sub">${items.length ? t('library.count', { n: items.length }) : t('library.empty_sub')}</span>
-        <span class="grow"></span>
-        <button type="button" class="reload-btn" id="lib-refresh">${t('library.refresh')}</button>
       </div>
       <div class="library-body">
         ${items.length
@@ -959,8 +957,6 @@ function renderLibraryMain() {
       </div>
     </section>`;
 
-  const refreshBtn = document.getElementById('lib-refresh');
-  if (refreshBtn) refreshBtn.onclick = async () => { await refreshLibrary(); renderMain(); };
   const goCreate = document.getElementById('lib-go-create');
   if (goCreate) goCreate.onclick = () => switchAppView('create');
   body.querySelectorAll('.library-card').forEach((card) => {
