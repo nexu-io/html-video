@@ -398,7 +398,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           process.stderr.write(
             `[studio:export] proj=${projectId} done in ${ms}ms → ${outputPath}\n`,
           );
-          sse({ type: 'export_done', output_path: outputPath, project, elapsed_ms: ms });
+          // Compute the actual video duration to show in the UI (not the render wall-clock time).
+          const videoDurationSec = (project.frames && project.frames.length > 0)
+            ? project.frames.reduce((s, f) => s + (f.durationSec || 0), 0)
+            : (project.preferences.durationTargetSec ?? null);
+          sse({ type: 'export_done', output_path: outputPath, project, elapsed_ms: ms, duration_sec: videoDurationSec });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`[studio:export] proj=${projectId} failed: ${msg}\n`);
@@ -957,6 +961,16 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         let assistantText = '';
         let textChunks = 0;
         let summaryLine = '';
+
+        // Persist user duration preference at generate time so exportMp4 can
+        // honor it regardless of single-frame vs multi-frame path.
+        if (phaseInfo.phase === 'generate' && phaseInfo.inputs.collected) {
+          const parsedDur = Number(phaseInfo.inputs.collected.duration ?? '') || 0;
+          if (parsedDur > 0) {
+            project.preferences = { ...project.preferences, durationTargetSec: parsedDur };
+            await ctx.projects.save(project);
+          }
+        }
 
         // ---- generate-phase: multi-frame path runs split (graph + per-frame) ----
         // Empirically claude --print returns 1 byte ~50% of the time when asked
