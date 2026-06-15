@@ -1160,6 +1160,51 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           }
         }
 
+        // Auto-advance: the content prompt instructs the agent to append
+        // <!-- hv-phase:content-question --> when it still needs more info.
+        // Absence of that marker means it has enough — immediately run the
+        // style phase in the same SSE stream so the user sees the style card
+        // without having to send an extra "ok" message.
+        if (phaseInfo.phase === 'content' && !/<!--\s*hv-phase:content-question\s*-->/i.test(assistantText)) {
+          const autoPickedType = lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType ?? '';
+          const stylePrompt = [
+            `The user has shared their content for a "${autoPickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`,
+            '```hv-options',
+            JSON.stringify({
+              meta: { phase: 'style' },
+              question: '视觉风格怎么定？',
+              options: [
+                { label: 'Cyberpunk glitch',    hint: '霓虹 / 故障感 / 高对比' },
+                { label: 'Swiss minimalist',    hint: '网格 / 无衬线 / 留白' },
+                { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
+                { label: 'Mono brutalist',      hint: '黑白 / 块状 / 粗体' },
+                { label: '从设计模板选',        hint: '上方挑一个现成模板' },
+              ],
+              allow_freeform: true,
+            }, null, 2),
+            '```',
+            '',
+            `Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`,
+            '',
+            `Do NOT write HTML this turn. Do NOT return an empty reply.`,
+          ].join('\n');
+          const styleHandle = spawnAgent({
+            def: agentDef,
+            prompt: stylePrompt,
+            context: { cwd: projectDir, ...(agentModel && { model: agentModel }) },
+            onEvent: (ev) => {
+              if (ev.type === 'text') {
+                assistantText += ev.chunk;
+                textChunks += 1;
+                sseWrite(ev);
+              } else if (ev.type === 'error') {
+                process.stderr.write(`[studio:msg] proj=${id} style-autoadvance error: ${ev.message}\n`);
+              }
+            },
+          });
+          await styleHandle.done;
+        }
+
         // Persist assistant message — strip the html / graph blocks when present (UI sees summary line)
         let persistText = summaryLine
           ? assistantText
