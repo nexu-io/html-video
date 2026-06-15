@@ -16,6 +16,7 @@
  */
 
 import { HtmlVideoError } from './errors.js';
+import type { TtsAudioResult } from './types/index.js';
 
 /** Default base URL. The old `api.minimaxi.chat` host is RETIRED server-side
  *  (issue #4). MiniMax now has two region-bound endpoints — international
@@ -43,16 +44,9 @@ export interface MinimaxCredentials {
   baseUrl: string;
 }
 
-export interface MinimaxAudioResult {
-  /** Decoded audio bytes (MP3). */
-  bytes: Buffer;
-  /** File extension to store under. */
-  ext: '.mp3';
-  /** Human-readable note of what was produced (provider · model · size). */
-  providerNote: string;
-  /** Reported duration in seconds, if the API surfaced it. */
-  durationSec?: number;
-}
+/** @deprecated Use the shared {@link TtsAudioResult}. Kept as an alias so
+ *  existing imports keep working. */
+export type MinimaxAudioResult = TtsAudioResult;
 
 /**
  * Resolve MiniMax credentials from the environment. Returns `null` (not throw)

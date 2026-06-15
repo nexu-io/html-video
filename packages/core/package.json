@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test test/"
+    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@html-video/content-graph": "workspace:*",

@@ -369,6 +369,22 @@ export interface FrameRecord {
 }
 
 /**
+ * Result of a TTS / audio synthesis call, shared across narration providers
+ * (MiniMax, FishAudio, …). Providers decode whatever wire format they speak
+ * (MiniMax: JSON+hex envelope; FishAudio: raw binary) into these common bytes.
+ */
+export interface TtsAudioResult {
+  /** Decoded audio bytes. */
+  bytes: Buffer;
+  /** File extension to store under (e.g. '.mp3', '.wav'). */
+  ext: string;
+  /** Human-readable note of what was produced (provider · model · size). */
+  providerNote: string;
+  /** Reported duration in seconds, if the provider surfaced it (cosmetic). */
+  durationSec?: number;
+}
+
+/**
  * v0.9: project-level soundtrack — one background music track + one narration
  * track mixed into the exported MP4. Both reference an entry in `assets[]`
  * (type 'audio'); this struct only holds the ids + mix preferences, so the
