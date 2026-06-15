@@ -1167,27 +1167,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // without having to send an extra "ok" message.
         if (phaseInfo.phase === 'content' && !/<!--\s*hv-phase:content-question\s*-->/i.test(assistantText)) {
           const autoPickedType = lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType ?? '';
-          const stylePrompt = [
-            `The user has shared their content for a "${autoPickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`,
-            '```hv-options',
-            JSON.stringify({
-              meta: { phase: 'style' },
-              question: '视觉风格怎么定？',
-              options: [
-                { label: 'Cyberpunk glitch',    hint: '霓虹 / 故障感 / 高对比' },
-                { label: 'Swiss minimalist',    hint: '网格 / 无衬线 / 留白' },
-                { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
-                { label: 'Mono brutalist',      hint: '黑白 / 块状 / 粗体' },
-                { label: '从设计模板选',        hint: '上方挑一个现成模板' },
-              ],
-              allow_freeform: true,
-            }, null, 2),
-            '```',
-            '',
-            `Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`,
-            '',
-            `Do NOT write HTML this turn. Do NOT return an empty reply.`,
-          ].join('\n');
+          const stylePrompt = buildStylePhasePrompt(autoPickedType);
           const styleHandle = spawnAgent({
             def: agentDef,
             prompt: stylePrompt,
@@ -2449,6 +2429,30 @@ function isMultiFrameType(pickedType: string): boolean {
   return !single;
 }
 
+function buildStylePhasePrompt(pickedType: string): string {
+  const p: string[] = [];
+  p.push(`The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
+  p.push('```hv-options');
+  p.push(JSON.stringify({
+    meta: { phase: 'style' },
+    question: '视觉风格怎么定？',
+    options: [
+      { label: 'Cyberpunk glitch',    hint: '霓虹 / 故障感 / 高对比' },
+      { label: 'Swiss minimalist',    hint: '网格 / 无衬线 / 留白' },
+      { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
+      { label: 'Mono brutalist',      hint: '黑白 / 块状 / 粗体' },
+      { label: '从设计模板选',        hint: '上方挑一个现成模板' },
+    ],
+    allow_freeform: true,
+  }, null, 2));
+  p.push('```');
+  p.push('');
+  p.push(`Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`);
+  p.push('');
+  p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
+  return p.join('\n');
+}
+
 function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   const { tmpl, exampleHtml, priorHtml, history, userText, attachments, openingTopic } = args;
 
@@ -2565,37 +2569,18 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       p.push(`The user has already shared:`);
       for (const t of turns) p.push(`  - ${t.slice(0, 200)}`);
       p.push('');
-      p.push(`Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "好，我有思路了，下一步是风格" / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`);
+      p.push(`Two options:`);
+      p.push(`- If you still need more info: ask ONE clarifying question and end your reply with the marker on its own line: <!-- hv-phase:content-question -->`);
+      p.push(`- If you have enough: write ONLY a one-line confirmation in the user's language (e.g. "好，我有思路了，下一步是风格。" / "Got it. Next: style."). Do NOT add the marker — the server will advance to style automatically.`);
     }
     p.push('');
-    p.push(`Reply in plain text + the marker. NO code blocks. Do NOT return an empty reply.`);
+    p.push(`Reply in plain text. NO code blocks. Do NOT return an empty reply.`);
     return p.join('\n');
   }
 
   // ---- style: hv-options card with style presets + "pick template" + freeform ----
   if (phase === 'style') {
-    const pickedType = inputs.pickedType ?? '';
-    const p: string[] = [];
-    p.push(`The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
-    p.push('```hv-options');
-    p.push(JSON.stringify({
-      meta: { phase: 'style' },
-      question: '视觉风格怎么定？',
-      options: [
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
-        { label: '从设计模板选',       hint: '上方挑一个现成模板' },
-      ],
-      allow_freeform: true,
-    }, null, 2));
-    p.push('```');
-    p.push('');
-    p.push(`Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`);
-    p.push('');
-    p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
-    return p.join('\n');
+    return buildStylePhasePrompt(inputs.pickedType ?? '');
   }
 
   // ---- need-template: user chose "from design template" but hasn't picked one
