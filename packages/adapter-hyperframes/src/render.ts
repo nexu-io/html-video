@@ -96,14 +96,28 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     await page.addInitScript(() => {
       const style = document.createElement('style');
       style.id = '__hv_freeze';
-      style.textContent =
-        '*, *::before, *::after { animation-play-state: paused !important;' +
-        ' -webkit-animation-play-state: paused !important; }';
+      // Use `animation: none`, NOT `animation-play-state: paused`. paused is
+      // unreliable across the font-wait: a font-display swap triggers relayout
+      // mid-wait and the paused timeline drifts, so the animation actually
+      // plays during the font wait and the later lead-in trim (-ss seekSec)
+      // slices it off — yielding a static end-state clip. `none` fully removes
+      // the animation so elements rest at their base (frame-0) style; unfreeze
+      // restores it as a fresh timeline that plays cleanly from frame 0.
+      style.textContent = '*, *::before, *::after { animation: none !important; }';
       const attach = () => (document.head || document.documentElement).appendChild(style);
       if (document.head || document.documentElement) attach();
       else document.addEventListener('DOMContentLoaded', attach, { once: true });
       (window as unknown as { __hvUnfreeze?: () => void }).__hvUnfreeze = () => {
         document.getElementById('__hv_freeze')?.remove();
+        // Single-file GSAP frames (e.g. agent-generated vignelli-class) skip the
+        // multi-composition __hvPlayAll paused path. The early pause (right after
+        // goto, below) held their gsap.timeline() at frame 0 through the font
+        // wait, so play(0) here is a fresh first-play aligned with the recording
+        // start — and it re-runs on the now-loaded fonts (kills FOUT too). play(0),
+        // NOT seek(0): a completed tween ignores seek(0) and never re-renders,
+        // which left the clip on the static end-state. No-op without GSAP.
+        const g = (window as unknown as { gsap?: { globalTimeline?: { play?: (t?: number) => unknown } } }).gsap;
+        g?.globalTimeline?.play?.(0);
       };
     });
 
@@ -126,6 +140,21 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // awaited separately below (document.fonts.ready); GSAP is a synchronous
     // <head> script so it's ready at DOMContentLoaded.
     await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+
+    // Single-file GSAP frames (e.g. agent-generated vignelli-class) have their
+    // gsap.timeline() auto-play on DOMContentLoaded — and unlike the multi-
+    // composition path they aren't registered paused, so the CSS-only freeze
+    // above doesn't touch GSAP's rAF. Without this, the timeline plays out
+    // during the ~2-3s font wait and the recording is the static end-state.
+    // Pause GSAP's global timeline now so it rests at frame 0 through the font
+    // wait; __hvUnfreeze then play(0)'s it in sync with the recording start.
+    // No-op without GSAP (pure-CSS templates like bold-poster).
+    await page
+      .evaluate(() => {
+        const g = (window as unknown as { gsap?: { globalTimeline?: { pause?: () => unknown } } }).gsap;
+        g?.globalTimeline?.pause?.();
+      })
+      .catch(() => {});
 
     // Wait for all web fonts to finish loading BEFORE recording. Templates
     // pull display faces (Shrikhand, Libre Baskerville, Archivo Black, …) from
@@ -335,10 +364,16 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   // ---- ffmpeg: webm → mp4 ----
   ctx.onProgress?.(90, 'encoding mp4');
   // Trim the dead lead-in (page load + font fetch before the timeline played)
-  // off the front of multi-composition webms. Back off 120ms so rounding /
-  // recorder start jitter can't clip the first real animation frame — a couple
-  // of still frames at the head are harmless, a missing opening beat is not.
-  const seekSec = leadInMs > 200 ? Math.max(0, (leadInMs - 120) / 1000) : 0;
+  // off the front of the webm. recordVideo compresses the webm timeline (~0.7x),
+  // so a seekSec derived from wall-clock leadInMs lands at the wrong spot; probe
+  // the webm pixels for the first frame where content actually changes (= the
+  // animation start) and seek there instead. Falls back to the wall-clock
+  // estimate if probing fails. Back off 150ms so we keep the opening beat.
+  let seekSec = leadInMs > 200 ? Math.max(0, (leadInMs - 120) / 1000) : 0;
+  const motionStart = await detectMotionStart(webmPath!).catch(() => null);
+  if (motionStart !== null && motionStart > 0.1) {
+    seekSec = Math.max(0, motionStart - 0.15);
+  }
   // When the user set an explicit per-frame length, the output must be EXACTLY
   // that long. The recorded webm can come up a little short (recorder start
   // jitter, the lead-in trim, a sub-duration animation that finished early), so
@@ -385,6 +420,46 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     },
     diagnostics: [`recorded via playwright/chromium then encoded with ffmpeg (libx264 crf20)`],
   };
+}
+
+/** Probe the webm for the first frame whose content changes (= animation
+ * start), in the webm's own timeline. recordVideo compresses the timeline
+ * (~0.7x) and the freeze doesn't hold under continuous capture, so the
+ * animation actually plays during the font wait — reading pixels is the only
+ * reliable way to find where motion begins. Returns null on any failure so
+ * callers can fall back to the wall-clock estimate. */
+function detectMotionStart(webmPath: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const proc = spawn(
+      'ffmpeg',
+      [
+        '-hide_banner', '-i', webmPath,
+        '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YMIN',
+        '-an', '-f', 'null', '-',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    let stderr = '';
+    proc.stderr.on('data', (c: Buffer) => {
+      stderr += c.toString('utf8');
+    });
+    proc.on('close', () => {
+      const frames: Array<{ t: number; ymin: number }> = [];
+      let curTime = 0;
+      for (const line of stderr.split('\n')) {
+        const tm = line.match(/pts_time:([0-9.]+)/);
+        if (tm) curTime = parseFloat(tm[1]!);
+        const ym = line.match(/YMIN=([0-9.]+)/);
+        if (ym) frames.push({ t: curTime, ymin: parseFloat(ym[1]!) });
+      }
+      if (frames.length < 5) return resolve(null);
+      const n = Math.min(6, frames.length);
+      const bg = frames.slice(0, n).reduce((s, f) => s + f.ymin, 0) / n;
+      const start = frames.find((f) => f.ymin < bg - 30);
+      resolve(start ? start.t : null);
+    });
+    proc.on('error', () => resolve(null));
+  });
 }
 
 function runFfmpeg(args: string[]): Promise<void> {
