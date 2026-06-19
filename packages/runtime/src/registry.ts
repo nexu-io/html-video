@@ -11,6 +11,7 @@ import { opencode } from './defs/opencode.js';
 import { copilot } from './defs/copilot.js';
 import { aider } from './defs/aider.js';
 import { traeCli } from './defs/trae-cli.js';
+import { codebuddyCli } from './defs/codebuddy.js';
 import { qoderCli } from './defs/qoder.js';
 import type { AgentDef } from './types.js';
 
@@ -30,6 +31,7 @@ export const AGENT_DEFS: AgentDef[] = [
   amr,
   anthropicApi,
   traeCli,
+  codebuddyCli,
   claude,
   cursorAgent,
   codex,
