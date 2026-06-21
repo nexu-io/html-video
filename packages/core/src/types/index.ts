@@ -144,6 +144,53 @@ export interface EngineAdapter {
 }
 
 // ============================================================================
+// RFC-11: Source Adapter (footage ingest — transcription)
+// ============================================================================
+
+/** One transcribed word with its time span in the source clip, seconds. */
+export interface TranscriptWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+/** Word-level transcript of a single take. The artifact every downstream
+ *  footage decision (selection, cut points, overlay cues) is grepped from. */
+export interface Transcript {
+  /** asset.id of the take this transcript belongs to. */
+  clipAssetId: string;
+  words: TranscriptWord[];
+  language?: string;
+  /** Engine that produced it (e.g. 'whisper-local'), for provenance. */
+  source?: string;
+}
+
+export interface SourceCapabilities {
+  /** Runs entirely on the user's machine (no upload, no per-use fee). */
+  local: boolean;
+  /** Emits per-word timestamps (required for frame-accurate cutting on speech). */
+  wordTimestamps: boolean;
+  /** Supported languages, or 'auto' for auto-detect. */
+  languages: string[] | 'auto';
+  licensing: LicensingTier;
+}
+
+/**
+ * RFC-11: the ingest-side counterpart to {@link EngineAdapter}. Where an engine
+ * adapter turns a template into pixels, a source adapter turns a raw take into
+ * a usable, time-coded transcript. Default impl is `whisper-local` (on-device,
+ * free) — cloud ASR adapters expose their `licensing` so an agent can avoid
+ * them in "free / private" scenarios, the same way it avoids paid engines.
+ */
+export interface SourceAdapter {
+  id: string;
+  name: string;
+  capabilities: SourceCapabilities;
+  /** Transcribe one video/audio take into a word-level transcript. */
+  transcribe(asset: Asset, ctx: RenderContext): Promise<Transcript>;
+}
+
+// ============================================================================
 // RFC-02: Template Metadata
 // ============================================================================
 

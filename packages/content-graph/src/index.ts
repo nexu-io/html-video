@@ -8,7 +8,7 @@
  * #4 graph-then-sort) for the design rationale.
  */
 
-export type NodeKind = 'entity' | 'data' | 'text';
+export type NodeKind = 'entity' | 'data' | 'text' | 'footage';
 
 export interface BaseNode {
   /** Stable id; agent picks readable strings like "intro_logo", "stat_users". */
@@ -56,7 +56,33 @@ export interface TextNode extends BaseNode {
   text: string;
 }
 
-export type Node = EntityNode | DataNode | TextNode;
+/**
+ * RFC-11: a segment cut from real footage. Unlike entity/data/text nodes (which
+ * are *synthesised* into HTML frames), a footage node points at a take in the
+ * project's assets and an in/out range to cut from it. A content-graph may mix
+ * footage and synthesised nodes — that is how "talking-head + data overlay"
+ * edits are expressed in a single timeline.
+ *
+ * The footage node is also the unit of the EDL ("edit decision list"): it
+ * carries the takes that were *considered* and the written reasoning for the
+ * pick, so the edit stays diffable text the agent can read and re-decide.
+ */
+export interface FootageNode extends BaseNode {
+  kind: 'footage';
+  /** asset.id of the chosen take (type 'video'). */
+  clipAssetId: string;
+  /** Frame-accurate in/out points in the source clip, seconds. */
+  in: number;
+  out: number;
+  /** First few spoken words of the kept segment — human-readable sanity check. */
+  firstWords?: string;
+  /** asset.ids of the other takes considered for this scene (the EDL trail). */
+  candidateClipAssetIds?: string[];
+  /** Why this take was picked over the others — the "edit is text" rationale. */
+  selectionRationale?: string;
+}
+
+export type Node = EntityNode | DataNode | TextNode | FootageNode;
 
 export type EdgeKind = 'sequence' | 'contrast' | 'dependency';
 
@@ -112,7 +138,8 @@ export interface GraphValidationError {
     | 'self-edge'
     | 'cycle'
     | 'empty-graph'
-    | 'invalid-kind';
+    | 'invalid-kind'
+    | 'invalid-footage';
   message: string;
   /** Offending node or edge for UI highlighting. */
   ref?: string;
@@ -148,12 +175,29 @@ export function validate(graph: ContentGraph): GraphValidationResult {
     }
     ids.add(n.id);
     const kind = (n as { kind: string }).kind;
-    if (kind !== 'entity' && kind !== 'data' && kind !== 'text') {
+    if (kind !== 'entity' && kind !== 'data' && kind !== 'text' && kind !== 'footage') {
       errors.push({
         code: 'invalid-kind',
         message: `Node "${(n as { id: string }).id}" has unknown kind "${kind}"`,
         ref: (n as { id: string }).id,
       });
+    }
+    if (kind === 'footage') {
+      const f = n as FootageNode;
+      if (!f.clipAssetId) {
+        errors.push({
+          code: 'invalid-footage',
+          message: `Footage node "${f.id}" is missing clipAssetId`,
+          ref: f.id,
+        });
+      }
+      if (!(f.out > f.in) || f.in < 0) {
+        errors.push({
+          code: 'invalid-footage',
+          message: `Footage node "${f.id}" has an invalid in/out range (${f.in} → ${f.out})`,
+          ref: f.id,
+        });
+      }
     }
   }
 
@@ -345,7 +389,12 @@ export function totalDurationSec(graph: ContentGraph): number {
   let total = 0;
   for (const id of order) {
     const n = getNode(graph, id);
-    total += n?.durationSec ?? DEFAULT_FRAME_DURATION_SEC;
+    if (n?.kind === 'footage') {
+      // A footage node plays for its cut length; durationSec, if set, overrides.
+      total += n.durationSec ?? (n as FootageNode).out - (n as FootageNode).in;
+    } else {
+      total += n?.durationSec ?? DEFAULT_FRAME_DURATION_SEC;
+    }
   }
   return total;
 }
