@@ -11,7 +11,13 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import {
+  AssetStore,
+  generateTts,
+  generateMusic,
+  generateTtsSenseAudio,
+  listSenseAudioVoices,
+} from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -33,6 +39,12 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
   '.txt': 'text/plain; charset=utf-8',
 };
 
@@ -418,7 +430,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const projectId = genAudioMatch[1];
         const body = (await readBody(req)) as {
           music?: { prompt?: string; instrumental?: boolean; volumeDb?: number };
-          narration?: { text?: string; voiceId?: string; volumeDb?: number; languageBoost?: string; byFrame?: Record<string, string> };
+          narration?: { text?: string; provider?: 'minimax' | 'senseaudio'; voiceId?: string; volumeDb?: number; languageBoost?: string; byFrame?: Record<string, string> };
           fadeInSec?: number;
           fadeOutSec?: number;
         };
@@ -433,16 +445,6 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         };
         try {
           sse({ type: 'audio_started' });
-          const creds = ctx.mediaConfig.resolveMinimax();
-          if (!creds) {
-            sse({
-              type: 'audio_failed',
-              message:
-                'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
-            });
-            res.end();
-            return;
-          }
 
           const project = await ctx.orchestrator.load(projectId);
           const soundtrack = { ...(project.soundtrack ?? {}) };
@@ -454,7 +456,33 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             return;
           }
 
+          // Background music is MiniMax-only; narration can use either MiniMax or
+          // SenseAudio (wire-compatible). Resolve each provider's key on demand so
+          // a user who only configured one provider can still use that half.
+          const ttsProvider = body.narration?.provider === 'senseaudio' ? 'senseaudio' : 'minimax';
+          if (wantMusic && !ctx.mediaConfig.resolve('minimax')) {
+            sse({
+              type: 'audio_failed',
+              message:
+                'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY). Background music requires MiniMax.',
+            });
+            res.end();
+            return;
+          }
+          if (wantNarration && !ctx.mediaConfig.resolve(ttsProvider)) {
+            sse({
+              type: 'audio_failed',
+              message:
+                ttsProvider === 'senseaudio'
+                  ? 'SenseAudio API key not configured — add it in Settings → Audio (or set SENSEAUDIO_API_KEY).'
+                  : 'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
+            });
+            res.end();
+            return;
+          }
+
           if (wantMusic) {
+            const creds = ctx.mediaConfig.resolve('minimax')!;
             sse({ type: 'audio_progress', stage: 'music', message: 'generating background music…' });
             const music = await generateMusic({
               prompt: body.music!.prompt!.trim(),
@@ -474,13 +502,21 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           }
 
           if (wantNarration) {
-            sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
-            const nar = await generateTts({
-              text: body.narration!.text!.trim(),
-              ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
-              ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
-              creds,
-            });
+            sse({ type: 'audio_progress', stage: 'narration', message: `generating narration (${ttsProvider})…` });
+            const ttsCreds = ctx.mediaConfig.resolve(ttsProvider)!;
+            const nar =
+              ttsProvider === 'senseaudio'
+                ? await generateTtsSenseAudio({
+                    text: body.narration!.text!.trim(),
+                    ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
+                    creds: ttsCreds,
+                  })
+                : await generateTts({
+                    text: body.narration!.text!.trim(),
+                    ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
+                    ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
+                    creds: ttsCreds,
+                  });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               nar.bytes,
@@ -630,6 +666,35 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (url.pathname === '/api/config/minimax' && m === 'DELETE') {
         ctx.mediaConfig.clearMinimax();
         return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
+      }
+
+      // SenseAudio TTS config — same shape as MiniMax (GET / POST / DELETE).
+      // SenseAudio does speech only; background music stays MiniMax.
+      if (url.pathname === '/api/config/senseaudio' && m === 'GET') {
+        return json(res, 200, ctx.mediaConfig.getStatus('senseaudio'));
+      }
+      if (url.pathname === '/api/config/senseaudio' && m === 'POST') {
+        const body = (await readBody(req)) as { apiKey?: string; baseUrl?: string };
+        const key = (body.apiKey ?? '').trim();
+        if (!key) return json(res, 400, { error: 'apiKey is required' });
+        ctx.mediaConfig.set('senseaudio', key, body.baseUrl);
+        return json(res, 200, ctx.mediaConfig.getStatus('senseaudio'));
+      }
+      if (url.pathname === '/api/config/senseaudio' && m === 'DELETE') {
+        ctx.mediaConfig.clear('senseaudio');
+        return json(res, 200, ctx.mediaConfig.getStatus('senseaudio'));
+      }
+      // Live voice catalog for the SenseAudio narration picker (POST /get_voice).
+      if (url.pathname === '/api/config/senseaudio/voices' && m === 'GET') {
+        const creds = ctx.mediaConfig.resolve('senseaudio');
+        if (!creds) return json(res, 400, { error: 'SenseAudio API key not configured' });
+        try {
+          const voices = await listSenseAudioVoices({ creds });
+          return json(res, 200, { voices });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return json(res, 502, { error: msg });
+        }
       }
 
       // Agents (detected on each call; cheap thanks to the in-process cache)
@@ -1388,7 +1453,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return res.end('missing ?path');
         }
         const safe = resolve(p);
-        if (!safe.includes('/.html-video/projects/')) {
+        // Normalize separators before the containment check — on Windows
+        // resolve() yields backslashes, which would never match a forward-slash
+        // marker and 403 every asset (audio/image playback in the studio).
+        const safeNorm = safe.replace(/\\/g, '/');
+        if (!safeNorm.includes('/.html-video/projects/')) {
           res.writeHead(403);
           return res.end('forbidden');
         }
