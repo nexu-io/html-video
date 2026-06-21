@@ -2920,6 +2920,7 @@ function wireModals() {
 // /agent-icons/<id>.svg. Agents without a brand logo fall back to a glyph.
 const AGENT_LOGOS = {
   'anthropic-api': '/agent-icons/anthropic.svg',
+  'codebuddy': '/agent-icons/codebuddy.png',
   'claude': '/agent-icons/claude.svg',
   'cursor-agent': '/agent-icons/cursor-agent.svg',
   'codex': '/agent-icons/codex.svg',
