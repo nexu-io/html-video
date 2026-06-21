@@ -19,3 +19,9 @@ export {
   generateMusic,
 } from './minimax.js';
 export type { MinimaxCredentials, MinimaxAudioResult } from './minimax.js';
+export {
+  resolveFishAudioCredentials,
+  generateFishTts,
+  listFishVoices,
+} from './fishaudio.js';
+export type { FishAudioCredentials, FishVoice } from './fishaudio.js';

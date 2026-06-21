@@ -835,6 +835,12 @@ function renderMain() {
                     <select id="st-narration-voice" class="st-voice-select">
                       ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
                     </select>
+                    <div id="st-fish-voice" class="st-fish-voice" style="display:none">
+                      <input type="text" id="st-fish-voice-search" class="st-fish-search" placeholder="${t('soundtrack.fish_voice_search')}" autocomplete="off" />
+                      <input type="hidden" id="st-fish-voice-id" />
+                      <div id="st-fish-voice-picked" class="st-fish-picked"></div>
+                      <div id="st-fish-voice-results" class="st-fish-results"></div>
+                    </div>
                     <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${t('soundtrack.fit_durations')}</button>
                   </div>
                   <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
@@ -1103,8 +1109,13 @@ function wireSoundtrackPanel() {
         .filter((s) => s.length > 0).join('\n');
       const nt = stitched || narrationText.value.trim();
       if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
-      const voiceSel = document.getElementById('st-narration-voice');
-      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
+      // voiceId comes from whichever provider's control is active: the MiniMax
+      // <select> or the FishAudio picker's chosen reference_id.
+      const voiceId =
+        state._narrationProvider === 'fishaudio'
+          ? (document.getElementById('st-fish-voice-id')?.value || '').trim()
+          : (document.getElementById('st-narration-voice')?.value || '');
+      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceId && { voiceId }) };
     }
 
     const label = btn?.textContent;
@@ -1162,6 +1173,78 @@ function wireSoundtrackPanel() {
   }
   if (genMusicBtn) genMusicBtn.onclick = () => runGenerate('music');
   if (genNarrationBtn) genNarrationBtn.onclick = () => runGenerate('narration');
+  wireFishVoicePicker();
+}
+
+/** Wire the FishAudio searchable voice picker in the narration section, and
+ *  show the right voice control for the active narration provider on mount. */
+function wireFishVoicePicker() {
+  const search = document.getElementById('st-fish-voice-search');
+  const hidden = document.getElementById('st-fish-voice-id');
+  const results = document.getElementById('st-fish-voice-results');
+  const picked = document.getElementById('st-fish-voice-picked');
+  if (!search || !hidden || !results || !picked) return;
+
+  // Reflect the active provider when the panel mounts (which control shows).
+  fetch('/api/config/narration-provider')
+    .then((r) => r.json())
+    .then((d) => applyNarrationProviderToUI(d.provider || 'minimax'))
+    .catch(() => {});
+
+  const renderPicked = () => {
+    if (hidden.value) {
+      picked.innerHTML = `${esc(t('soundtrack.fish_voice_picked', { title: picked.dataset.title || hidden.value }))} <a href="#" id="st-fish-voice-clear">${esc(t('soundtrack.fish_voice_clear'))}</a>`;
+      picked.querySelector('#st-fish-voice-clear').onclick = (e) => {
+        e.preventDefault();
+        hidden.value = '';
+        picked.dataset.title = '';
+        renderPicked();
+      };
+    } else {
+      picked.textContent = t('soundtrack.fish_voice_default');
+    }
+  };
+  renderPicked();
+
+  const select = (voice) => {
+    hidden.value = voice.id;
+    picked.dataset.title = voice.title;
+    search.value = '';
+    results.innerHTML = '';
+    renderPicked();
+  };
+
+  let timer = null;
+  const doSearch = async () => {
+    const q = search.value.trim();
+    results.innerHTML = `<div class="st-fish-hint">${esc(t('soundtrack.fish_voice_searching'))}</div>`;
+    try {
+      const data = await fetch(`/api/fishaudio/voices?q=${encodeURIComponent(q)}`).then((r) => r.json());
+      const voices = data.voices || [];
+      if (!voices.length) { results.innerHTML = `<div class="st-fish-hint">${esc(t('soundtrack.fish_voice_none'))}</div>`; return; }
+      results.innerHTML = '';
+      voices.slice(0, 20).forEach((v) => {
+        const row = document.createElement('div');
+        row.className = 'st-fish-result';
+        const lang = (v.languages || []).join(', ');
+        row.innerHTML = `<span class="st-fish-result-title">${esc(v.title)}</span><span class="st-fish-result-lang">${esc(lang)}</span>`;
+        if (v.sampleUrl) {
+          const play = document.createElement('button');
+          play.type = 'button';
+          play.className = 'st-fish-play';
+          play.textContent = '▶';
+          play.onclick = (e) => { e.stopPropagation(); try { new Audio(v.sampleUrl).play(); } catch { /* ignore */ } };
+          row.appendChild(play);
+        }
+        row.onclick = () => select(v);
+        results.appendChild(row);
+      });
+    } catch (e) {
+      results.innerHTML = `<div class="st-fish-hint">${esc(String(e?.message ?? e))}</div>`;
+    }
+  };
+  search.oninput = () => { clearTimeout(timer); timer = setTimeout(doSearch, 300); };
+  search.onfocus = () => { if (!results.children.length) doSearch(); };
 }
 
 function renderSoundtrackPreview(soundtrack) {
@@ -2977,7 +3060,18 @@ async function renderSettingsAudio(panel) {
   panel.innerHTML = `
     <h3>${esc(t('settings.audio.title'))}</h3>
     <div class="panel-sub">${esc(t('settings.audio.subtitle'))}</div>
-    <div class="audio-config" id="audio-config">
+
+    <label class="audio-field" style="margin-top:8px">
+      <span>${esc(t('settings.audio.provider_label'))}</span>
+      <div class="audio-region" id="narration-provider-toggle">
+        <button type="button" class="st-preset" data-provider="minimax">${esc(t('settings.audio.provider_minimax'))}</button>
+        <button type="button" class="st-preset" data-provider="fishaudio">${esc(t('settings.audio.provider_fishaudio'))}</button>
+      </div>
+    </label>
+    <p class="panel-sub" style="font-size:11px;margin:2px 0 8px">${esc(t('settings.audio.provider_note_music'))}</p>
+
+    <!-- MiniMax pane -->
+    <div class="audio-config" id="mm-pane">
       <div class="audio-status" id="audio-status">${esc(t('settings.audio.loading'))}</div>
       <label class="audio-field">
         <span>${esc(t('settings.audio.api_key'))}</span>
@@ -3001,8 +3095,61 @@ async function renderSettingsAudio(panel) {
       </div>
       <p class="panel-sub" style="font-size:11.5px;margin-top:4px">${esc(t('settings.audio.hint'))}</p>
     </div>
+
+    <!-- FishAudio pane (narration only; single global host, model via env) -->
+    <div class="audio-config" id="fa-pane">
+      <div class="audio-status" id="fa-status">${esc(t('settings.audio.loading'))}</div>
+      <label class="audio-field">
+        <span>${esc(t('settings.audio.api_key'))}</span>
+        <input type="password" id="fa-api-key" placeholder="${esc(t('settings.audio.fish_api_key_placeholder'))}" autocomplete="off" />
+      </label>
+      <label class="audio-field">
+        <span>${esc(t('settings.audio.base_url'))}</span>
+        <input type="text" id="fa-base-url" placeholder="https://api.fish.audio" autocomplete="off" />
+      </label>
+      <div class="audio-actions">
+        <button class="audio-save primary-action" id="fa-save" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.audio.save'))}</button>
+        <button class="audio-clear" id="fa-clear">${esc(t('settings.audio.clear'))}</button>
+        <span class="audio-save-state" id="fa-save-state"></span>
+      </div>
+      <p class="panel-sub" style="font-size:11.5px;margin-top:4px">${esc(t('settings.audio.fish_hint'))}</p>
+    </div>
   `;
 
+  const mmPane = panel.querySelector('#mm-pane');
+  const faPane = panel.querySelector('#fa-pane');
+  const toggle = panel.querySelector('#narration-provider-toggle');
+
+  // Reflect a provider in the toggle + which pane shows, and keep the
+  // soundtrack panel's voice control in sync if it's open.
+  const applyProvider = (provider) => {
+    toggle.querySelectorAll('.st-preset').forEach((b) => b.classList.toggle('active', b.dataset.provider === provider));
+    mmPane.style.display = provider === 'fishaudio' ? 'none' : '';
+    faPane.style.display = provider === 'fishaudio' ? '' : 'none';
+    applyNarrationProviderToUI(provider);
+  };
+
+  // Load + persist the active narration provider.
+  let provider = 'minimax';
+  try {
+    provider = (await fetch('/api/config/narration-provider').then((r) => r.json())).provider || 'minimax';
+  } catch { /* default minimax */ }
+  applyProvider(provider);
+  toggle.querySelectorAll('.st-preset').forEach((btn) => {
+    btn.onclick = async () => {
+      const p = btn.dataset.provider;
+      applyProvider(p);
+      try {
+        await fetch('/api/config/narration-provider', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ provider: p }),
+        });
+      } catch { /* non-fatal; UI already reflects the choice */ }
+    };
+  });
+
+  // --- MiniMax wiring ---
   const statusEl = panel.querySelector('#audio-status');
   const keyInput = panel.querySelector('#mm-api-key');
   const baseInput = panel.querySelector('#mm-base-url');
@@ -3061,6 +3208,66 @@ async function renderSettingsAudio(panel) {
     saveState.textContent = '';
     await refresh();
   };
+
+  // --- FishAudio wiring (no region; key + base URL only) ---
+  const faStatusEl = panel.querySelector('#fa-status');
+  const faKeyInput = panel.querySelector('#fa-api-key');
+  const faBaseInput = panel.querySelector('#fa-base-url');
+  const faSaveState = panel.querySelector('#fa-save-state');
+
+  const faRefresh = async () => {
+    try {
+      const s = await fetch('/api/config/fishaudio').then((r) => r.json());
+      if (s.configured) {
+        const src = s.source === 'env' ? t('settings.audio.source_env') : t('settings.audio.source_config');
+        faStatusEl.innerHTML = `<span class="agent-status-dot ok"></span>${esc(t('settings.audio.configured', { key: s.maskedKey, source: src }))}`;
+        if (s.baseUrl) faBaseInput.value = s.baseUrl;
+      } else {
+        faStatusEl.innerHTML = `<span class="agent-status-dot missing"></span>${esc(t('settings.audio.fish_not_configured'))}`;
+      }
+    } catch {
+      faStatusEl.textContent = t('settings.audio.fish_not_configured');
+    }
+  };
+  await faRefresh();
+
+  panel.querySelector('#fa-save').onclick = async () => {
+    const apiKey = faKeyInput.value.trim();
+    if (!apiKey) { faSaveState.textContent = t('settings.audio.need_key'); return; }
+    faSaveState.textContent = t('settings.audio.saving');
+    try {
+      const r = await fetch('/api/config/fishaudio', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ apiKey, baseUrl: faBaseInput.value.trim() }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      faKeyInput.value = '';
+      faSaveState.textContent = t('settings.audio.saved');
+      await faRefresh();
+    } catch (e) {
+      faSaveState.textContent = t('settings.audio.save_failed', { message: (e?.message ?? e) });
+    }
+  };
+
+  panel.querySelector('#fa-clear').onclick = async () => {
+    await fetch('/api/config/fishaudio', { method: 'DELETE' });
+    faKeyInput.value = '';
+    faBaseInput.value = '';
+    faSaveState.textContent = '';
+    await faRefresh();
+  };
+}
+
+/** Toggle the soundtrack narration voice control between the MiniMax built-in
+ *  voice <select> and the FishAudio searchable picker, per active provider.
+ *  Safe to call when the soundtrack panel isn't mounted. */
+function applyNarrationProviderToUI(provider) {
+  state._narrationProvider = provider;
+  const sel = document.getElementById('st-narration-voice');
+  const fish = document.getElementById('st-fish-voice');
+  if (sel) sel.style.display = provider === 'fishaudio' ? 'none' : '';
+  if (fish) fish.style.display = provider === 'fishaudio' ? '' : 'none';
 }
 
 function renderSettingsAgent(panel) {

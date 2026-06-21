@@ -822,6 +822,27 @@
   .st-voice-select { font-size: 11px; padding: 3px 8px; border-radius: var(--radius-sm);
     background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
   .st-voice-select:focus { outline: none; border-color: var(--accent); }
+  /* FishAudio searchable voice picker (shown instead of the <select>) */
+  .st-fish-voice { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+  .st-fish-search { font-size: 11px; padding: 3px 8px; border-radius: var(--radius-sm);
+    background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+  .st-fish-search:focus { outline: none; border-color: var(--accent); }
+  .st-fish-picked { font-size: 10.5px; color: var(--text-muted); }
+  .st-fish-picked a { color: var(--accent); margin-left: 6px; }
+  .st-fish-results { position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 2px;
+    max-height: 200px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  .st-fish-results:empty { display: none; }
+  .st-fish-result { display: flex; align-items: center; gap: 8px; padding: 5px 9px; cursor: pointer;
+    font-size: 11px; border-bottom: 1px solid var(--border); }
+  .st-fish-result:last-child { border-bottom: none; }
+  .st-fish-result:hover { background: var(--accent); color: var(--accent-fg); }
+  .st-fish-result-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st-fish-result-lang { font-size: 10px; color: var(--text-muted); }
+  .st-fish-result:hover .st-fish-result-lang { color: var(--accent-fg); }
+  .st-fish-play { font-size: 10px; padding: 1px 6px; border-radius: 999px; cursor: pointer;
+    background: transparent; border: 1px solid currentColor; color: inherit; }
+  .st-fish-hint { padding: 6px 9px; font-size: 10.5px; color: var(--text-muted); }
   .st-fit { font-size: 11px; padding: 3px 10px; border-radius: var(--radius-sm); cursor: pointer;
     background: var(--bg); border: 1px solid var(--accent); color: var(--accent); margin-left: auto;
     transition: all .12s; }

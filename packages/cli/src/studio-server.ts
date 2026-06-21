@@ -11,7 +11,15 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import {
+  AssetStore,
+  generateTts,
+  generateMusic,
+  generateFishTts,
+  listFishVoices,
+  type MinimaxCredentials,
+  type FishAudioCredentials,
+} from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -433,17 +441,6 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         };
         try {
           sse({ type: 'audio_started' });
-          const creds = ctx.mediaConfig.resolveMinimax();
-          if (!creds) {
-            sse({
-              type: 'audio_failed',
-              message:
-                'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
-            });
-            res.end();
-            return;
-          }
-
           const project = await ctx.orchestrator.load(projectId);
           const soundtrack = { ...(project.soundtrack ?? {}) };
           const wantMusic = !!body.music?.prompt?.trim();
@@ -454,12 +451,42 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             return;
           }
 
+          // Music is always MiniMax (FishAudio has no music generation).
+          const musicCreds = wantMusic ? ctx.mediaConfig.resolveMinimax() : null;
+          if (wantMusic && !musicCreds) {
+            sse({
+              type: 'audio_failed',
+              message: 'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
+            });
+            res.end();
+            return;
+          }
+
+          // Narration provider is user-selectable (MiniMax or FishAudio).
+          const narrationProvider = ctx.mediaConfig.getNarrationProvider();
+          const narrationCreds = wantNarration
+            ? narrationProvider === 'fishaudio'
+              ? ctx.mediaConfig.resolveFishAudio()
+              : ctx.mediaConfig.resolveMinimax()
+            : null;
+          if (wantNarration && !narrationCreds) {
+            sse({
+              type: 'audio_failed',
+              message:
+                narrationProvider === 'fishaudio'
+                  ? 'FishAudio API key not configured — add it in Settings → Audio (or set FISH_AUDIO_API_KEY).'
+                  : 'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
+            });
+            res.end();
+            return;
+          }
+
           if (wantMusic) {
             sse({ type: 'audio_progress', stage: 'music', message: 'generating background music…' });
             const music = await generateMusic({
               prompt: body.music!.prompt!.trim(),
               instrumental: body.music!.instrumental ?? true,
-              creds,
+              creds: musicCreds!,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
@@ -474,13 +501,20 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           }
 
           if (wantNarration) {
-            sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
-            const nar = await generateTts({
-              text: body.narration!.text!.trim(),
-              ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
-              ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
-              creds,
-            });
+            sse({ type: 'audio_progress', stage: 'narration', message: `generating narration (${narrationProvider})…` });
+            const nar =
+              narrationProvider === 'fishaudio'
+                ? await generateFishTts({
+                    text: body.narration!.text!.trim(),
+                    ...(body.narration!.voiceId ? { referenceId: body.narration!.voiceId } : {}),
+                    creds: narrationCreds as FishAudioCredentials,
+                  })
+                : await generateTts({
+                    text: body.narration!.text!.trim(),
+                    ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
+                    ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
+                    creds: narrationCreds as MinimaxCredentials,
+                  });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               nar.bytes,
@@ -630,6 +664,47 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (url.pathname === '/api/config/minimax' && m === 'DELETE') {
         ctx.mediaConfig.clearMinimax();
         return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
+      }
+
+      // FishAudio audio API config — mirrors MiniMax (no region; single host).
+      if (url.pathname === '/api/config/fishaudio' && m === 'GET') {
+        return json(res, 200, ctx.mediaConfig.getFishAudioStatus());
+      }
+      if (url.pathname === '/api/config/fishaudio' && m === 'POST') {
+        const body = (await readBody(req)) as { apiKey?: string; baseUrl?: string };
+        const key = (body.apiKey ?? '').trim();
+        if (!key) return json(res, 400, { error: 'apiKey is required' });
+        ctx.mediaConfig.setFishAudio(key, body.baseUrl);
+        return json(res, 200, ctx.mediaConfig.getFishAudioStatus());
+      }
+      if (url.pathname === '/api/config/fishaudio' && m === 'DELETE') {
+        ctx.mediaConfig.clearFishAudio();
+        return json(res, 200, ctx.mediaConfig.getFishAudioStatus());
+      }
+
+      // Active narration provider (which backend synthesizes voiceover).
+      if (url.pathname === '/api/config/narration-provider' && m === 'GET') {
+        return json(res, 200, { provider: ctx.mediaConfig.getNarrationProvider() });
+      }
+      if (url.pathname === '/api/config/narration-provider' && m === 'POST') {
+        const body = (await readBody(req)) as { provider?: string };
+        const provider = body.provider === 'fishaudio' ? 'fishaudio' : 'minimax';
+        ctx.mediaConfig.setNarrationProvider(provider);
+        return json(res, 200, { provider: ctx.mediaConfig.getNarrationProvider() });
+      }
+
+      // FishAudio voice search — proxies the account's own models server-side so
+      // the browser never sees the key. Returns a trimmed list for the picker.
+      if (url.pathname === '/api/fishaudio/voices' && m === 'GET') {
+        const creds = ctx.mediaConfig.resolveFishAudio();
+        if (!creds) return json(res, 400, { error: 'FishAudio API key not configured' });
+        try {
+          const voices = await listFishVoices({ creds, query: url.searchParams.get('q') ?? '' });
+          return json(res, 200, { voices });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return json(res, 502, { error: msg });
+        }
       }
 
       // Agents (detected on each call; cheap thanks to the in-process cache)
