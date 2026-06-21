@@ -192,7 +192,7 @@ async function startExportStream() {
           state.exporting = false;
           state.exportProgress = null;
           if (ev.project) state.selected = ev.project;
-          const seconds = ev.elapsed_ms ? `${(ev.elapsed_ms / 1000).toFixed(1)}s` : '';
+          const seconds = ev.duration_sec != null ? `${Number(ev.duration_sec).toFixed(1)}s` : '';
           state.messages.push({
             role: 'preview-event',
             content: seconds ? t('export.done_seconds', { seconds }) : t('export.done_no_seconds'),
