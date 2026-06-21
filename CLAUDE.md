@@ -1,3 +1,26 @@
+<!-- ENG:BEGIN v=1.0.0 type=node managed by .claude/engineering/sync-engineering.mjs — edit BELOW the END marker, not inside -->
+# html-video — 工程化配置 (node)
+
+本块继承 `~/.claude/CLAUDE.md` 的全局**总工程化逻辑**（blocking-rules / work-mode / cache-management），由 `sync-engineering` 自动管理——只在 `ENG:END` 标记**下方**手工编辑。
+
+**类型规范**: .claude/engineering/templates/node.md
+
+**命令**
+- build: `pnpm -r build`
+- test: `pnpm -r test`
+- dev: `(none — define here)`
+
+**质量门 (node)**
+- 类型检查通过：`tsc --noEmit`（或 `pnpm -r build`）零错误，禁止 `// @ts-ignore` 掩盖真实类型问题。
+- Lint 干净：ESLint/Prettier 无 error，提交前自动 fix。
+- 核心逻辑路径有单元测试覆盖，`pnpm -r test` 全绿后才算完成。
+- 杜绝 fake-success：函数只有在真实副作用（写盘/网络/DB）完成后才返回 success（参见 evomap fake-success 反模式）。
+- 无硬编码密钥/IP/token，敏感配置走环境变量（参见 evomap hardcoded-security）。
+- `package.json` 声明 `exports`/`types`，公共 API 类型完整；async 错误被捕获并以结构化错误抛出。
+
+**项目专属**: 项目特有的约定、依赖、注意事项请写在下方 `ENG:END` 标记之后。
+<!-- ENG:END -->
+
 # html-video 项目工作区
 
 > Open-source HTML→Video meta-layer。让本地 coding agent 跨多个渲染 engine（Hyperframes / Remotion / Motion Canvas / Revideo）一站式做 HTML 视频。
