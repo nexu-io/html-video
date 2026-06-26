@@ -183,7 +183,7 @@ In the studio: pick a template (or just describe a video / paste a link), chat w
 
 ### Optional style specs
 
-Drop a `design.md` or `frame.md` file into the Studio composer when you want the agent to follow a specific brand, layout, or motion system. These files are style/motion specs, not video content: the subject still comes from your prompt, article, repo, or other attachments.
+Drop a `design.md` or `frame.md` file into the Studio composer when you want the agent to follow a specific brand, layout, or motion system. These files are style/motion specs, not video content: the subject still comes from your prompt, article, repo, or uploaded text/data content.
 
 See [`docs/design-frame-specs.md`](docs/design-frame-specs.md) for the convention and starter files:
 
