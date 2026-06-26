@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import type {
   Asset,
@@ -436,16 +437,30 @@ export class ProjectOrchestrator {
       return { project, outputPath };
     }
 
-    // Single-frame fast path (v0.7 behaviour).
-    if (!project.templateId) {
-      throw new HtmlVideoError('invalid-input', 'Project has no template selected');
+    // Single-frame fast path. Prefer the generated/edited preview HTML over
+    // the selected template entry; otherwise exporting a generated single-frame
+    // project records the template example instead of the user's current HTML.
+    let templateRef: TemplateRef;
+    let engine: EngineId = 'hyperframes';
+    if (project.lastPreviewHtmlPath && existsSync(project.lastPreviewHtmlPath)) {
+      templateRef = {
+        id: `${project.id}-preview`,
+        engine,
+        sourcePath: project.lastPreviewHtmlPath,
+      };
+    } else {
+      if (!project.templateId) {
+        throw new HtmlVideoError('invalid-input', 'Project has no generated preview or template selected');
+      }
+      const tmpl = this.deps.templates.get(project.templateId);
+      engine = tmpl.engine;
+      templateRef = templateRefFromMeta(tmpl);
     }
-    const tmpl = this.deps.templates.get(project.templateId);
-    const adapter = this.deps.engines.get(tmpl.engine);
+    const adapter = this.deps.engines.get(engine);
 
     await adapter.render(
       {
-        template: templateRefFromMeta(tmpl),
+        template: templateRef,
         variables: project.variables,
         config: {
           format: 'mp4',
@@ -951,4 +966,3 @@ function downgradeStatus(current: ProjectStatus, target: ProjectStatus): Project
   if (target === 'draft') return 'draft';
   return current;
 }
-
