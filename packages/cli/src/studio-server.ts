@@ -1388,7 +1388,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return res.end('missing ?path');
         }
         const safe = resolve(p);
-        if (!safe.includes('/.html-video/projects/')) {
+        if (!safe.replace(/\\/g, '/').includes('/.html-video/projects/')) {
           res.writeHead(403);
           return res.end('forbidden');
         }
