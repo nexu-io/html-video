@@ -23,7 +23,9 @@ If you only want the video to summarize an article or explain a repo, paste the 
 
 Today, both `design.md` and `frame.md` apply project-wide: Studio injects detected specs into the storyboard prompt and every per-frame prompt. A single uploaded `frame.md` does not target only one generated scene. Use it to define the motion language for the whole video, not to attach instructions to one specific frame.
 
-The Studio treats both as required style/motion specs. Internally, a file is recognized as a spec when:
+The Studio treats both as required style/motion specs when the uploaded text/data file is small enough to be inlined into the prompt. Today that inline path is capped at 20,000 characters. Keep spec files concise; larger files may be treated as ordinary attachments instead of required style guidance.
+
+Within that limit, a file is recognized as a spec when:
 
 - Its filename is `design.md` or `frame.md`, or
 - Its headings look like a design/motion spec, such as `## System`, `## Theme`, `## Tokens`, `## Motion`, `## Pacing`, or `## Composition`.
