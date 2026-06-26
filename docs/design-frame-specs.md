@@ -2,7 +2,7 @@
 
 `design.md` and `frame.md` are optional attachment files for the Studio chat composer. Drop one into a project when you want the agent to follow a specific brand, layout, or motion system while generating the video.
 
-They are not scripts or source content. The video subject still comes from your chat prompt, article link, repo, or uploaded content. A design/frame spec only answers: "How should this look and move?"
+They are not scripts or source content. The video subject still comes from your chat prompt, article link, repo, or uploaded text/data content. A design/frame spec only answers: "How should this look and move?"
 
 ## When To Use Them
 
@@ -19,7 +19,9 @@ If you only want the video to summarize an article or explain a repo, paste the 
 
 `design.md` is best for a portable visual system. It usually describes brand tokens, typography, composition rules, and reusable components.
 
-`frame.md` is best for a specific motion frame or shot pattern. It usually describes timing, pacing, transitions, animation beats, and what should happen during a single frame or scene.
+`frame.md` is best for a reusable motion frame or shot pattern. It usually describes timing, pacing, transitions, animation beats, and how frames using that pattern should behave.
+
+Today, both `design.md` and `frame.md` apply project-wide: Studio injects detected specs into the storyboard prompt and every per-frame prompt. A single uploaded `frame.md` does not target only one generated scene. Use it to define the motion language for the whole video, not to attach instructions to one specific frame.
 
 The Studio treats both as required style/motion specs. Internally, a file is recognized as a spec when:
 
@@ -34,7 +36,9 @@ The Studio treats both as required style/motion specs. Internally, a file is rec
 4. Describe the video content normally.
 5. Generate. The agent receives the spec before ordinary content and is instructed to obey it for palette, typography, layout, and motion.
 
-You can attach a spec together with an article, repo link, screenshot, logo, or CSV. The spec controls look and motion; the other sources provide the subject matter.
+You can attach a spec together with text-like subject sources such as an article link, GitHub repo link, Markdown/text upload, or CSV/data file. The spec controls look and motion; those text/data sources provide the subject matter.
+
+Image assets such as screenshots and logos can still be uploaded as references/assets, but the current split multi-frame generation path does not treat non-text attachments as source material for the storyboard. Describe any important facts from an image in the prompt or a text/data attachment if the video content must depend on them.
 
 ## Starter design.md
 
@@ -52,4 +56,3 @@ See [`docs/examples/frame.md`](examples/frame.md).
 - For multi-frame videos, include rules for consistency across frames.
 - For data videos, describe chart scale, labels, units, and animation behavior.
 - Avoid putting actual narration or article content in the spec. Put that in the prompt or a separate attachment.
-
