@@ -1,4 +1,5 @@
 import { anthropicApi } from './defs/anthropic-api.js';
+import { openaiApi } from './defs/openai-api.js';
 import { claude } from './defs/claude.js';
 import { cursorAgent } from './defs/cursor-agent.js';
 import { codex } from './defs/codex.js';
@@ -29,6 +30,7 @@ import type { AgentDef } from './types.js';
 export const AGENT_DEFS: AgentDef[] = [
   amr,
   anthropicApi,
+  openaiApi,
   traeCli,
   claude,
   cursorAgent,
