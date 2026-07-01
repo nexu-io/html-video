@@ -829,18 +829,12 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         let agentId = project.agentId;
         if (!agentId) {
           const detected = await detectAll();
-          // Prefer a real, ready-to-run CLI agent (claude/codex/…). Only fall
-          // back to anthropic-api if it's actually configured (has a key) —
-          // otherwise picking it would fail mid-flow with "No ANTHROPIC_API_KEY"
-          // on a later turn (e.g. after the detect cache expires and a transient
-          // probe miss drops the CLI agent). Persist the choice so every
-          // subsequent turn in this project uses the same agent, not whatever
-          // a fresh probe happens to return.
           const ready = detected.filter((a) => a.available && a.id !== 'amr');
-          const apiReady = ready.find((a) => a.id === 'anthropic-api');
+          const localCli = ready.find((a) => findAgent(a.id)?.kind !== 'http' && a.id !== 'openai-api' && a.id !== 'anthropic-api');
           agentId =
-            ready.find((a) => a.id !== 'anthropic-api')?.id ??
-            apiReady?.id ??
+            localCli?.id ??
+            ready.find((a) => a.id === 'anthropic-api')?.id ??
+            ready.find((a) => a.id === 'openai-api')?.id ??
             'anthropic-api';
           if (project.agentId !== agentId) {
             try {

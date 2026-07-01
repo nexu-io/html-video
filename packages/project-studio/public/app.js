@@ -1640,12 +1640,20 @@ function sanitizeAssistantProse(text) {
   out = out.replace(/```html(?:#[\w-]+)?\s*\n[\s\S]*?```/gi, `\n${genHtml}\n`);
   // ```html ... (still open, mid-stream) — clip everything after the fence
   out = out.replace(/```html(?:#[\w-]+)?\s*\n[\s\S]*$/i, `\n${genHtml}`);
-  // ```json#content-graph ...```
+  // ```json#content-graph ...``` — must come before the generic json rule
   out = out.replace(/```json#content-graph\s*\n[\s\S]*?```/gi, `\n${planGraph}\n`);
   out = out.replace(/```json#content-graph\s*\n[\s\S]*$/i, `\n${planGraph}`);
+  // ```json ... ``` (full block, e.g. OpenAI models wrap JSON in fences)
+  out = out.replace(/```json(?:#[\w-]+)?\s*\n[\s\S]*?```/gi, `\n${genHtml}\n`);
+  // ```json ... (still open, mid-stream)
+  out = out.replace(/```json(?:#[\w-]+)?\s*\n[\s\S]*$/i, `\n${genHtml}`);
   // ```hv-form / ```hv-confirm / ```hv-options blocks are parsed by their
   // own renderers above; if we got here they slipped past — collapse them.
+  // Closed block (has trailing ```)
   out = out.replace(/```hv-(?:form|confirm|options)\s*\n[\s\S]*?```/gi, '');
+  // Still open mid-stream — clip everything after the fence so raw JSON
+  // doesn't bleed into the chat bubble while the model is still writing.
+  out = out.replace(/```hv-(?:form|confirm|options)\s*\n[\s\S]*$/i, '');
   return out;
 }
 
@@ -2920,6 +2928,7 @@ function wireModals() {
 // /agent-icons/<id>.svg. Agents without a brand logo fall back to a glyph.
 const AGENT_LOGOS = {
   'anthropic-api': '/agent-icons/anthropic.svg',
+  'openai-api': '/agent-icons/openai.svg',
   'claude': '/agent-icons/claude.svg',
   'cursor-agent': '/agent-icons/cursor-agent.svg',
   'codex': '/agent-icons/codex.svg',
@@ -2935,6 +2944,7 @@ const AGENT_LOGOS = {
 };
 const AGENT_ICON_FALLBACK = {
   'anthropic-api': '☁️',
+  'openai-api': '☁️',
 };
 function agentIconHtml(id) {
   const logo = AGENT_LOGOS[id];
@@ -2943,6 +2953,7 @@ function agentIconHtml(id) {
 }
 const AGENT_DESC = {
   'anthropic-api': 'Direct Messages API · streams reliably',
+  'openai-api': 'OpenAI API · gpt-4o-mini default',
   'claude': 'Claude Code (claude --print)',
   'cursor-agent': 'Cursor command line',
   'codex': 'Codex CLI (codex exec)',
@@ -3064,11 +3075,12 @@ async function renderSettingsAudio(panel) {
 }
 
 function renderSettingsAgent(panel) {
-  // Default to local CLI mode; BYOK = anthropic-api which is itself an HTTP agent
+  // Default to local CLI mode; BYOK = HTTP agents (anthropic-api, openai-api, …)
   const mode = panel.dataset.mode || 'local';
   const agents = state.agents ?? [];
-  const localAgents = agents.filter((a) => a.id !== 'anthropic-api');
-  const httpAgents = agents.filter((a) => a.id === 'anthropic-api');
+  const HTTP_AGENT_IDS = ['anthropic-api', 'openai-api'];
+  const localAgents = agents.filter((a) => !HTTP_AGENT_IDS.includes(a.id));
+  const httpAgents  = agents.filter((a) =>  HTTP_AGENT_IDS.includes(a.id));
   const list = mode === 'byok' ? httpAgents : localAgents;
   const currentId = state.selected?.agentId
     || (agents.find((a) => a.available)?.id ?? 'anthropic-api');
@@ -3085,10 +3097,19 @@ function renderSettingsAgent(panel) {
     ${mode === 'byok' ? `
       <div class="panel-sub" style="margin-bottom:14px">
         ${esc(t('settings.agent.byok.intro'))}
-        <ul style="margin:6px 0 0 18px;padding:0;font-family:var(--font-mono);font-size:11.5px">
+        <div style="margin-top:8px">
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">${esc(t('settings.agent.byok.anthropic_header'))}</div>
+          <ul style="margin:0 0 8px 18px;padding:0;font-family:var(--font-mono);font-size:11.5px">
           <li>${esc(t('settings.agent.byok.env_key'))}</li>
           <li>${esc(t('settings.agent.byok.env_base'))}</li>
         </ul>
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">${esc(t('settings.agent.byok.openai_header'))}</div>
+          <ul style="margin:0 0 0 18px;padding:0;font-family:var(--font-mono);font-size:11.5px">
+            <li>${esc(t('settings.agent.byok.openai_key'))}</li>
+            <li>${esc(t('settings.agent.byok.openai_base'))}</li>
+            <li>${esc(t('settings.agent.byok.openai_model'))}</li>
+          </ul>
+        </div>
       </div>
     ` : ''}
 
