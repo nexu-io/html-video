@@ -90,13 +90,10 @@
   <div class="whisper">◇</div>
 
   <div class="center">
-    <div class="eyebrow">Design Agent</div>
-    <!-- .ch spans are revealed one by one; staggered via inline animation-delay -->
-    <div class="hero" id="hero">
-      <span class="ch" style="animation-delay:.6s">A</span><span class="ch" style="animation-delay:.68s">g</span><span class="ch" style="animation-delay:.76s">e</span><span class="ch" style="animation-delay:.84s">n</span><span class="ch" style="animation-delay:.92s">t</span>
-    </div>
+    <div class="eyebrow">{{eyebrow}}</div>
+    <div class="hero" id="hv-hero"></div>
     <div class="gold-line"></div>
-    <div class="desc">Every use is an evolution.<br>From craft, to assist, to self-evolving.</div>
+    <div class="desc">{{desc}}</div>
   </div>
 
   <div class="indicators">
@@ -108,5 +105,20 @@
     <div class="ind gold" style="height:48px;animation-delay:2.7s,3.5s"></div>
     <div class="ind"      style="height:30px;animation-delay:2.76s,3.6s"></div>
   </div>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var word = vars.hero || '';
+    var hero = document.getElementById('hv-hero');
+    word.split('').forEach(function(ch, i) {
+      var s = document.createElement('span');
+      s.className = 'ch';
+      s.style.animationDelay = (0.6 + i * 0.08) + 's';
+      s.textContent = ch;
+      hero.appendChild(s);
+    });
+  })();
+  </script>
 </body>
 </html>

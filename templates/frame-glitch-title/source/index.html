@@ -71,20 +71,12 @@
 
   <main class="relative z-10 text-center px-12">
     <div class="mono text-[14px] opacity-60 tracking-[0.22em] mb-6 uppercase">— Transmission Halted —</div>
-    <div class="glitch-host relative inline-block">
-      <h1 class="font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)">
-        SIGNAL<br/>_LOST
-      </h1>
-      <h1 class="layer layer-c font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)">
-        SIGNAL<br/>_LOST
-      </h1>
-      <h1 class="layer layer-m font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)">
-        SIGNAL<br/>_LOST
-      </h1>
+    <div class="glitch-host relative inline-block" id="hv-glitch-host">
+      <h1 class="font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)" id="hv-title-main"></h1>
+      <h1 class="layer layer-c font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)" id="hv-title-c"></h1>
+      <h1 class="layer layer-m font-black tracking-[-0.02em] leading-[0.9]" style="font-size:clamp(80px,12vw,200px)" id="hv-title-m"></h1>
     </div>
-    <p class="mt-10 mono text-[16px] opacity-70 tracking-[0.16em]">
-      04 · DATA_CORRUPTION · <span style="color:#ffb547">w̶̶a̷i̶t̶i̶n̶g̶ ̷f̷o̶r̶ ̶r̷e̶c̶o̶v̷e̶r̶y̶</span>
-    </p>
+    <p class="mt-10 mono text-[16px] opacity-70 tracking-[0.16em]" id="hv-subtitle"></p>
   </main>
 
   <div class="grain"></div>
@@ -95,5 +87,19 @@
     <span style="color:#ff2bd6">CHROMATIC · CYAN × MAGENTA</span>
     <span class="mono">⏵ 00:14:32:08</span>
   </footer>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var title = vars.title || 'SIGNAL_LOST';
+    var subtitle = vars.subtitle || '';
+    ['hv-title-main','hv-title-c','hv-title-m'].forEach(function(id) {
+      document.getElementById(id).innerHTML = title.replace(/\n/g, '<br/>');
+    });
+    var sub = document.getElementById('hv-subtitle');
+    if (subtitle) sub.textContent = subtitle;
+    else sub.innerHTML = '04 &middot; DATA_CORRUPTION &middot; <span style="color:#ffb547">w̶̶a͇i̶t̶i̶n̶g̶ ͇f͇o̶r̶ ̶r͇e̶c̶o͇v̶e̶r͇y̶</span>';
+  })();
+  </script>
 </body>
 </html>

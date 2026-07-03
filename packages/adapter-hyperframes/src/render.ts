@@ -552,7 +552,16 @@ export async function renderToHtml(
   const posterPath = join(ctx.workDir, 'poster.svg');
 
   const sourceHtml = await readFile(input.template.sourcePath, 'utf8');
-  const augmented = sourceHtml.replace(
+  // Substitute {{key}} placeholders with variable values before render.
+  // String values are inserted directly; arrays/objects are serialised as JSON.
+  const substituted = Object.entries(input.variables).reduce((html, [key, value]) => {
+    const token = `{{${key}}}`;
+    if (!html.includes(token)) return html;
+    const replacement =
+      typeof value === 'string' ? value : JSON.stringify(value);
+    return html.split(token).join(replacement);
+  }, sourceHtml);
+  const augmented = substituted.replace(
     '</body>',
     `<script>
 window.__HV_VARS__ = ${JSON.stringify(input.variables)};
