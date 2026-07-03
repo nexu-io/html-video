@@ -2320,8 +2320,15 @@ async function refreshTextFields() {
   const seen = new Set();
   const fields = [];
   for (const el of nodes) {
-    const key = el.getAttribute('data-hv-text');
-    if (!key || seen.has(key)) continue;
+    let key = el.getAttribute('data-hv-text') ?? '';
+    // Valueless attribute → synthesize a positional key so the field still shows up.
+    if (!key) key = `field_${fields.length + 1}`;
+    // Key is the full content text (AI misuse) → warn and shorten to a safe slug.
+    if (key.length > 40 || /[一-鿿]/.test(key)) {
+      console.warn(`[hv-text] key looks like content text, falling back to positional key:`, key);
+      key = `field_${fields.length + 1}`;
+    }
+    if (seen.has(key)) key = `${key}_${fields.length + 1}`;
     seen.add(key);
     const text = el.textContent ?? '';
     fields.push({ key, original: text, current: text });
