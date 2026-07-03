@@ -190,7 +190,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const tmpl = ctx.templates.get(body.template_id as string);
         const exampleHtmlPath = join(tmpl.__dir!, tmpl.source_entry);
         if (existsSync(exampleHtmlPath)) {
-          const html = await readFile(exampleHtmlPath, 'utf8');
+          let html = await readFile(exampleHtmlPath, 'utf8');
+          const example = tmpl.inputs?.examples?.[0] as Record<string, unknown> | undefined;
+          if (example && /\{\{[^}]+\}\}/.test(html)) {
+            html = Object.entries(example).reduce((acc, [key, val]) => {
+              const token = `{{${key}}}`;
+              return acc.includes(token) ? acc.split(token).join(String(val)) : acc;
+            }, html);
+          }
           await ctx.orchestrator.writePreviewHtmlRaw(project.id, html);
         }
         return json(res, 200, { project: await ctx.orchestrator.load(project.id) });
@@ -1418,6 +1425,23 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           let html = await readFile(filePath, 'utf8');
           if (/data-composition-src/.test(html)) {
             html = injectCompositionPlayer(html);
+            res.writeHead(200, {
+              'content-type': MIME['.html']!,
+              'cache-control': 'no-store, no-cache, must-revalidate',
+              pragma: 'no-cache',
+            });
+            return res.end(html);
+          }
+          // Fill {{key}} placeholders with the first example values so gallery
+          // previews show real content instead of raw token strings.
+          if (/\{\{[^}]+\}\}/.test(html)) {
+            const example = t.inputs?.examples?.[0] as Record<string, unknown> | undefined;
+            if (example) {
+              html = Object.entries(example).reduce((acc, [key, val]) => {
+                const token = `{{${key}}}`;
+                return acc.includes(token) ? acc.split(token).join(String(val)) : acc;
+              }, html);
+            }
             res.writeHead(200, {
               'content-type': MIME['.html']!,
               'cache-control': 'no-store, no-cache, must-revalidate',

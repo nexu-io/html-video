@@ -68,18 +68,30 @@
   <div class="panel-bot"></div>
   <div class="seam"></div>
 
-  <div class="quote">
-    <span class="ln" style="animation-delay:1.0s">One agent.</span>
-    <span class="ln" style="animation-delay:1.15s">Every HTML</span>
-    <span class="ln on-blue" style="animation-delay:1.3s">video engine.</span>
-  </div>
+  <div class="quote" id="hv-quote"></div>
 
   <div class="attr">
-    <div class="name">html-video</div>
-    <div class="role">Meta-layer for coding agents</div>
+    <div class="name">{{name}}</div>
+    <div class="role">{{role}}</div>
   </div>
 
-  <div class="brand brand-tr">nexu.io</div>
+  <div class="brand brand-tr">{{brand}}</div>
   <div class="brand brand-br">Electric Studio</div>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var lines = vars.quote_lines || [];
+    var quote = document.getElementById('hv-quote');
+    var total = lines.length;
+    lines.forEach(function(text, i) {
+      var s = document.createElement('span');
+      s.className = 'ln' + (i === total - 1 ? ' on-blue' : '');
+      s.style.animationDelay = (1.0 + i * 0.15) + 's';
+      s.textContent = text;
+      quote.appendChild(s);
+    });
+  })();
+  </script>
 </body>
 </html>

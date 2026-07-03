@@ -65,20 +65,35 @@
 </style>
 </head>
 <body>
-  <div class="section-no">01<span class="dim">/04</span></div>
+  <div class="section-no" id="hv-section-no"></div>
 
-  <div class="nav">
-    <span class="active" style="animation-delay:.4s">Signal</span>
-    <span class="dim" style="animation-delay:.5s">Build</span>
-    <span class="dim" style="animation-delay:.6s">Ship</span>
-    <span class="dim" style="animation-delay:.7s">Scale</span>
-  </div>
+  <div class="nav" id="hv-nav"></div>
 
   <div class="card">
-    <div class="card-label">Launch · 2026</div>
-    <div class="card-title">Bring your<br>own agent.</div>
+    <div class="card-label">{{card_label}}</div>
+    <div class="card-title">{{title}}</div>
   </div>
 
   <div class="footer"><span class="tick"></span> html-video · Bold Signal</div>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var sec = vars.section || '01/04';
+    var parts = sec.split('/');
+    document.getElementById('hv-section-no').innerHTML =
+      parts[0] + (parts[1] ? '<span class="dim">/' + parts[1] + '</span>' : '');
+    var nav = document.getElementById('hv-nav');
+    var items = vars.nav || [];
+    items.forEach(function(label, i) {
+      var s = document.createElement('span');
+      if (i === 0) s.className = 'active';
+      else s.className = 'dim';
+      s.style.animationDelay = (0.4 + i * 0.1) + 's';
+      s.textContent = label;
+      nav.appendChild(s);
+    });
+  })();
+  </script>
 </body>
 </html>
