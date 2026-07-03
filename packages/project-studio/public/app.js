@@ -2319,12 +2319,22 @@ async function refreshTextFields() {
   const nodes = doc.querySelectorAll('[data-hv-text]');
   const seen = new Set();
   const fields = [];
-  for (const el of nodes) {
-    const key = el.getAttribute('data-hv-text');
-    if (!key || seen.has(key)) continue;
+  for (let i = 0; i < nodes.length; i++) {
+    const el = nodes[i];
+    let key = el.getAttribute('data-hv-text') ?? '';
+    // Valueless attribute → synthesize a positional key so the field still shows up.
+    if (!key) key = `field_${fields.length + 1}`;
+    // Key is the full content text (AI misuse) → warn and shorten to a safe slug.
+    if (key.length > 40 || /[一-鿿]/.test(key)) {
+      console.warn(`[hv-text] key looks like content text, falling back to positional key:`, key);
+      key = `field_${fields.length + 1}`;
+    }
+    if (seen.has(key)) key = `${key}_${fields.length + 1}`;
     seen.add(key);
     const text = el.textContent ?? '';
-    fields.push({ key, original: text, current: text });
+    // nodeIndex is the stable DOM position used by commitTextEdits to locate
+    // this element even when the display key differs from the attribute value.
+    fields.push({ key, nodeIndex: i, original: text, current: text });
   }
   state.textFields = fields;
   renderTextFields();
@@ -2398,9 +2408,12 @@ async function commitTextEdits() {
   const html = await fetchActiveFrameHtml();
   if (!html) { setSaveState('error', 'error'); return; }
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  const allHvNodes = doc.querySelectorAll('[data-hv-text]');
   for (const f of state.textFields) {
-    const nodes = doc.querySelectorAll(`[data-hv-text="${cssEscape(f.key)}"]`);
-    nodes.forEach((n) => { n.textContent = f.current; });
+    // Use the stable nodeIndex captured at read time so recovered/synthesized
+    // keys (field_N, suffixed duplicates) correctly map back to their DOM node.
+    const node = allHvNodes[f.nodeIndex];
+    if (node) node.textContent = f.current;
     f.original = f.current;
   }
   // Serialize back: include doctype because DOMParser drops it
