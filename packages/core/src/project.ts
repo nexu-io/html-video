@@ -11,7 +11,9 @@ import { randomUUID } from 'node:crypto';
 import { join, basename } from 'node:path';
 import type {
   Asset,
+  AudioCheckResult,
   EngineId,
+  FrameAudioStatus,
   FrameRecord,
   Project,
   ProjectStatus,
@@ -129,6 +131,92 @@ export class ProjectOrchestrator {
     }
     await this.deps.projects.save(project);
     return { project, asset };
+  }
+
+  // ---------------- Clip frames (user-imported MP4) ----------------
+
+  /**
+   * Import an existing MP4 asset as a clip frame in the timeline. The asset
+   * must already exist in the project (uploaded via addFileAsset) and have
+   * `type: 'video'`. The frame is inserted at the end of the current sequence;
+   * its duration is auto-detected from the MP4 via ffprobe. Clip frames are
+   * skipped by the export render loop — the asset MP4 is passed directly to
+   * ffmpeg concat.
+   */
+  async addClipFrame(
+    projectId: string,
+    assetId: string,
+  ): Promise<{ project: Project; frame: FrameRecord }> {
+    const project = await this.deps.projects.load(projectId);
+    const asset = project.assets.find((a) => a.id === assetId);
+    if (!asset) {
+      throw new HtmlVideoError('asset-not-found', `Asset "${assetId}" not found in project`);
+    }
+    if (asset.type !== 'video') {
+      throw new HtmlVideoError(
+        'invalid-input',
+        `Asset "${assetId}" is type "${asset.type}", not "video"`,
+      );
+    }
+    if (!asset.path) {
+      throw new HtmlVideoError('asset-not-found', `Asset "${assetId}" has no file path`);
+    }
+    // Auto-detect duration from the MP4. Falls back to DEFAULT_FRAME_DURATION_SEC.
+    let durationSec = DEFAULT_FRAME_DURATION_SEC;
+    try {
+      durationSec = await getVideoDuration(asset.path);
+    } catch {
+      // ffprobe unavailable or file unparseable — use default.
+    }
+    // Generate a unique graphNodeId for the clip frame. "clip_" prefix avoids
+    // collisions with agent-generated content-graph node ids.
+    const frames = project.frames ?? [];
+    let idx = 0;
+    let nodeId: string;
+    do {
+      nodeId = `clip_${String(idx).padStart(2, '0')}`;
+      idx++;
+    } while (frames.some((f) => f.graphNodeId === nodeId));
+
+    const nextOrder = frames.length > 0 ? Math.max(...frames.map((f) => f.order)) + 1 : 0;
+    const frame: FrameRecord = {
+      graphNodeId: nodeId,
+      htmlPath: asset.path, // clip frames point htmlPath at the asset MP4
+      durationSec,
+      order: nextOrder,
+      clipAssetId: assetId,
+    };
+    project.frames = [...frames, frame];
+    await this.deps.projects.save(project);
+    return { project, frame };
+  }
+
+  /**
+   * Remove a user-imported clip frame from the timeline. Only removes frames
+   * that have `clipAssetId` set — agent-generated frames are protected.
+   * The underlying asset file is NOT deleted (the user may re-add it).
+   */
+  async removeClipFrame(
+    projectId: string,
+    graphNodeId: string,
+  ): Promise<Project> {
+    const project = await this.deps.projects.load(projectId);
+    const frames = project.frames ?? [];
+    const idx = frames.findIndex(
+      (f) => f.graphNodeId === graphNodeId && f.clipAssetId !== undefined,
+    );
+    if (idx === -1) {
+      throw new HtmlVideoError(
+        'invalid-input',
+        `Clip frame "${graphNodeId}" not found (or is not a clip frame)`,
+      );
+    }
+    frames.splice(idx, 1);
+    // Re-number orders so there are no gaps.
+    frames.forEach((f, i) => { f.order = i; });
+    project.frames = frames;
+    await this.deps.projects.save(project);
+    return project;
   }
 
   async removeAsset(projectId: string, assetId: string): Promise<Project> {
@@ -362,6 +450,83 @@ export class ProjectOrchestrator {
     return { project, htmlPath: out.htmlPath };
   }
 
+  /**
+   * Pre-export audio availability check (the Studio "every clip has audio"
+   * gate). Reports, per play-order segment, whether audio is available — an
+   * embedded audio track (imported clips), per-frame narration text, or a
+   * project-level soundtrack that plays across the whole video. The Studio UI
+   * uses this to warn before exporting a video with silent segments; it never
+   * blocks export itself.
+   */
+  async checkClipsAudio(projectId: string): Promise<AudioCheckResult> {
+    const project = await this.deps.projects.load(projectId);
+    const st = project.soundtrack;
+    const findPath = (id?: string): string | undefined =>
+      id ? project.assets.find((a) => a.id === id)?.path : undefined;
+    // A project soundtrack (music or narration asset that resolves to a file)
+    // plays over the whole timeline, so it covers every segment.
+    const hasSoundtrack = !!(findPath(st?.musicAssetId) || findPath(st?.narrationAssetId));
+    const narrationByFrame = st?.narrationByFrame ?? {};
+    const hasNarrationFor = (nodeId: string): boolean => {
+      const line = narrationByFrame[nodeId];
+      return typeof line === 'string' && line.trim().length > 0;
+    };
+
+    const frames: FrameAudioStatus[] = [];
+
+    if (project.frames && project.frames.length > 0) {
+      const ordered = [...project.frames].sort((a, b) => a.order - b.order);
+      for (let i = 0; i < ordered.length; i++) {
+        const f = ordered[i]!;
+        const sources: ('embedded' | 'narration' | 'soundtrack')[] = [];
+        if (hasSoundtrack) sources.push('soundtrack');
+        if (hasNarrationFor(f.graphNodeId)) sources.push('narration');
+
+        let kind: 'clip' | 'generated' = 'generated';
+        let label = f.graphNodeId;
+        if (f.clipAssetId) {
+          kind = 'clip';
+          const clipAsset = project.assets.find((a) => a.id === f.clipAssetId);
+          if (clipAsset?.metadata.filename) label = clipAsset.metadata.filename;
+          else if (clipAsset?.path) label = basename(clipAsset.path);
+          // Only imported clips can carry their own embedded audio track;
+          // generated frames always render silent.
+          if (clipAsset?.path) {
+            try {
+              if (await hasAudioStream(clipAsset.path)) sources.push('embedded');
+            } catch {
+              // ffprobe unavailable — can't confirm embedded audio, leave it off.
+            }
+          }
+        }
+
+        frames.push({
+          graphNodeId: f.graphNodeId,
+          order: i,
+          kind,
+          label,
+          hasAudio: sources.length > 0,
+          sources,
+        });
+      }
+    } else {
+      // Single-frame fast path: one generated segment, audio only from soundtrack.
+      const sources: ('embedded' | 'narration' | 'soundtrack')[] = [];
+      if (hasSoundtrack) sources.push('soundtrack');
+      frames.push({
+        graphNodeId: 'single',
+        order: 0,
+        kind: 'generated',
+        label: project.name,
+        hasAudio: sources.length > 0,
+        sources,
+      });
+    }
+
+    const silent = frames.filter((f) => !f.hasAudio);
+    return { ok: silent.length === 0, hasSoundtrack, frames, silent };
+  }
+
   async exportMp4(args: {
     projectId: string;
     outputPath?: string;
@@ -387,11 +552,29 @@ export class ProjectOrchestrator {
       // h264 params (hyperframes' libx264 vs Remotion's encoder), so a stream
       // -c copy concat can stutter/corrupt. Re-encode the join in that case.
       const enginesUsed = new Set(ordered.map((f) => f.engine ?? projectEngine));
-      const reencode = enginesUsed.size > 1;
+      // Force re-encode if any frame is an imported clip — its codec
+      // profile may differ from generated frames.
+      const hasClipFrames = ordered.some((f) => f.clipAssetId !== undefined);
+      const reencode = enginesUsed.size > 1 || hasClipFrames;
 
       for (let i = 0; i < ordered.length; i++) {
         const f = ordered[i]!;
         const frameOut = join(projectDir, 'frames', `${String(i + 1).padStart(2, '0')}.mp4`);
+
+        // Imported MP4 clip: skip adapter rendering — the asset is already a
+        // rendered MP4. Pass its file path directly to ffmpeg concat.
+        if (f.clipAssetId) {
+          const clipAsset = project.assets.find((a) => a.id === f.clipAssetId);
+          if (!clipAsset?.path) {
+            throw new HtmlVideoError('asset-not-found', `Clip asset "${f.clipAssetId}" not found`);
+          }
+          frameMp4s.push(clipAsset.path);
+          if (args.onProgress) {
+            args.onProgress((i + 1) / ordered.length * 100, `frame ${i + 1}/${ordered.length}: clip (imported)`);
+          }
+          continue;
+        }
+
         const { engine: frameEngine, templateRef } = this.resolveFrameTemplateRef(f, projectEngine);
         const adapter = this.deps.engines.get(frameEngine);
         await adapter.render(
@@ -423,12 +606,47 @@ export class ProjectOrchestrator {
         frameMp4s.push(frameOut);
       }
 
-      await concatFramesWithFfmpeg(frameMp4s, outputPath, projectDir, {
-        reencode,
-        fps: project.preferences.fps ?? 60,
-      });
+      // Single clip-only frame: no concat needed — just copy the asset MP4.
+      // Avoids a costly 4K libx264 re-encode for what is already a valid MP4.
+      if (frameMp4s.length === 1 && ordered.length === 1 && ordered[0]!.clipAssetId) {
+        const { copyFile } = await import('node:fs/promises');
+        await copyFile(frameMp4s[0]!, outputPath);
+      } else {
+        // For mixed clip+generated frames, avoid forced fps conversion on clips.
+        // Pass fps=0 to let ffmpeg use the first input's native framerate.
+        const clipFps = hasClipFrames ? 0 : (project.preferences.fps ?? 60);
+        await concatFramesWithFfmpeg(frameMp4s, outputPath, projectDir, {
+          reencode,
+          fps: clipFps,
+        });
+      }
       const totalDur = ordered.reduce((s, f) => s + (f.durationSec || 0), 0);
-      await this.applySoundtrack(project, outputPath, totalDur, args.onProgress);
+
+      // If narration audio was generated and is longer than the video, extend
+      // the last frame so the voiceover isn't cut by -shortest during mux.
+      let effectiveDur = totalDur;
+      const narrAssetId = project.soundtrack?.narrationAssetId;
+      if (narrAssetId) {
+        const narrAsset = project.assets.find((a) => a.id === narrAssetId);
+        if (narrAsset?.path) {
+          try {
+            const audioDur = await getVideoDuration(narrAsset.path);
+            if (audioDur > totalDur) {
+              const extraSec = audioDur - totalDur;
+              const paddedPath = join(projectDir, `output-padded-${stamp}.mp4`);
+              await padVideoEnd(outputPath, paddedPath, extraSec);
+              const { rename } = await import('node:fs/promises');
+              await rename(paddedPath, outputPath);
+              effectiveDur = audioDur;
+              if (args.onProgress) args.onProgress(99, 'extended last frame to match narration');
+            }
+          } catch {
+            // ffprobe failed on the narration asset — just use totalDur.
+          }
+        }
+      }
+
+      await this.applySoundtrack(project, outputPath, effectiveDur, args.onProgress);
       project.lastOutputMp4Path = outputPath;
       recordExport(project, outputPath);
       project.status = 'rendered';
@@ -461,7 +679,43 @@ export class ProjectOrchestrator {
         ...(args.signal !== undefined && { signal: args.signal }),
       },
     );
-    await this.applySoundtrack(project, outputPath, undefined, args.onProgress);
+
+    // Detect rendered video duration, then check if narration is longer.
+    // The single-frame path uses duration='auto' so we don't know the length
+    // until after rendering.
+    let singleFrameDur: number | undefined;
+    try {
+      singleFrameDur = await getVideoDuration(outputPath);
+    } catch {
+      // ffprobe failed — applySoundtrack will use its own defaults.
+    }
+
+    // If narration was generated and is longer than the video, extend the
+    // last frame so the voiceover isn't cut by -shortest during mux.
+    if (singleFrameDur !== undefined) {
+      const narrAssetId = project.soundtrack?.narrationAssetId;
+      if (narrAssetId) {
+        const narrAsset = project.assets.find((a) => a.id === narrAssetId);
+        if (narrAsset?.path) {
+          try {
+            const audioDur = await getVideoDuration(narrAsset.path);
+            if (audioDur > singleFrameDur) {
+              const extraSec = audioDur - singleFrameDur;
+              const paddedPath = join(projectDir, `output-padded-${stamp}.mp4`);
+              await padVideoEnd(outputPath, paddedPath, extraSec);
+              const { rename } = await import('node:fs/promises');
+              await rename(paddedPath, outputPath);
+              singleFrameDur = audioDur;
+              if (args.onProgress) args.onProgress(99, 'extended last frame to match narration');
+            }
+          } catch {
+            // ffprobe failed on narration — fall through.
+          }
+        }
+      }
+    }
+
+    await this.applySoundtrack(project, outputPath, singleFrameDur, args.onProgress);
     project.lastOutputMp4Path = outputPath;
     recordExport(project, outputPath);
     project.status = 'rendered';
@@ -770,6 +1024,9 @@ async function concatFramesWithFfmpeg(
     const n = frameMp4s.length;
     const inputs = frameMp4s.flatMap((p) => ['-i', p]);
     const filter = `${frameMp4s.map((_, i) => `[${i}:v]`).join('')}concat=n=${n}:v=1:a=0[v]`;
+    // Only force output framerate when explicitly set (non-zero). For imported
+    // clips, keeping the native fps avoids a costly frame-doubling re-encode.
+    const rateArgs = fps > 0 ? ['-r', String(fps)] : [];
     ffmpegArgs = [
       '-y',
       ...inputs,
@@ -777,7 +1034,7 @@ async function concatFramesWithFfmpeg(
       '-map', '[v]',
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
-      '-r', String(fps),
+      ...rateArgs,
       '-movflags', '+faststart',
       outputPath,
     ];
@@ -878,11 +1135,17 @@ async function muxAudioWithFfmpeg(args: {
     mixLabels.push('[vo]');
   }
   if (mixLabels.length === 2) {
-    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[aout]`);
+    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[amixed]`);
   } else {
-    // single source → relabel to [aout]
-    filters.push(`${mixLabels[0]}anull[aout]`);
+    // single source → relabel
+    filters.push(`${mixLabels[0]}anull[amixed]`);
   }
+  // Pad the mixed audio with trailing silence so it can never be SHORTER than
+  // the video. Otherwise `-shortest` clamps the whole output to a short audio
+  // track — e.g. a 10s intro narration would truncate an 80s video down to its
+  // first clip. `apad` makes the audio effectively unbounded; `-shortest` then
+  // trims it back to the video length, which is the alignment we actually want.
+  filters.push('[amixed]apad[aout]');
 
   const ffArgs = [
     '-y',
@@ -924,6 +1187,121 @@ async function muxAudioWithFfmpeg(args: {
 
 /** Append this export to the project's history (newest last, de-duped by path,
  *  capped so it doesn't grow unbounded). */
+/**
+ * Detect whether a media file carries at least one audio stream, via ffprobe.
+ * Resolves false when there is no audio stream; rejects if ffprobe is
+ * unavailable or errors on the file (callers treat a throw as "can't confirm").
+ */
+async function hasAudioStream(filePath: string): Promise<boolean> {
+  const { execFile } = await import('node:child_process');
+  return new Promise<boolean>((resolve, reject) => {
+    execFile(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-select_streams', 'a',
+        '-show_entries', 'stream=index',
+        '-of', 'csv=p=0',
+        filePath,
+      ],
+      { timeout: 10_000 },
+      (err, stdout) => {
+        if (err) {
+          reject(
+            new HtmlVideoError(
+              'render-failed',
+              `ffprobe failed on "${filePath}": ${err.message}. Install ffmpeg (brew install ffmpeg).`,
+            ),
+          );
+          return;
+        }
+        resolve(stdout.trim().length > 0);
+      },
+    );
+  });
+}
+
+/**
+ * Detect the video duration of an MP4 file via ffprobe (bundled with ffmpeg).
+ * Returns seconds as a float. Throws if ffprobe is unavailable or the output
+ * can't be parsed.
+ */
+async function getVideoDuration(filePath: string): Promise<number> {
+  const { execFile } = await import('node:child_process');
+  return new Promise<number>((resolve, reject) => {
+    execFile(
+      'ffprobe',
+      [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'csv=p=0',
+        filePath,
+      ],
+      { timeout: 10_000 },
+      (err, stdout) => {
+        if (err) {
+          reject(
+            new HtmlVideoError(
+              'render-failed',
+              `ffprobe failed on "${filePath}": ${err.message}. Install ffmpeg (brew install ffmpeg).`,
+            ),
+          );
+          return;
+        }
+        const sec = parseFloat(stdout.trim());
+        if (!Number.isFinite(sec) || sec <= 0) {
+          reject(new HtmlVideoError('render-failed', `ffprobe returned invalid duration for "${filePath}": "${stdout.trim()}"`));
+          return;
+        }
+        resolve(sec);
+      },
+    );
+  });
+}
+
+/**
+ * Pad the end of a video by cloning its last frame for `extraSeconds`.
+ * Uses ffmpeg's `tpad` filter (available since FFmpeg 4.2 / 2019).
+ * Re-encodes to libx264; input audio, if any, is dropped (our pipeline
+ * produces silent video — audio is mixed in later via muxAudioWithFfmpeg).
+ */
+async function padVideoEnd(
+  inputPath: string,
+  outputPath: string,
+  extraSeconds: number,
+): Promise<void> {
+  const { spawn } = await import('node:child_process');
+  const args = [
+    '-y',
+    '-i', inputPath,
+    '-vf', `tpad=stop_mode=clone:stop_duration=${extraSeconds.toFixed(2)}`,
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-an',
+    '-movflags', '+faststart',
+    outputPath,
+  ];
+  await new Promise<void>((resolveFn, reject) => {
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
+    proc.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') {
+        reject(new HtmlVideoError(
+          'render-failed',
+          'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.',
+        ));
+      } else {
+        reject(err);
+      }
+    });
+    proc.on('exit', (code: number | null) => {
+      if (code === 0) resolveFn();
+      else reject(new HtmlVideoError('render-failed', `ffmpeg tpad exited with code ${code}: ${stderr.slice(-2000)}`));
+    });
+  });
+}
+
 function recordExport(project: Project, outputPath: string): void {
   const list = (project.exports ?? []).filter((e) => e.path !== outputPath);
   list.push({ path: outputPath, filename: basename(outputPath), createdAt: new Date().toISOString() });

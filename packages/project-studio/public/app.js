@@ -45,6 +45,7 @@ const API = {
   setTemplate: (id, tid) => fetch(`/api/projects/${id}/template`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ template_id: tid }) }).then(r => r.json()),
   setAgent: (id, aid, model) => fetch(`/api/projects/${id}/agent`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: aid, ...(model !== undefined && { agent_model: model }) }) }).then(r => r.json()),
   exportMp4: id => fetch(`/api/projects/${id}/export`, { method: 'POST' }).then(r => r.json()),
+  audioCheck: id => fetch(`/api/projects/${id}/audio-check`, { method: 'POST' }).then(r => r.json()),
   getMessages: id => fetch(`/api/projects/${id}/messages`).then(r => r.json()),
   rawHtml: id => fetch(`/api/projects/${id}/raw-html`).then(r => r.ok ? r.text() : null),
   putRawHtml: (id, html) => fetch(`/api/projects/${id}/raw-html`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ html }) }).then(r => r.json()),
@@ -227,6 +228,76 @@ async function startExportStream() {
   }
 }
 
+// ============== Pre-export "every clip has audio" gate ==============
+// Runs the audio-availability check first. If any segment is silent (no
+// embedded clip audio, no per-frame narration, no project soundtrack), it asks
+// the user to proceed or cancel before the (possibly long) export begins.
+// Proceeding logs which clips were silent, then runs the normal export stream.
+async function requestExport() {
+  if (!state.selected || state.exporting) return;
+  let check = null;
+  try {
+    check = await API.audioCheck(state.selected.id);
+  } catch {
+    // Check failed (e.g. ffprobe missing) — don't block the export.
+    check = null;
+  }
+  if (check && check.ok === false && Array.isArray(check.silent) && check.silent.length > 0) {
+    const proceed = await confirmSilentClips(check.silent);
+    if (!proceed) return;
+    // proceed-behavior: export as-is, but log which clips were silent.
+    const labels = check.silent.map((f) => f.label).join(', ');
+    state.messages.push({
+      role: 'system',
+      content: t('export.audio_warn', { count: String(check.silent.length), clips: labels }),
+      ts: Date.now(),
+    });
+    renderChatLog();
+  }
+  startExportStream();
+}
+
+// Promise-based confirm modal listing the silent segments. Resolves true when
+// the user clicks "Export anyway", false on cancel / backdrop / Escape.
+function confirmSilentClips(silent) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('audio-confirm-modal');
+    const body = document.getElementById('audio-confirm-body');
+    const okBtn = document.getElementById('audio-confirm-ok');
+    const cancelBtn = document.getElementById('audio-confirm-cancel');
+    // Modal markup missing for some reason — fail open so export still works.
+    if (!modal || !body || !okBtn || !cancelBtn) { resolve(true); return; }
+
+    const items = silent.map((f) => {
+      const kind = f.kind === 'clip' ? t('export.audio_kind_clip') : t('export.audio_kind_frame');
+      return `<li><span class="ac-kind">${esc(kind)}</span><span class="ac-label">${esc(f.label)}</span></li>`;
+    }).join('');
+    body.innerHTML = `
+      <p class="ac-intro">${esc(t('export.audio_intro', { count: String(silent.length) }))}</p>
+      <ul class="ac-list">${items}</ul>
+      <p class="ac-hint">${esc(t('export.audio_hint'))}</p>
+    `;
+    modal.classList.add('show');
+
+    let done = false;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); cleanup(false); } };
+    function cleanup(result) {
+      if (done) return;
+      done = true;
+      modal.classList.remove('show');
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      modal.onclick = null;
+      document.removeEventListener('keydown', onKey, true);
+      resolve(result);
+    }
+    okBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
+    modal.onclick = (e) => { if (e.target === modal) cleanup(false); };
+    document.addEventListener('keydown', onKey, true);
+  });
+}
+
 // ============== Per-frame native enhancement (streamed) ==============
 // Render ONE data frame with the native Remotion template and stream progress,
 // mirroring startExportStream. On done, swap that frame's thumbnail + centre
@@ -319,9 +390,10 @@ function isExportIntent(text) {
   const t = text.trim();
   if (t.length > 40) return false;        // long messages are content / iterate requests
   if (/https?:\/\//i.test(t)) return false; // a link is ALWAYS source material to build from, never "export"
-  // "生成/做一个视频" is the most common way to ask to CREATE a video — it must
-  // NOT count as export. Only match explicit export/render verbs that target an
-  // already-produced result: 导出 / 出片 / 渲染 / export / render / encode / 输出mp4.
+  // "生成 / 做一个视频" ("make a video") is the most common way to ask to CREATE
+  // a video — it must NOT count as export. Only match explicit export/render
+  // verbs that target an already-produced result. The regex below still
+  // recognizes the Chinese verbs 导出 / 出片 / 渲染 / 输出mp4 alongside English.
   return /^\s*(?:export|render|encode|导出(?:视频|为?\s?mp4)?|出片|渲染|输出\s?mp4|存为\s?mp4)\s*$/i.test(t)
     || /(?:^|\s)(?:导出|出片|渲染成?|export|render|encode)(?:$|\s|视频|为?\s?mp4|成\s?mp4)/i.test(t);
 }
@@ -724,7 +796,7 @@ function wireToolbar() {
     exportBtn.onclick = () => {
       if (!state.selected) return;
       if (state.exporting) return;
-      startExportStream();
+      requestExport();
     };
   }
   const nameInput = document.getElementById('proj-name');
@@ -1566,8 +1638,8 @@ function renderMessage(m, idx) {
   const confirmP = parseHvConfirm(raw);
   if (confirmP.confirm) {
     // Only lock the card when the click actually led somewhere:
-    //   - "✏️ 改一下" → next assistant turn re-emitted hv-form (the edit landed)
-    //   - "✓ 开始生成" → next assistant turn produced real output
+    //   - the "edit" button → next assistant turn re-emitted hv-form (the edit landed)
+    //   - the "generate" button → next assistant turn produced real output
     //                   (preview-event / ✓ HTML preview / storyboard summary)
     // If the click triggered an empty reply or generate failed, treat the
     // card as live so the user can press the button again.
@@ -1576,8 +1648,8 @@ function renderMessage(m, idx) {
       const after = state.messages.slice(idx + 1);
       const nextUser = after.find((x) => x.role === 'user');
       if (nextUser) {
-        const t = (nextUser.content ?? '').trim();
-        if (t === '[hv-confirm:generate]') {
+        const nextContent = (nextUser.content ?? '').trim();
+        if (nextContent === '[hv-confirm:generate]') {
           // Did anything productive happen between this user click and the
           // next user turn?
           const userIdx = after.indexOf(nextUser);
@@ -1593,9 +1665,9 @@ function renderMessage(m, idx) {
             }
             return false;
           });
-          if (sawSuccess) resolved = '✓ 开始生成';
-        } else if (t === '[hv-confirm:edit]') {
-          resolved = '✏️ 改一下';
+          if (sawSuccess) resolved = t('confirm.generate');
+        } else if (nextContent === '[hv-confirm:edit]') {
+          resolved = t('confirm.edit');
         }
       }
     }
@@ -1695,15 +1767,15 @@ function parseHvOptions(text) {
 // Multi-field input card. Schema:
 //   ```hv-form
 //   {
-//     "title": "讲一下你想做的视频…",
+//     "title": "Tell me about the video you want…",
 //     "fields": [
-//       { "key": "topic",     "label": "主题 / who-what",   "kind": "text",     "required": true },
+//       { "key": "topic",     "label": "Topic / who-what",   "kind": "text",     "required": true },
 //       { "key": "headline",  "label": "Headline",          "kind": "text",     "required": true },
-//       { "key": "data",      "label": "关键数字 / 数据",   "kind": "textarea" },
-//       { "key": "aspect",    "label": "尺寸",              "kind": "select",   "options": ["16:9","9:16","1:1","4:5"], "default": "16:9" },
-//       { "key": "duration",  "label": "时长(秒)",          "kind": "select",   "options": ["3","5","10","15","30"], "default": "5" },
-//       { "key": "frame_count","label": "帧数 / 画面数",    "kind": "text",     "default": "1" },
-//       { "key": "style",     "label": "风格描述",          "kind": "textarea" }
+//       { "key": "data",      "label": "Key numbers / data",   "kind": "textarea" },
+//       { "key": "aspect",    "label": "Aspect ratio",              "kind": "select",   "options": ["16:9","9:16","1:1","4:5"], "default": "16:9" },
+//       { "key": "duration",  "label": "Duration (sec)",          "kind": "select",   "options": ["3","5","10","15","30"], "default": "5" },
+//       { "key": "frame_count","label": "Frame count",    "kind": "text",     "default": "1" },
+//       { "key": "style",     "label": "Style description",          "kind": "textarea" }
 //     ],
 //     "allow_attachments": true
 //   }
@@ -1723,8 +1795,8 @@ function parseHvForm(text) {
 // === hv-confirm block parsing ===
 //   ```hv-confirm
 //   {
-//     "title": "按这些信息开始生成？",
-//     "summary": [{ "label": "主题", "value": "nexu-io" }, ...],
+//     "title": "Generate with this info?",
+//     "summary": [{ "label": "Topic", "value": "nexu-io" }, ...],
 //     "actions": ["generate","edit"]   // optional, defaults to both
 //   }
 function parseHvConfirm(text) {
@@ -1792,14 +1864,14 @@ function renderFormCard(form, submitted, msgIdx) {
     : '';
   const dropHtml = allowAttachments && !submitted ? `
     <div class="form-attachments" data-form-msg="${msgIdx}">
-      <div class="form-drop-hint">📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）</div>
+      <div class="form-drop-hint">${t('form.drop_hint')}</div>
       <div class="form-attachment-list" id="form-att-${msgIdx}"></div>
       <input type="file" id="form-file-${msgIdx}" multiple style="display:none" />
-      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">+ 添加文件</button>
+      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">${t('form.add_file')}</button>
     </div>` : '';
   const actionsHtml = submitted ? '' : `
     <div class="form-actions">
-      <button class="form-submit" data-form-msg="${msgIdx}">提交 ↵</button>
+      <button class="form-submit" data-form-msg="${msgIdx}">${t('form.submit')}</button>
     </div>`;
   return `<div class="form-card${submitted ? ' submitted' : ''}">
     <div class="form-title">${esc(title)}</div>
@@ -1825,8 +1897,8 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
   }).join('');
   const actionsHtml = resolved ? '' : `
     <div class="confirm-actions">
-      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">✓ 开始生成</button>` : ''}
-      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">✏️ 修改</button>` : ''}
+      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${t('confirm.generate')}</button>` : ''}
+      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${t('confirm.edit')}</button>` : ''}
     </div>`;
   return `<div class="confirm-card${resolved ? ' resolved' : ''}">
     <div class="confirm-title">${esc(title)}</div>
@@ -2066,7 +2138,7 @@ async function commitInlineTextEdits(iframe) {
     if (!r.ok) throw new Error(`fetch failed ${r.status}`);
     serverHtml = await r.text();
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('text_pane.save_failed', { message: e.message }), 'error');
     return;
   }
   const parser = new DOMParser();
@@ -2099,7 +2171,7 @@ async function commitInlineTextEdits(iframe) {
       body: JSON.stringify({ html: out }),
     });
     if (!r.ok) throw new Error(`save failed ${r.status}`);
-    toast(`已保存 ${changed} 处修改`, 'success');
+    toast(t('text_pane.saved_changes', { count: changed }), 'success');
     // Refresh local project state so frames-strip thumbnails cache-bust.
     if (fid) {
       const pr = await API.getProject(projectId);
@@ -2107,7 +2179,7 @@ async function commitInlineTextEdits(iframe) {
       renderFramesStrip();
     }
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('text_pane.save_failed', { message: e.message }), 'error');
   }
 }
 
@@ -2154,8 +2226,13 @@ function renderFramesStrip() {
   const p = state.selected;
   const frames = p && Array.isArray(p.frames) ? [...p.frames].sort((a, b) => a.order - b.order) : [];
   if (frames.length === 0) {
-    strip.classList.remove('has-frames');
-    strip.innerHTML = '';
+    // Still show the import-clip button so users can add their first clip
+    // even when there are no generated frames yet.
+    strip.classList.add('has-frames');
+    strip.innerHTML = `<span class="label">${t('frames.label')}</span>
+      <button class="frame-graph-btn" id="btn-import-clip" title="${esc(t('frames.import_clip') || 'Import MP4 clip')}">+🎬 ${esc(t('frames.import_clip') || 'Import MP4 clip')}</button>`;
+    const icbtn = document.getElementById('btn-import-clip');
+    if (icbtn) icbtn.addEventListener('click', importClipAction);
     return;
   }
   strip.classList.add('has-frames');
@@ -2170,17 +2247,19 @@ function renderFramesStrip() {
     const isFocus = f.graphNodeId === state.iterateFocusFrameId;
     const cls = ['frame-tab', isActive && 'active', isFocus && 'focus']
       .filter(Boolean).join(' ');
-    // A native (enhanced) frame has no HTML — play its rendered preview MP4.
-    const enhanced = f.engine === 'remotion';
+    // A native (enhanced) or imported clip frame has no HTML — play its MP4.
+    const isClip = !!f.clipAssetId;
+    const enhanced = f.engine === 'remotion' || isClip;
     const thumbInner = enhanced
       ? `<video src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}.mp4?v=${ver}" autoplay muted loop playsinline tabindex="-1"></video>`
       : `<iframe sandbox="allow-scripts" src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}?thumb=1&v=${ver}" tabindex="-1" loading="lazy"></iframe>`;
-    // The "⚡ Enhance" control shows only on data frames (kind==='data'). It's an
-    // overlay badge ON the thumbnail (top area) so it's obvious + always visible.
+    // "⚡ Enhance" for data frames; "✕" delete for imported clip frames.
     const isData = state.frameKinds[f.graphNodeId] === 'data';
     const busy = state.enhancing && state.enhancing.nodeId === f.graphNodeId;
     let enhanceCtl = '';
-    if (isData) {
+    if (isClip) {
+      enhanceCtl = `<span class="frame-enhance clip-del" data-fid="${esc(f.graphNodeId)}" data-act="delete-clip" title="${esc(t('frames.clip_delete') || 'Remove clip')}">✕</span>`;
+    } else if (isData) {
       if (busy) {
         enhanceCtl = `<span class="frame-enhance busy" data-fid="${esc(f.graphNodeId)}">${t('frames.enhancing', { pct: state.enhancing.pct ?? 0 })}</span>`;
       } else if (enhanced) {
@@ -2193,7 +2272,7 @@ function renderFramesStrip() {
       <div class="frame-thumb">
         ${thumbInner}
         ${enhanceCtl}
-        ${isFocus ? '<div class="focus-mark" title="正在编辑此帧">✎</div>' : ''}
+        ${isFocus ? `<div class="focus-mark" title="${esc(t('frames.editing_this'))}">✎</div>` : ''}
       </div>
       <div class="frame-tab-label">
         <span class="order">${String(f.order + 1).padStart(2, '0')}</span>
@@ -2202,7 +2281,8 @@ function renderFramesStrip() {
     </button>`;
   }).join('');
   strip.innerHTML = `<span class="label">${t('frames.label')}</span>${tabs}
-    <button class="frame-graph-btn" id="btn-show-graph">${t('frames.view_graph')}</button>`;
+    <button class="frame-graph-btn" id="btn-show-graph">${t('frames.view_graph')}</button>
+    <button class="frame-graph-btn" id="btn-import-clip" title="${esc(t('frames.import_clip') || 'Import MP4 clip')}">+🎬</button>`;
   // Single-click: switch which frame is shown in the centre preview.
   // Double-click: pin this frame as the iteration target so subsequent
   // chat messages only rewrite this frame. Click another / dbl-click the
@@ -2237,10 +2317,13 @@ function renderFramesStrip() {
       const fid = el.dataset.fid;
       if (el.dataset.act === 'unenhance') unenhanceFrameAction(fid);
       else if (el.dataset.act === 'enhance') startEnhanceStream(fid);
+      else if (el.dataset.act === 'delete-clip') deleteClipFrameAction(fid);
     });
   });
   const gbtn = document.getElementById('btn-show-graph');
   if (gbtn) gbtn.addEventListener('click', openGraphModal);
+  const icbtn = document.getElementById('btn-import-clip');
+  if (icbtn) icbtn.addEventListener('click', importClipAction);
 }
 
 async function openGraphModal() {
@@ -2461,7 +2544,7 @@ async function sendMessage() {
     ta.value = '';
     state.messages.push({ role: 'user', content: text, ts: Date.now() });
     renderChatLog();
-    startExportStream();
+    requestExport();
     return;
   }
 
@@ -3244,14 +3327,81 @@ function esc(s) {
 
 window.addEventListener('error', (e) => {
   console.error('[hv-studio] uncaught:', e.error || e.message);
-  try { toast(`错误：${e.error?.message || e.message}`, 'error'); } catch {}
+  try { toast(t('common.error', { message: e.error?.message || e.message }), 'error'); } catch {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[hv-studio] unhandled rejection:', e.reason);
-  try { toast(`错误：${e.reason?.message || e.reason}`, 'error'); } catch {}
+  try { toast(t('common.error', { message: e.reason?.message || e.reason }), 'error'); } catch {}
 });
 init().catch((e) => {
   console.error('[hv-studio] init failed:', e);
-  try { toast(`init 失败：${e.message}`, 'error'); } catch {}
+  try { toast(t('common.init_failed', { message: e.message }), 'error'); } catch {}
 });
 
+
+
+// ============== clip frame actions ==============
+
+async function importClipAction() {
+  if (!state.selected) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    // Quick client-side reject for non-video
+    if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov)$/i)) {
+      alert(t('frames.clip_bad_type') || 'Please select a video file (MP4, WebM, MOV).');
+      return;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const r = await fetch(`/api/projects/${state.selected.id}/clips`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!r.ok) {
+        const { error } = await r.json().catch(() => ({ error: 'Upload failed' }));
+        alert(error || 'Upload failed');
+        return;
+      }
+      const { project } = await r.json();
+      // Merge the returned project into state so the strip refreshes with the new frame.
+      if (state.selected && state.selected.id === project.id) {
+        state.selected = project;
+        state.activeFrameId = null; // let the user click the new frame
+        renderFramesStrip();
+        renderPreview();
+      }
+    } catch (e) {
+      alert(e.message || 'Upload failed');
+    }
+  };
+  input.click();
+}
+
+async function deleteClipFrameAction(fid) {
+  if (!state.selected) return;
+  if (!confirm(t('frames.clip_delete_confirm') || 'Remove this clip from the timeline?')) return;
+  try {
+    const r = await fetch(`/api/projects/${state.selected.id}/clips/${encodeURIComponent(fid)}`, {
+      method: 'DELETE',
+    });
+    if (!r.ok) {
+      const { error } = await r.json().catch(() => ({ error: 'Delete failed' }));
+      alert(error || 'Delete failed');
+      return;
+    }
+    const { project } = await r.json();
+    if (state.selected && state.selected.id === project.id) {
+      state.selected = project;
+      if (state.activeFrameId === fid) state.activeFrameId = null;
+      renderFramesStrip();
+      renderPreview();
+    }
+  } catch (e) {
+    alert(e.message || 'Delete failed');
+  }
+}

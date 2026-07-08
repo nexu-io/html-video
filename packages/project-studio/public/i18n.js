@@ -86,6 +86,10 @@ const DICT = {
     'frames.enhance_hint': 'Render this data frame natively with Remotion (numbers roll, bars grow)',
     'frames.enhanced_revert': '⚡ Remotion ✓ (revert)',
     'frames.enhancing': '⚡ {pct}%…',
+    'frames.import_clip': 'Import MP4 clip',
+    'frames.clip_delete': 'Remove this imported clip',
+    'frames.clip_delete_confirm': 'Remove this clip from the timeline?',
+    'frames.clip_bad_type': 'Please select a video file (MP4, WebM, MOV).',
     'enhance.done': '⚡ Frame rendered with Remotion',
     'enhance.failed': '⚡ Remotion failed: {message}',
 
@@ -116,7 +120,14 @@ const DICT = {
     'export.copy_failed': 'Copy failed: {message}',
     'export.reveal_failed': 'Open failed: {message}',
 
-    'soundtrack.title': '🎵 Add background music & narration',
+    'export.audio_title': 'Some clips have no audio',
+    'export.audio_intro': '{count} clip(s) in this video have no audio — no embedded track, narration, or soundtrack:',
+    'export.audio_hint': 'Add background music or narration in the soundtrack panel, or export anyway with these clips silent.',
+    'export.audio_kind_clip': 'clip',
+    'export.audio_kind_frame': 'frame',
+    'export.audio_cancel': 'Cancel',
+    'export.audio_proceed': 'Export anyway',
+    'export.audio_warn': '⚠️ Exporting with {count} silent clip(s): {clips}',
     'soundtrack.summary_sub': 'AI music + voiceover, mixed into your export',
     'soundtrack.optional': 'optional',
     'soundtrack.hint': 'Background music + narration, mixed into the MP4 on export.',
@@ -268,6 +279,20 @@ const DICT = {
     'tpl_preview.source_skill': 'Adapted from',
     'tpl_preview.source_origin': 'Design lineage',
     'tpl_preview.source_license': 'License',
+
+    // --- form / confirm cards (backfilled from app.js) ---
+    'form.drop_hint': '📎 Drag / paste / choose files as material (logo, screenshot, data CSV… optional)',
+    'form.add_file': '+ Add file',
+    'form.submit': 'Submit ↵',
+    'confirm.generate': '✓ Generate',
+    'confirm.edit': '✏️ Edit',
+
+    // --- text-pane save + misc toasts (backfilled from app.js) ---
+    'text_pane.save_failed': 'Save failed: {message}',
+    'text_pane.saved_changes': 'Saved {count} change(s)',
+    'frames.editing_this': 'Editing this frame',
+    'common.error': 'Error: {message}',
+    'common.init_failed': 'Init failed: {message}',
   },
 
   zh: {
@@ -335,6 +360,13 @@ const DICT = {
     'frames.enhance_hint': '用原生 Remotion 渲染这个数据帧（数字滚动、柱子生长）',
     'frames.enhanced_revert': '⚡ Remotion ✓（还原）',
     'frames.enhancing': '⚡ {pct}%…',
+    'frames.import_clip': '导入 MP4 片段',
+    'frames.clip_delete': '移除此导入片段',
+    'frames.clip_delete_confirm': '从时间线中移除此片段？',
+    'frames.clip_bad_type': '请选择视频文件（MP4、WebM、MOV）。',
+    'frames.clip_delete': 'Remove this imported clip',
+    'frames.clip_delete_confirm': 'Remove this clip from the timeline?',
+    'frames.clip_bad_type': 'Please select a video file (MP4, WebM, MOV).',
     'enhance.done': '⚡ 该帧已用 Remotion 渲染',
     'enhance.failed': '⚡ Remotion 失败：{message}',
 
@@ -365,7 +397,14 @@ const DICT = {
     'export.copy_failed': '复制失败：{message}',
     'export.reveal_failed': '打开失败：{message}',
 
-    'soundtrack.title': '🎵 添加背景音乐和配音',
+    'export.audio_title': '部分片段没有音频',
+    'export.audio_intro': '该视频有 {count} 个片段没有音频 —— 既无内嵌音轨，也无旁白或配乐：',
+    'export.audio_hint': '你可以在配乐面板中添加背景音乐或旁白，或让这些片段保持静音继续导出。',
+    'export.audio_kind_clip': '片段',
+    'export.audio_kind_frame': '帧',
+    'export.audio_cancel': '取消',
+    'export.audio_proceed': '仍然导出',
+    'export.audio_warn': '⚠️ 有 {count} 个静音片段仍将导出：{clips}',
     'soundtrack.summary_sub': 'AI 配乐 + 旁白，导出时自动混入',
     'soundtrack.optional': '可选',
     'soundtrack.hint': '背景音乐 + 旁白，导出时混入 MP4。',
@@ -517,6 +556,20 @@ const DICT = {
     'tpl_preview.source_skill': '改编自',
     'tpl_preview.source_origin': '设计渊源',
     'tpl_preview.source_license': '许可证',
+
+    // --- form / confirm cards (backfilled from app.js) ---
+    'form.drop_hint': '📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）',
+    'form.add_file': '+ 添加文件',
+    'form.submit': '提交 ↵',
+    'confirm.generate': '✓ 开始生成',
+    'confirm.edit': '✏️ 修改',
+
+    // --- text-pane save + misc toasts (backfilled from app.js) ---
+    'text_pane.save_failed': '保存失败：{message}',
+    'text_pane.saved_changes': '已保存 {count} 处修改',
+    'frames.editing_this': '正在编辑此帧',
+    'common.error': '错误：{message}',
+    'common.init_failed': 'init 失败：{message}',
   },
 };
 
