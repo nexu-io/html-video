@@ -54,6 +54,19 @@ export interface MinimaxAudioResult {
   durationSec?: number;
 }
 
+export interface MinimaxVideoResult {
+  /** Decoded video bytes (MP4). */
+  bytes: Buffer;
+  /** File extension to store under. */
+  ext: '.mp4';
+  /** Human-readable note of what was produced (provider · model · size). */
+  providerNote: string;
+  /** Provider task id, useful for support/debugging. */
+  taskId: string;
+  /** Provider file id, when surfaced by the API. */
+  fileId?: string;
+}
+
 /**
  * Resolve MiniMax credentials from the environment. Returns `null` (not throw)
  * when no key is set, so the studio can show a friendly "configure your key"
@@ -238,6 +251,200 @@ export async function generateMusic(opts: {
     ext: '.mp3',
     providerNote: `minimax/${MINIMAX_MUSIC_MODEL} · ${instrumental ? 'instrumental' : 'with-vocals'} · ${bytes.length} bytes`,
   };
+}
+
+/**
+ * Generate a short target video via MiniMax video_generation.
+ *
+ * The API is asynchronous: submit prompt → poll query/video_generation until a
+ * file id is ready → download the MP4 via files/retrieve. The endpoint names and
+ * bearer auth intentionally mirror MiniMax's published video provider pattern,
+ * while `creds.baseUrl` keeps the existing regional host override behavior
+ * (`api.minimax.io/v1` or `api.minimaxi.com/v1`).
+ */
+export async function generateVideo(opts: {
+  prompt: string;
+  model?: string;
+  creds: MinimaxCredentials;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}): Promise<MinimaxVideoResult> {
+  const prompt = (opts.prompt || '').trim();
+  if (!prompt) {
+    throw new HtmlVideoError('invalid-input', 'video prompt is empty');
+  }
+
+  const model = (opts.model || '').trim() || 'MiniMax-M3';
+  const submit = await postJson<{ task_id?: unknown }>(
+    'video_generation',
+    { model, prompt },
+    opts.creds,
+    'video',
+    opts.signal,
+  );
+  const taskId = asNonEmptyString(submit.task_id, 'minimax video response missing task_id');
+  const timeoutMs = opts.timeoutMs ?? 10 * 60_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 5_000;
+  const deadline = Date.now() + timeoutMs;
+  let fileId = '';
+  let lastStatus = '';
+
+  while (Date.now() < deadline) {
+    if (opts.signal?.aborted) {
+      throw new HtmlVideoError('render-failed', 'minimax video generation aborted', true);
+    }
+    await delay(pollIntervalMs, opts.signal);
+    const query = await getJson<{
+      status?: unknown;
+      file_id?: unknown;
+      video_url?: unknown;
+      base_resp?: { status_code?: number; status_msg?: string };
+    }>(`query/video_generation?task_id=${encodeURIComponent(taskId)}`, opts.creds, 'video query', opts.signal);
+    lastStatus = typeof query.status === 'string' ? query.status : lastStatus;
+    if (query.base_resp && query.base_resp.status_code !== 0) {
+      throw new HtmlVideoError(
+        'render-failed',
+        `minimax video query api error ${query.base_resp.status_code}: ${query.base_resp.status_msg || 'unknown'}`,
+      );
+    }
+    fileId = typeof query.file_id === 'string' ? query.file_id : '';
+    const videoUrl = typeof query.video_url === 'string' ? query.video_url : '';
+    if (fileId || videoUrl) {
+      const bytes = fileId
+        ? await downloadMinimaxFile(fileId, opts.creds, opts.signal)
+        : await downloadUrl(videoUrl, opts.signal);
+      return {
+        bytes,
+        ext: '.mp4',
+        providerNote: `minimax/${model} · video · ${bytes.length} bytes`,
+        taskId,
+        ...(fileId ? { fileId } : {}),
+      };
+    }
+    if (lastStatus && /fail|error|reject/i.test(lastStatus)) {
+      throw new HtmlVideoError('render-failed', `minimax video generation failed: ${lastStatus}`);
+    }
+  }
+
+  throw new HtmlVideoError(
+    'render-failed',
+    `minimax video timed out after ${Math.round(timeoutMs / 1000)}s${lastStatus ? ` (last status: ${lastStatus})` : ''}`,
+    true,
+  );
+}
+
+async function postJson<T>(
+  endpoint: string,
+  body: unknown,
+  creds: MinimaxCredentials,
+  label: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${creds.baseUrl}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${creds.apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new HtmlVideoError('render-failed', `minimax ${label} request failed: ${msg}`, true);
+  }
+  return parseJsonResponse<T>(resp, label);
+}
+
+async function getJson<T>(
+  endpoint: string,
+  creds: MinimaxCredentials,
+  label: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${creds.baseUrl}/${endpoint}`, {
+      headers: { authorization: `Bearer ${creds.apiKey}` },
+      signal,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new HtmlVideoError('render-failed', `minimax ${label} request failed: ${msg}`, true);
+  }
+  return parseJsonResponse<T>(resp, label);
+}
+
+async function parseJsonResponse<T>(resp: Response, label: string): Promise<T> {
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new HtmlVideoError('render-failed', `minimax ${label} ${resp.status}: ${truncate(respText, 240)}`, resp.status >= 500);
+  }
+  try {
+    return JSON.parse(respText) as T;
+  } catch {
+    throw new HtmlVideoError('render-failed', `minimax ${label} non-JSON: ${truncate(respText, 200)}`);
+  }
+}
+
+async function downloadMinimaxFile(fileId: string, creds: MinimaxCredentials, signal?: AbortSignal): Promise<Buffer> {
+  const meta = await getJson<{ file?: { download_url?: unknown }; download_url?: unknown }>(
+    `files/retrieve?file_id=${encodeURIComponent(fileId)}`,
+    creds,
+    'video file',
+    signal,
+  );
+  const url = typeof meta.file?.download_url === 'string'
+    ? meta.file.download_url
+    : typeof meta.download_url === 'string'
+      ? meta.download_url
+      : '';
+  if (!url) {
+    throw new HtmlVideoError('render-failed', 'minimax video file response missing download_url');
+  }
+  return downloadUrl(url, signal);
+}
+
+async function downloadUrl(url: string, signal?: AbortSignal): Promise<Buffer> {
+  let resp: Response;
+  try {
+    resp = await fetch(url, { signal });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new HtmlVideoError('render-failed', `minimax video download failed: ${msg}`, true);
+  }
+  if (!resp.ok) {
+    throw new HtmlVideoError('render-failed', `minimax video download ${resp.status}`, resp.status >= 500);
+  }
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new HtmlVideoError('render-failed', 'minimax video download returned zero bytes');
+  }
+  return bytes;
+}
+
+function asNonEmptyString(value: unknown, message: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new HtmlVideoError('render-failed', message);
+  }
+  return value.trim();
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new HtmlVideoError('render-failed', 'minimax video generation aborted', true));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new HtmlVideoError('render-failed', 'minimax video generation aborted', true));
+    }, { once: true });
+  });
 }
 
 function truncate(s: string, n: number): string {
