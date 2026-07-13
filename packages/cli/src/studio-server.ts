@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import { AssetStore, generateTts, generateMusic, generateVideo } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -507,6 +507,70 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`[studio:generate-audio] proj=${projectId} failed: ${msg}\n`);
           sse({ type: 'audio_failed', message: msg });
+        }
+        res.end();
+        return;
+      }
+
+      // Generate a video clip, stream progress over SSE, and store the MP4 as a
+      // normal project asset so it can be referenced by later editing steps.
+      const genVideoMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/generate-video$/);
+      if (genVideoMatch?.[1] && m === 'POST') {
+        const projectId = genVideoMatch[1];
+        const body = (await readBody(req)) as { prompt?: string; model?: string };
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        });
+        const sse = (obj: unknown) => {
+          try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); }
+          catch { /* the result is still persisted if the client disconnects */ }
+        };
+        try {
+          sse({ type: 'video_started' });
+          const prompt = (body.prompt ?? '').trim();
+          if (!prompt) {
+            sse({ type: 'video_failed', message: 'Nothing to generate - provide a video prompt.' });
+            res.end();
+            return;
+          }
+          const creds = ctx.mediaConfig.resolveMinimax();
+          if (!creds) {
+            sse({
+              type: 'video_failed',
+              message:
+                'MiniMax API key not configured - add it in Settings > Audio or set OD_MINIMAX_API_KEY.',
+            });
+            res.end();
+            return;
+          }
+
+          await ctx.orchestrator.load(projectId);
+          sse({ type: 'video_progress', stage: 'generate', message: 'generating video' });
+          const video = await generateVideo({
+            prompt,
+            ...(body.model !== undefined ? { model: body.model } : {}),
+            creds,
+          });
+          const { project, asset } = await ctx.orchestrator.addBufferAsset(
+            projectId,
+            video.bytes,
+            video.ext,
+            `generated video: ${prompt.slice(0, 60)}`,
+          );
+          sse({
+            type: 'video_done',
+            project,
+            asset,
+            task_id: video.taskId,
+            file_id: video.fileId,
+            message: video.providerNote,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`[studio:generate-video] proj=${projectId} failed: ${msg}\n`);
+          sse({ type: 'video_failed', message: msg });
         }
         res.end();
         return;

@@ -1,5 +1,5 @@
 /**
- * @html-video/core — MiniMax audio provider.
+ * @html-video/core - MiniMax media provider.
  *
  * MiniMax exposes speech (`/t2a_v2`) and music (`/music_generation`) under the
  * same host, the same Bearer key, and the same response shape — both wrap the
@@ -37,6 +37,10 @@ const MINIMAX_TTS_MODEL = 'speech-02-turbo';
  * so for instrumental soundtracks we pass a minimal humming placeholder.
  */
 const MINIMAX_MUSIC_MODEL = 'music-1.5';
+/** Current text-to-video model used by the official video generation guide. */
+const MINIMAX_VIDEO_MODEL = 'MiniMax-Hailuo-2.3';
+const MINIMAX_VIDEO_POLL_INTERVAL_MS = 10_000;
+const MINIMAX_VIDEO_TIMEOUT_MS = 10 * 60_000;
 
 export interface MinimaxCredentials {
   apiKey: string;
@@ -52,6 +56,19 @@ export interface MinimaxAudioResult {
   providerNote: string;
   /** Reported duration in seconds, if the API surfaced it. */
   durationSec?: number;
+}
+
+export interface MinimaxVideoResult {
+  /** Downloaded video bytes (MP4). */
+  bytes: Buffer;
+  /** File extension to store under. */
+  ext: '.mp4';
+  /** Human-readable note of what was produced (provider, model, and size). */
+  providerNote: string;
+  /** Provider task id, useful for support and debugging. */
+  taskId: string;
+  /** Provider file id returned when generation succeeds. */
+  fileId: string;
 }
 
 /**
@@ -238,6 +255,218 @@ export async function generateMusic(opts: {
     ext: '.mp3',
     providerNote: `minimax/${MINIMAX_MUSIC_MODEL} · ${instrumental ? 'instrumental' : 'with-vocals'} · ${bytes.length} bytes`,
   };
+}
+
+/**
+ * Generate a video through MiniMax's asynchronous text-to-video API.
+ *
+ * The provider returns a task id first. Polling yields a file id after the task
+ * succeeds, then the file API provides a short-lived MP4 download URL.
+ */
+export async function generateVideo(opts: {
+  prompt: string;
+  model?: string;
+  creds: MinimaxCredentials;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}): Promise<MinimaxVideoResult> {
+  const prompt = (opts.prompt || '').trim();
+  if (!prompt) {
+    throw new HtmlVideoError('invalid-input', 'video prompt is empty');
+  }
+  if (prompt.length > 2000) {
+    throw new HtmlVideoError('invalid-input', 'video prompt exceeds 2000 characters');
+  }
+
+  const pollIntervalMs = opts.pollIntervalMs ?? MINIMAX_VIDEO_POLL_INTERVAL_MS;
+  const timeoutMs = opts.timeoutMs ?? MINIMAX_VIDEO_TIMEOUT_MS;
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs < 0) {
+    throw new HtmlVideoError('invalid-input', 'video poll interval must be non-negative');
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new HtmlVideoError('invalid-input', 'video timeout must be positive');
+  }
+
+  const model = (opts.model || '').trim() || MINIMAX_VIDEO_MODEL;
+  const submit = await requestMinimaxJson<{ task_id?: unknown; base_resp?: MinimaxBaseResponse }>(
+    'video_generation',
+    'POST',
+    { model, prompt },
+    opts.creds,
+    'video creation',
+    opts.signal,
+  );
+  const taskId = requireString(submit.task_id, 'minimax video response missing task_id');
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = '';
+
+  while (Date.now() < deadline) {
+    await delay(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())), opts.signal);
+    const query = await requestMinimaxJson<{
+      status?: unknown;
+      file_id?: unknown;
+      base_resp?: MinimaxBaseResponse;
+    }>(
+      `query/video_generation?task_id=${encodeURIComponent(taskId)}`,
+      'GET',
+      undefined,
+      opts.creds,
+      'video status',
+      opts.signal,
+    );
+    lastStatus = requireString(query.status, 'minimax video status response missing status');
+
+    if (lastStatus === 'Fail') {
+      throw new HtmlVideoError('render-failed', 'minimax video generation failed');
+    }
+    if (lastStatus !== 'Success') continue;
+
+    const fileId = requireString(
+      query.file_id,
+      'minimax video status response missing file_id after success',
+    );
+    const file = await requestMinimaxJson<{
+      file?: { download_url?: unknown };
+      base_resp?: MinimaxBaseResponse;
+    }>(
+      `files/retrieve?file_id=${encodeURIComponent(fileId)}`,
+      'GET',
+      undefined,
+      opts.creds,
+      'video file',
+      opts.signal,
+    );
+    const downloadUrl = requireString(
+      file.file?.download_url,
+      'minimax video file response missing download_url',
+    );
+    const bytes = await downloadVideo(downloadUrl, opts.signal);
+    return {
+      bytes,
+      ext: '.mp4',
+      providerNote: `minimax/${model} - video - ${bytes.length} bytes`,
+      taskId,
+      fileId,
+    };
+  }
+
+  throw new HtmlVideoError(
+    'render-failed',
+    `minimax video timed out after ${Math.round(timeoutMs / 1000)}s${lastStatus ? ` (last status: ${lastStatus})` : ''}`,
+    true,
+  );
+}
+
+interface MinimaxBaseResponse {
+  status_code?: number;
+  status_msg?: string;
+}
+
+async function requestMinimaxJson<T extends { base_resp?: MinimaxBaseResponse }>(
+  endpoint: string,
+  method: 'GET' | 'POST',
+  body: unknown,
+  creds: MinimaxCredentials,
+  label: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  let resp: Response;
+  try {
+    resp = await fetch(`${creds.baseUrl}/${endpoint}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${creds.apiKey}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: requestSignal(signal),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new HtmlVideoError('render-failed', `minimax ${label} request failed: ${msg}`, true);
+  }
+
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new HtmlVideoError(
+      'render-failed',
+      `minimax ${label} ${resp.status}: ${truncate(respText, 240)}`,
+      resp.status >= 500,
+    );
+  }
+
+  let data: T;
+  try {
+    data = JSON.parse(respText) as T;
+  } catch {
+    throw new HtmlVideoError(
+      'render-failed',
+      `minimax ${label} non-JSON: ${truncate(respText, 200)}`,
+    );
+  }
+  if (data.base_resp && data.base_resp.status_code !== 0) {
+    throw new HtmlVideoError(
+      'render-failed',
+      `minimax ${label} api error ${data.base_resp.status_code}: ${data.base_resp.status_msg || 'unknown'}`,
+    );
+  }
+  return data;
+}
+
+async function downloadVideo(url: string, signal?: AbortSignal): Promise<Buffer> {
+  let resp: Response;
+  try {
+    resp = await fetch(url, { signal: requestSignal(signal) });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new HtmlVideoError('render-failed', `minimax video download failed: ${msg}`, true);
+  }
+  if (!resp.ok) {
+    throw new HtmlVideoError(
+      'render-failed',
+      `minimax video download ${resp.status}`,
+      resp.status >= 500,
+    );
+  }
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new HtmlVideoError('render-failed', 'minimax video download returned zero bytes');
+  }
+  return bytes;
+}
+
+function requestSignal(signal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(MINIMAX_REQUEST_TIMEOUT_MS);
+  return signal && AbortSignal.any
+    ? AbortSignal.any([signal, timeoutSignal])
+    : (signal ?? timeoutSignal);
+}
+
+function requireString(value: unknown, message: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new HtmlVideoError('render-failed', message);
+  }
+  return value.trim();
+}
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new HtmlVideoError('render-failed', 'minimax video generation aborted', true));
+      return;
+    }
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new HtmlVideoError('render-failed', 'minimax video generation aborted', true));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function truncate(s: string, n: number): string {
