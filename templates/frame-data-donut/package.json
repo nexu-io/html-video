@@ -1,0 +1,8 @@
+{
+  "name": "@html-video/template-frame-data-donut",
+  "version": "0.1.0",
+  "description": "html-video template: frame-data-donut (native Remotion donut chart — SVG spring-animated slices with center figure rollup; RFC-08 Phase 2)",
+  "license": "Apache-2.0",
+  "private": true,
+  "files": ["template.html-video.yaml", "source", "SKILL.md", "example.md", "preview.png"]
+}

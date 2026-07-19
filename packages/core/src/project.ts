@@ -26,6 +26,7 @@ import {
 } from '@html-video/content-graph';
 import { HtmlVideoError } from './errors.js';
 import type { AssetStore } from './asset-store.js';
+import { normalizeNativeData } from './native-data.js';
 import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
 
 export interface CreateProjectInput {
@@ -547,7 +548,7 @@ export class ProjectOrchestrator {
         `Template "${nativeTemplateId}" is not a native Remotion template`,
       );
     }
-    const data = normalizeRollupData((node as { data?: unknown }).data);
+    const data = normalizeNativeData((node as { data?: unknown }).data, nativeTemplateId);
 
     const frame = (project.frames ?? []).find((f) => f.graphNodeId === graphNodeId);
     if (!frame) {
@@ -690,48 +691,6 @@ export class ProjectOrchestrator {
 // ---------------------------------------------------------------------------
 // ffmpeg concat helper
 // ---------------------------------------------------------------------------
-
-/**
- * Coerce a content-graph DataNode's free-form `data` into the shape the native
- * frame-data-rollup template expects ({ title?, unit?, items: {label,value}[] }).
- * DataNode.data is `unknown`, so an enhanced frame could otherwise feed NaN bars
- * to the renderer. Accepts either the already-shaped object or a bare array of
- * {label,value}. Throws a clear error rather than rendering garbage.
- */
-function normalizeRollupData(raw: unknown): { title?: string; unit?: string; items: { label: string; value: number }[] } {
-  const asItems = (arr: unknown): { label: string; value: number }[] => {
-    if (!Array.isArray(arr)) {
-      throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame has no `items` array to animate; expected {items:[{label,value}]}',
-      );
-    }
-    const items = arr
-      .map((it) => {
-        const o = (it ?? {}) as Record<string, unknown>;
-        const label = String(o.label ?? o.name ?? '');
-        const value = Number(o.value ?? o.y ?? o.count);
-        return { label, value };
-      })
-      .filter((it) => it.label !== '' && Number.isFinite(it.value));
-    if (items.length === 0) {
-      throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame items had no usable {label, numeric value} pairs',
-      );
-    }
-    return items;
-  };
-
-  if (Array.isArray(raw)) return { items: asItems(raw) };
-  const o = (raw ?? {}) as Record<string, unknown>;
-  const out: { title?: string; unit?: string; items: { label: string; value: number }[] } = {
-    items: asItems(o.items),
-  };
-  if (typeof o.title === 'string') out.title = o.title;
-  if (typeof o.unit === 'string') out.unit = o.unit;
-  return out;
-}
 
 /**
  * Concatenate per-frame MP4 files into a single output with ffmpeg.

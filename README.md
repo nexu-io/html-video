@@ -72,7 +72,7 @@ HTML→Video is a real category — but every engine is opinionated, and each wa
 | Engine | Paradigm | Tradeoff | In html-video |
 |---|---|---|---|
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm | ✅ **Shipped** — the default engine; renders real MP4 via headless Chromium + ffmpeg |
-| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | 🗺️ Planned |
+| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | ✅ **Shipped** — opt-in per-frame enhance; 5 native data charts (bars / donut / h-bars / line / radar) |
 | [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | TypeScript generators on canvas | Best for explainers, code-first | 🗺️ Planned |
 | [Manim](https://github.com/3b1b/manim) & friends | Math / 3D first | Niche | 🗺️ Researching |
 
@@ -82,7 +82,7 @@ Picking the right engine per use case, learning each model, and stitching them i
 
 The same idea powers [Open Design](https://github.com/nexu-io/open-design) in the *design* space — an agent meta-layer over many tools. html-video is the *motion* counterpart from the same team.
 
-> **Status:** the pluggable-engine architecture is in place, and the **Hyperframes engine is fully wired up and renders real MP4** — headless Chromium records the animated HTML frame-by-frame and ffmpeg encodes it (libx264). Remotion, Motion Canvas / Revideo, and Manim are on the roadmap: the adapter interface is designed for them, but their adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable today.
+> **Status:** the pluggable-engine architecture is in place. **Hyperframes** is the default base (headless Chromium + ffmpeg → real MP4). **Remotion** is available as a user-opt-in per-frame enhancement for native data charts; mixed-engine videos are concatenated with ffmpeg's concat filter. Motion Canvas / Revideo and Manim remain on the roadmap. The "In html-video" column above is the single source of truth for what's actually runnable today.
 
 ---
 
@@ -267,8 +267,10 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 - [x] AI soundtrack (MiniMax music + narration), mixed at export
 - [x] Real MP4 render — Hyperframes engine via headless Chromium + ffmpeg
 - [x] Agent model selection — Open Design (Vela) backend, live model catalog
-- [ ] Adapters for Remotion / Motion Canvas / Revideo
-- [ ] Agent skill packages + a template marketplace
+- [x] Remotion adapter — bridge + 5 native data templates; per-frame enhance (CLI + Studio)
+- [x] Agent skill — repo `SKILL.md` + installable Claude Code / Cursor copies (`scripts/install-agent-skill.sh`)
+- [ ] Adapters for Motion Canvas / Revideo
+- [ ] Template marketplace
 
 ---
 

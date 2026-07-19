@@ -87,6 +87,16 @@ export class TemplateRegistry {
     return [...this.templates.values()];
   }
 
+  /**
+   * Native Remotion templates (engine=remotion + native.compositionId). Used by
+   * the studio enhance picker and `html-video list-native-templates`.
+   */
+  listNative(): TemplateMetadata[] {
+    return this.list()
+      .filter((t) => t.engine === 'remotion' && !!t.native?.compositionId)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   search(opts: {
     intent?: string;
     aspect?: string;
