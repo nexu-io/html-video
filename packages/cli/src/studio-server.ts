@@ -116,6 +116,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             //    built, v0.9) to show anything, so a live iframe is blank.
             //    Fall back to the shipped poster image instead.
             const { mode, posterUrl } = templatePreviewMode(t);
+            const isNative = t.engine === 'remotion' && !!t.native?.compositionId;
             return {
               id: t.id,
               name: t.name,
@@ -123,6 +124,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               engine: t.engine,
               source_entry: t.source_entry,
               category: t.category,
+              subcategory: t.subcategory,
               tags: t.tags,
               best_for: t.best_for,
               inputs_schema: t.inputs.schema,
@@ -133,8 +135,34 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               preview_mode: mode,
               poster_url: posterUrl,
               output: t.output,
+              native: isNative,
+              native_composition_id: t.native?.compositionId,
             };
           }),
+        });
+      }
+
+      // Native Remotion templates for the per-frame enhance picker / format card.
+      if (url.pathname === '/api/native-templates' && m === 'GET') {
+        const natives = ctx.templates.listNative();
+        return json(res, 200, {
+          templates: natives.map((t) => {
+            const { posterUrl } = templatePreviewMode(t);
+            return {
+              id: t.id,
+              name: t.name,
+              description: t.description,
+              composition_id: t.native?.compositionId,
+              category: t.category,
+              subcategory: t.subcategory,
+              tags: t.tags,
+              best_for: t.best_for,
+              poster_url: posterUrl,
+            };
+          }),
+          default_id: natives.some((t) => t.id === 'frame-data-rollup')
+            ? 'frame-data-rollup'
+            : (natives[0]?.id ?? null),
         });
       }
 
@@ -305,7 +333,18 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const projectId = enhMatch[1];
         const nodeId = enhMatch[2];
         const body = await readBody(req).catch(() => ({} as Record<string, unknown>));
-        const nativeTemplateId = (body.nativeTemplateId as string) || 'frame-data-rollup';
+        const requested = typeof body.nativeTemplateId === 'string' ? body.nativeTemplateId : '';
+        const natives = ctx.templates.listNative();
+        const nativeTemplateId =
+          (requested && natives.some((t) => t.id === requested) ? requested : null) ??
+          (natives.some((t) => t.id === 'frame-data-rollup')
+            ? 'frame-data-rollup'
+            : natives[0]?.id);
+        if (!nativeTemplateId) {
+          return json(res, 400, {
+            error: 'No native Remotion templates are installed',
+          });
+        }
         const wantsStream = (req.headers.accept ?? '').includes('text/event-stream');
         if (!wantsStream) {
           try {
@@ -2632,16 +2671,20 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
                 default: defaults.frame_count,
                 options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({ value: v, label: v })),
               },
-              // Opt-in: render data frames natively with Remotion (numbers roll,
-              // bars grow) instead of static hyperframes HTML. Default OFF —
-              // Remotion is a user-chosen enhancement, the AI never flips it.
+              // Opt-in: render data frames natively with Remotion. Value is
+              // either '关' or a native template id — Remotion is a user-chosen
+              // enhancement, the AI never flips it (RFC-09).
               {
                 key: 'remotion_enhance', label: '⚡ 数据帧用 Remotion', kind: 'buttons', required: false,
                 default: '关',
-                hint: '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
+                hint: '数据帧用原生 Remotion 渲染；其余帧仍走 Hyperframes。选图表类型。',
                 options: [
                   { value: '关', label: '关' },
-                  { value: '开', label: '开 · Remotion' },
+                  { value: 'frame-data-rollup', label: '开 · 柱状' },
+                  { value: 'frame-data-donut', label: '开 · 圆环' },
+                  { value: 'frame-data-hbars', label: '开 · 横条' },
+                  { value: 'frame-data-line', label: '开 · 折线' },
+                  { value: 'frame-data-radar', label: '开 · 雷达' },
                 ],
               },
             ]
@@ -3045,6 +3088,24 @@ function extractContentGraphAndFrames(
   return { graph, frames };
 }
 
+/**
+ * Parse the format-card `remotion_enhance` value into a native template id.
+ * Accepts: '关' → null; legacy '开…' → default rollup; or a known native id.
+ */
+function resolveRemotionEnhanceChoice(choice: string, ctx: CliContext): string | null {
+  if (!choice || choice === '关' || choice === 'off' || choice === 'Off') return null;
+  const natives = ctx.templates.listNative();
+  if (natives.length === 0) return null;
+  if (natives.some((t) => t.id === choice)) return choice;
+  // Legacy format-card value was "开" / "开 · Remotion"
+  if (choice.startsWith('开') || /^on\b/i.test(choice)) {
+    return natives.some((t) => t.id === 'frame-data-rollup')
+      ? 'frame-data-rollup'
+      : (natives[0]?.id ?? null);
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Split multi-frame generate
 //
@@ -3111,10 +3172,13 @@ async function runSplitMultiFrameGenerate(
   }
   const aspect = ((collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9');
   const frameCountReq = Math.max(2, Math.min(10, Number(collected.frame_count ?? '4') || 4));
-  // Opt-in (format card): render data frames natively with Remotion. When on,
-  // the planner must give every data node structured items, and after each
-  // data frame's HTML is written we enhance it in place (best-effort).
-  const enhanceData = (collected.remotion_enhance ?? '').startsWith('开');
+  // Opt-in (format card): render data frames natively with Remotion. Value is
+  // '关' / legacy '开…' / or a native template id. When on, the planner must
+  // give every data node structured items, and after each data frame's HTML is
+  // written we enhance it in place (best-effort).
+  const remotionChoice = (collected.remotion_enhance ?? '关').trim();
+  const enhanceNativeTemplateId = resolveRemotionEnhanceChoice(remotionChoice, ctx);
+  const enhanceData = !!enhanceNativeTemplateId;
   // Prefer per-frame pacing (total = per_frame × frames) — set by the format
   // card so a short total ÷ many frames can't produce a rushed clip. Fall back
   // to total ÷ frames for older projects that only stored `duration`.
@@ -3359,17 +3423,25 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     // FrameRecord, so enhanceFrameNative can set engine/nativeTemplateId/data in
     // place. Best-effort: if the data node lacks usable {label,value} items it
     // throws — we keep the hyperframes HTML and warn rather than fail the run.
-    // 'frame-data-rollup' is the only native template today (TODO: picker).
-    if (enhanceData && node.kind === 'data') {
+    if (enhanceData && enhanceNativeTemplateId && node.kind === 'data') {
       try {
         // Two steps, same as the manual enhance endpoint: (1) set the frame's
         // engine/data, (2) actually RENDER the preview MP4. Without step 2 the
         // frame is flagged remotion but has no previewMp4Path, so the studio
         // tries to play a <video> that 404s → black thumbnail + preview.
-        await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion 动效 (数字滚动 / 柱子生长)…`);
+        await ctx.orchestrator.enhanceFrameNative(
+          projectId,
+          nodeId,
+          enhanceNativeTemplateId,
+        );
+        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion (${enhanceNativeTemplateId})…`);
         await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
-        onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
+        onSse({
+          type: 'frame_enhanced',
+          node_id: nodeId,
+          order: i,
+          native_template_id: enhanceNativeTemplateId,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
