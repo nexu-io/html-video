@@ -1,4 +1,5 @@
 import type { AgentDef } from '../types.js';
+import { discoverGrokModels } from '../models.js';
 
 /**
  * Grok Build def (`grok`, by xAI — x.ai/cli; OD labels it "Grok Build (xAI)").
@@ -24,10 +25,12 @@ export const grok: AgentDef = {
   name: 'Grok Build (xAI)',
   bin: 'grok',
   versionArgs: ['--version'],
-  buildArgs(prompt, _ctx) {
+  buildArgs(prompt, ctx) {
     // -p/--single: single-turn headless; prompt is the argv value.
-    return ['-p', prompt];
+    return ctx.model ? ['--model', ctx.model, '-p', prompt] : ['-p', prompt];
   },
+  supportsModelSelection: true,
+  discoverModels: discoverGrokModels,
   streamFormat: 'plain',
   installUrl: 'https://x.ai/cli',
 };

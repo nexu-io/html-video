@@ -10,13 +10,14 @@ export const claude: AgentDef = {
   name: 'Claude Code',
   bin: 'claude',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // --print: non-interactive, write entire response to stdout then exit.
     // No permission-mode: chat-to-HTML never edits files; the model only emits
     // text + a fenced ```html``` block, which our extractor reads. Plan mode
     // (which we tried in v0.3) suppressed actual content.
-    return ['--print'];
+    return ctx.model ? ['--print', '--model', ctx.model] : ['--print'];
   },
+  supportsModelSelection: true,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',

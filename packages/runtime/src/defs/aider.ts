@@ -1,4 +1,5 @@
 import type { AgentDef } from '../types.js';
+import { discoverAiderModels } from '../models.js';
 
 /**
  * Aider def (`aider`, by Aider-AI — aider-ai/aider, Python pair-programmer).
@@ -20,10 +21,13 @@ export const aider: AgentDef = {
   name: 'Aider',
   bin: 'aider',
   versionArgs: ['--version'],
-  buildArgs(prompt, _ctx) {
+  buildArgs(prompt, ctx) {
     // argv-only prompt (Aider has no stdin prompt path).
-    return ['--yes-always', '--no-pretty', '--no-stream', '--message', prompt];
+    const args = ['--yes-always', '--no-pretty', '--no-stream', '--message', prompt];
+    return ctx.model ? [...args, '--model', ctx.model] : args;
   },
+  supportsModelSelection: true,
+  discoverModels: discoverAiderModels,
   streamFormat: 'plain',
   installUrl: 'https://aider.chat/docs/scripting.html',
 };

@@ -26,14 +26,16 @@ export const qoderCli: AgentDef = {
   name: 'Qoder CLI',
   bin: 'qodercli',
   versionArgs: ['-v'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // -p -: read prompt from stdin (avoids Windows shell escaping issues
     //   with backticks, quotes, and other special chars in long prompts).
     // --permission-mode bypass_permissions: auto-approve tool calls.
     // --dangerously-skip-permissions: belt-and-suspenders — ensures
     //   the sandbox layer also lifts write/edit restrictions.
-    return ['-p', '-', '--permission-mode', 'bypass_permissions', '--dangerously-skip-permissions'];
+    const args = ['-p', '-', '--permission-mode', 'bypass_permissions', '--dangerously-skip-permissions'];
+    return ctx.model ? [...args, '--model', ctx.model] : args;
   },
+  supportsModelSelection: true,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://www.npmjs.com/package/@qoder-ai/qodercli',

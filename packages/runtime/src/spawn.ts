@@ -59,7 +59,7 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
         args: def.buildArgs(prompt, context),
         prompt,
         cwd: context.cwd,
-        ...((context.model || def.defaultModel) && { model: context.model || def.defaultModel }),
+        ...(context.model && { model: context.model }),
         ...(def.env && { env: def.env }),
         onEvent: (ev) => onEvent?.(ev),
         signal: ac.signal,
@@ -111,7 +111,7 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
       cwd: context.cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      ...(isWin && { shell: true }),
+      ...(isWin && /\.(?:cmd|bat)$/i.test(command) && { shell: true }),
       windowsHide: true,
     });
     childKill = () => {

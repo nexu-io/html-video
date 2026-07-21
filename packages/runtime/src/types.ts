@@ -26,6 +26,13 @@ export interface AgentDef {
   versionArgs: string[];
   /** Build the argv list given the user prompt. Ignored for http agents. */
   buildArgs(prompt: string, ctx: AgentInvokeContext): string[];
+  /** Whether this adapter can receive an explicit model selection. When the
+   *  invocation context has no model, buildArgs/httpHandler must preserve the
+   *  adapter's native/default behaviour exactly. */
+  supportsModelSelection?: boolean;
+  /** Optional official, non-interactive model discovery path. Absence means
+   *  the UI must offer Automatic + a manually validated id only. */
+  discoverModels?: (ctx: ModelDiscoveryContext) => Promise<ModelDiscoveryResult>;
   /**
    * How agent emits to stdout:
    * - `plain`: free-form text (everything printed is output)
@@ -45,10 +52,6 @@ export interface AgentDef {
    * `resolvedBin` is the path that detection settled on (PATH or a fallback).
    */
   extraDetect?: (resolvedBin: string) => Promise<{ available: boolean; version?: string | null; hint?: string }>;
-  /** Default model id for ACP agents that REQUIRE session/set_model before
-   * session/prompt (some reject a missing model). The ACP client sends this
-   * via set_model when the caller doesn't specify one. */
-  defaultModel?: string;
   /** Extra fixed env vars on spawn */
   env?: Record<string, string>;
   /** Where to find install instructions */
@@ -82,8 +85,8 @@ export interface AgentInvokeContext {
   cwd: string;
   /** Allowed working dirs (e.g. project's .html-video/projects/<id>/) */
   extraAllowedDirs?: string[];
-  /** Model override for agents that support selection. Falls back to
-   *  the agent's defaultModel when unset. */
+  /** Explicit model override. When unset, the adapter must use its native,
+   *  environment or account default without adding model arguments. */
   model?: string;
 }
 
@@ -97,6 +100,54 @@ export interface DetectedAgent {
   installUrl?: string;
   /** Why it's unavailable / what to do — e.g. found but not logged in. */
   hint?: string;
+}
+
+/** How strongly the discovery source proves that a model can be invoked. */
+export type ModelAvailability = 'available' | 'known' | 'unverifiable';
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+  description?: string;
+  /** `known` is used for sources such as Aider's model registry, which do not
+   *  prove account entitlement. */
+  availability?: ModelAvailability;
+}
+
+export type ModelCatalogStatus = 'available' | 'unsupported' | 'error';
+
+export interface ModelCatalog {
+  agentId: string;
+  /** Human-readable official mechanism, e.g. `codex app-server model/list`. */
+  source: string;
+  /** What the result represents: current account, configured providers, etc. */
+  scope: string;
+  toolVersion?: string | null;
+  fetchedAt: string;
+  status: ModelCatalogStatus;
+  models: ModelOption[];
+  message?: string;
+  /** A failed refresh may return the last successful in-memory snapshot. */
+  stale?: boolean;
+  refreshError?: string;
+}
+
+export interface ModelDiscoveryContext {
+  agentId: string;
+  /** Resolved executable for child agents. */
+  bin?: string;
+  toolVersion?: string | null;
+  cwd: string;
+  signal?: AbortSignal;
+}
+
+export interface ModelDiscoveryResult {
+  source: string;
+  scope: string;
+  status?: ModelCatalogStatus;
+  models: ModelOption[];
+  message?: string;
 }
 
 export type AgentEvent =

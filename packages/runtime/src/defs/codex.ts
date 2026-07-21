@@ -1,4 +1,5 @@
 import type { AgentDef } from '../types.js';
+import { discoverCodexModels } from '../models.js';
 
 /**
  * Codex CLI def (`codex`, by OpenAI).
@@ -16,9 +17,13 @@ export const codex: AgentDef = {
   name: 'Codex CLI',
   bin: 'codex',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
-    return ['exec', '--skip-git-repo-check'];
+  buildArgs(_prompt, ctx) {
+    return ctx.model
+      ? ['exec', '--skip-git-repo-check', '--model', ctx.model]
+      : ['exec', '--skip-git-repo-check'];
   },
+  supportsModelSelection: true,
+  discoverModels: discoverCodexModels,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://developers.openai.com/codex/cli',

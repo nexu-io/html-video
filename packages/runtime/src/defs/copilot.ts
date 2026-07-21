@@ -1,4 +1,5 @@
 import type { AgentDef } from '../types.js';
+import { discoverCopilotModels } from '../models.js';
 
 /**
  * GitHub Copilot CLI def (`copilot`, by GitHub).
@@ -19,10 +20,12 @@ export const copilot: AgentDef = {
   name: 'GitHub Copilot CLI',
   bin: 'copilot',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // Prompt via stdin; --allow-all-tools avoids interactive approval stalls.
-    return ['--allow-all-tools'];
+    return ctx.model ? ['--allow-all-tools', '--model', ctx.model] : ['--allow-all-tools'];
   },
+  supportsModelSelection: true,
+  discoverModels: discoverCopilotModels,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://github.com/github/copilot-cli',

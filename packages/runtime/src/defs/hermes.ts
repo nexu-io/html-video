@@ -19,11 +19,14 @@ export const hermes: AgentDef = {
   name: 'Hermes (local CLI)',
   bin: 'hermes',
   versionArgs: ['version'],
-  buildArgs(prompt) {
+  buildArgs(prompt, ctx) {
     // hermes -q reads its query from argv (not stdin). argv length on
     // macOS is ~256KB which fits any reasonable prompt.
-    return ['chat', '-Q', '-q', prompt];
+    return ctx.model
+      ? ['chat', '--model', ctx.model, '-Q', '-q', prompt]
+      : ['chat', '-Q', '-q', prompt];
   },
+  supportsModelSelection: true,
   streamFormat: 'plain',
   installUrl: 'https://hermes.agentinfo.dev',
 };

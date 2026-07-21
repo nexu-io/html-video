@@ -18,7 +18,13 @@ async function which(bin: string): Promise<string | null> {
     // spuriously mark an installed agent (claude/codex) unavailable, which then
     // makes the studio fall back to the API-key-only anthropic-api agent.
     const { stdout } = await exec(WHICH_CMD, [bin], { timeout: 8000 });
-    const first = stdout.trim().split(/\r?\n/)[0]?.trim();
+    const candidates = stdout.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    // `where` often emits an extensionless npm POSIX shim before the runnable
+    // Windows .cmd/.exe entry. Prefer a native Windows command while retaining
+    // PATH order among valid candidates.
+    const first = process.platform === 'win32'
+      ? candidates.find((candidate) => /\.(?:exe|com|cmd|bat)$/i.test(candidate)) ?? candidates[0]
+      : candidates[0];
     return first || null;
   } catch {
     return null;
@@ -53,7 +59,12 @@ export async function resolveBin(def: AgentDef): Promise<string | null> {
 
 async function probeVersion(bin: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await exec(bin, args, { timeout: 5000 });
+    // npm-installed Windows CLIs commonly resolve to a .cmd shim, which
+    // execFile cannot launch without the platform shell.
+    const { stdout } = await exec(bin, args, {
+      timeout: 5000,
+      ...(process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(bin) && { shell: true }),
+    });
     return stdout.trim().split('\n')[0] ?? null;
   } catch {
     return null;

@@ -19,10 +19,11 @@ export const gemini: AgentDef = {
   name: 'Gemini CLI',
   bin: 'gemini',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // Prompt arrives via stdin; no args needed for headless one-shot.
-    return [];
+    return ctx.model ? ['--model', ctx.model] : [];
   },
+  supportsModelSelection: true,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://github.com/google-gemini/gemini-cli',

@@ -15,10 +15,11 @@ export const qwen: AgentDef = {
   name: 'Qwen Code',
   bin: 'qwen',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // Prompt via stdin; headless one-shot needs no extra args (same as Gemini CLI).
-    return [];
+    return ctx.model ? ['--model', ctx.model] : [];
   },
+  supportsModelSelection: true,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://github.com/QwenLM/qwen-code',

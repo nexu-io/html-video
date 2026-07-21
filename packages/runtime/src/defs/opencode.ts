@@ -1,4 +1,5 @@
 import type { AgentDef } from '../types.js';
+import { discoverOpenCodeModels } from '../models.js';
 
 /**
  * OpenCode def (`opencode`, by SST — sst/opencode, npm `opencode-ai`).
@@ -22,10 +23,12 @@ export const opencode: AgentDef = {
   name: 'OpenCode',
   bin: 'opencode',
   versionArgs: ['--version'],
-  buildArgs(_prompt, _ctx) {
+  buildArgs(_prompt, ctx) {
     // `run` is the headless subcommand; prompt arrives via stdin.
-    return ['run'];
+    return ctx.model ? ['run', '--model', ctx.model] : ['run'];
   },
+  supportsModelSelection: true,
+  discoverModels: discoverOpenCodeModels,
   streamFormat: 'plain',
   promptViaStdin: true,
   installUrl: 'https://opencode.ai/docs',

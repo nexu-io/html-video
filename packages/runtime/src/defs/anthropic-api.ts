@@ -21,6 +21,7 @@
  * upgradable per-call later if needed.
  */
 import type { AgentDef, AgentEvent } from '../types.js';
+import { discoverAnthropicApiModels } from '../models.js';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_BASE = 'https://api.anthropic.com';
@@ -40,6 +41,8 @@ export const anthropicApi: AgentDef = {
   bin: 'anthropic-api',
   versionArgs: [],
   buildArgs: () => [],
+  supportsModelSelection: true,
+  discoverModels: discoverAnthropicApiModels,
   streamFormat: 'plain',
   kind: 'http',
   installUrl: 'https://docs.claude.com/en/api/getting-started',
@@ -54,11 +57,11 @@ export const anthropicApi: AgentDef = {
     }
     return {
       available: true,
-      version: `${auth.model} via ${new URL(auth.baseUrl).host}`,
+      version: `API · ${new URL(auth.baseUrl).host}`,
     };
   },
 
-  async httpHandler(prompt, _ctx, onEvent, signal) {
+  async httpHandler(prompt, ctx, onEvent, signal) {
     const auth = resolveAuth();
     if (!auth) {
       onEvent({ type: 'error', message: 'No ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in env' });
@@ -82,8 +85,11 @@ export const anthropicApi: AgentDef = {
         method: 'POST',
         headers,
         signal,
+        // Never follow a redirect while carrying API credentials. A changed
+        // provider host must be configured explicitly by the user.
+        redirect: 'manual',
         body: JSON.stringify({
-          model: auth.model,
+          model: ctx.model || auth.model,
           max_tokens: 16000,
           stream: true,
           messages: [{ role: 'user', content: prompt }],
@@ -92,6 +98,11 @@ export const anthropicApi: AgentDef = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       onEvent({ type: 'error', message: `fetch failed: ${msg}` });
+      return { exitCode: -1 };
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      onEvent({ type: 'error', message: `Refusing credentialed redirect from ${new URL(url).host}` });
       return { exitCode: -1 };
     }
 
