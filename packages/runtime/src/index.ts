@@ -29,3 +29,5 @@ export {
   parseCopilotHelpModels,
   isValidModelId,
 } from './models.js';
+export { runAcpAgent, discoverAcpModels } from './acp-client.js';
+export type { RunAcpOptions, DiscoverAcpModelsOptions } from './acp-client.js';
