@@ -1,10 +1,10 @@
 /**
- * Project orchestrator: 单模板单视频工作流（RFC-05）。
+ * Project orchestrator: single-template single-video workflow (RFC-05).
  * - createProject
  * - addAsset / removeAsset
  * - setTemplate / setVariable / setVariables
- * - renderPreviewHtml: 调 EngineAdapter.renderToHtml() → HTML for iframe
- * - exportMp4: 调 EngineAdapter.render() → MP4 file
+ * - renderPreviewHtml: calls EngineAdapter.renderToHtml() → HTML for iframe
+ * - exportMp4: calls EngineAdapter.render() → MP4 file
  */
 
 import { randomUUID } from 'node:crypto';

@@ -48,14 +48,6 @@
   /* Agent switcher pill (top bar) */
   .agent-switch { position: relative; }
   .toolbar .pick-btn.agent-pill { min-width: 0; }
-  .toolbar-section.model-switch { display: flex; align-items: center; gap: 6px; }
-  /* [hidden] sets display:none, but the flex rule above would override it —
-     restore it so the picker truly hides for non-AMR agents. */
-  .toolbar-section.model-switch[hidden] { display: none; }
-  .model-select { font-size: 12px; padding: 5px 8px; border-radius: var(--radius-sm);
-    background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer;
-    max-width: 180px; }
-  .model-select:focus { outline: none; border-color: var(--accent); }
   .agent-pill .agent-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto;
     background: var(--text-faint); }
   .agent-pill .agent-dot.ok { background: var(--green); }
@@ -73,10 +65,8 @@
     background: transparent; color: var(--text); font: inherit; font-size: 12.5px;
     text-align: left; width: 100%; }
   .agent-menu .agent-menu-item:hover:not(.is-unselectable) { background: var(--bg-subtle); }
-  /* Unselectable rows (missing CLI / needs login) are dimmed but still let the
-     inner Sign-in button receive clicks — so NOT the native :disabled. */
+  /* Unselectable rows (missing CLI) are dimmed and not clickable. */
   .agent-menu .agent-menu-item.is-unselectable { opacity: .5; cursor: not-allowed; }
-  .agent-menu .agent-menu-item.is-unselectable .mi-login { opacity: 1; cursor: pointer; }
   .agent-menu .agent-menu-item.current { background: var(--accent-soft); }
   .agent-menu .agent-menu-item .mi-dot { width: 7px; height: 7px; border-radius: 50%;
     flex: 0 0 auto; background: var(--text-faint); }
@@ -88,21 +78,6 @@
     overflow: hidden; text-overflow: ellipsis; }
   .agent-menu .agent-menu-item .mi-tag { font-size: 10px; color: var(--text-muted);
     font-family: var(--font-mono); }
-  .agent-menu .agent-menu-item .mi-star { font-size: 12px; color: #f5a623; flex: 0 0 auto;
-    line-height: 1; text-shadow: 0 0 1px rgba(245,166,35,.4); }
-  /* "Sign in" button sits inside a disabled agent item (AMR-needs-login) but
-     must stay clickable + full-opacity. */
-  .agent-menu .agent-menu-item .mi-login { font-size: 11px; font-weight: 600; padding: 4px 13px;
-    border-radius: 7px; background: var(--accent); color: var(--accent-fg); cursor: pointer;
-    display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; opacity: 1;
-    flex: 0 0 auto; user-select: none; border: 0; transition: filter .12s, transform .08s;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
-  .agent-menu .agent-menu-item .mi-login::before { content: '→'; font-weight: 700; }
-  .agent-menu .agent-menu-item .mi-login:hover { filter: brightness(1.08); }
-  .agent-menu .agent-menu-item .mi-login:active { transform: translateY(1px); }
-  .agent-menu .agent-menu-item .mi-login.busy { opacity: .6; cursor: wait; box-shadow: none; }
-  /* The needs-login row itself shouldn't look fully greyed — the action is live */
-  .agent-menu .agent-menu-item.is-unselectable:has(.mi-login) { opacity: .85; cursor: default; }
   .toolbar select { background: var(--bg); border: 1px solid var(--border);
     color: var(--text); padding: 6px 10px; border-radius: var(--radius-sm);
     font-size: 12.5px; cursor: pointer; min-width: 160px; }
@@ -224,8 +199,9 @@
   .audio-actions .audio-save-state { font-size: 11.5px; color: var(--text-muted);
     font-family: var(--font-mono); }
 
-  /* Settings: Language panel */
-  .lang-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Settings: Language panel — auto-fit so the button count (currently 3:
+     en/pt/es) can grow without needing a CSS edit here. */
+  .lang-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
   .lang-options button { background: var(--bg-panel); border: 1px solid var(--border);
     color: var(--text); padding: 14px 16px; border-radius: var(--radius);
     cursor: pointer; font-family: inherit; font-size: 13.5px;
@@ -1067,22 +1043,12 @@
       <div class="agent-menu" id="agent-menu" hidden></div>
     </div>
 
-    <!-- Model picker — only shown for agents that expose a model catalog (AMR). -->
-    <div class="toolbar-section model-switch" id="model-switch" hidden>
-      <span class="sec-label" data-i18n="toolbar.model">Model</span>
-      <select class="model-select" id="model-select"></select>
-    </div>
-
     <div class="grow"></div>
 
     <div class="toolbar-section toolbar-links">
       <a class="tb-link" href="https://github.com/nexu-io/html-video" target="_blank" rel="noopener" title="html-video on GitHub" aria-label="html-video repo">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.63 22.42c.57.1.78-.25.78-.55v-2.13c-3.18.69-3.85-1.36-3.85-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.74.4-1.25.72-1.54-2.54-.29-5.21-1.27-5.21-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.17a10.92 10.92 0 0 1 5.74 0c2.18-1.48 3.15-1.17 3.15-1.17.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.68 5.36-5.23 5.65.41.36.78 1.06.78 2.13v3.16c0 .31.21.66.79.55A11.5 11.5 0 0 0 12 .5z"/></svg>
         <span class="tb-link-label">html-video</span>
-      </a>
-      <a class="tb-link" href="https://github.com/nexu-io/open-design" target="_blank" rel="noopener" title="Open Design on GitHub" aria-label="Open Design repo">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.63 22.42c.57.1.78-.25.78-.55v-2.13c-3.18.69-3.85-1.36-3.85-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.74.4-1.25.72-1.54-2.54-.29-5.21-1.27-5.21-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.17a10.92 10.92 0 0 1 5.74 0c2.18-1.48 3.15-1.17 3.15-1.17.62 1.58.23 2.75.11 3.04.74.8 1.18 1.82 1.18 3.07 0 4.4-2.68 5.36-5.23 5.65.41.36.78 1.06.78 2.13v3.16c0 .31.21.66.79.55A11.5 11.5 0 0 0 12 .5z"/></svg>
-        <span class="tb-link-label">Open Design</span>
       </a>
       <a class="tb-link tb-link-icon-only" href="https://discord.com/invite/keeVPMrueT" target="_blank" rel="noopener" title="Discord" aria-label="Discord">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.683 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.04.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.42 0-1.333.956-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.335-.956 2.42-2.157 2.42zm7.974 0c-1.183 0-2.157-1.085-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.335-.946 2.42-2.157 2.42z"/></svg>

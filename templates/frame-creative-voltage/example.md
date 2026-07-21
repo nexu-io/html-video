@@ -1,16 +1,16 @@
-# 创意电压帧 · make it move
+# Creative Voltage Frame · make it move
 
-> 电光蓝/暗错位分屏 + 描边电光词 + 手写体自描
+> Electric-blue/dark offset split + outlined electric word + handwritten script stroke-in
 
-## Meta 行
+## Meta line
 // CREATIVE_MODE · ON
 
-## Display 标题 (中间行做描边电光词)
+## Display title (middle line is the outlined electric word)
 Render
 any
 video.
 
-## 手写 script
+## Handwritten script
 make it move
 
 ## Caption

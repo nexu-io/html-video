@@ -1,10 +1,10 @@
 ---
 name: frame-takram-organic
-zh_name: "东方柔和有机帧"
+zh_name: "Eastern Soft Organic Frame"
 en_name: "Takram Organic Frame"
 emoji: "🌿"
 description: "Soft-tech radial node graph as art — frosted rounded card, curved links drawing in, nodes popping outward, gentle float."
-zh_description: "东方柔和有机帧:毛玻璃圆角卡 + 曲线连接描入 + 放射节点弹出 + 柔和漂浮, 米色自然色调"
+zh_description: "Eastern soft organic frame: frosted rounded card + curved links drawing in + radial nodes popping outward + gentle float, beige natural tones"
 en_description: "Soft-tech radial node graph as art — frosted rounded card, curved links drawing in, nodes popping outward, gentle float."
 category: video
 scenario: video
@@ -13,10 +13,10 @@ featured: 0
 recommended: 7
 tags: ["organic", "soft-tech", "radial", "diagram", "takram", "beige", "frame"]
 example_id: sample-frame-takram-organic
-example_name: "柔和有机帧 · 节点图"
+example_name: "Soft Organic Frame · Node Graph"
 example_format: markdown
-example_tagline: "毛玻璃圆角卡 + 放射节点弹出 + 柔和漂浮"
-example_desc: "米色底 + 自然色 (sage/terracotta) + 八节点放射图作为艺术品"
+example_tagline: "Frosted rounded card + radial nodes popping outward + gentle float"
+example_desc: "Beige background + natural tones (sage/terracotta) + eight-node radial graph as art"
 example_source_url: "https://github.com/alchaincyf/huashu-design"
 example_source_label: "huashu-design · Takram (MIT)"
 od:
@@ -33,30 +33,30 @@ od:
     requires: false
   example_prompt: "Use the Takram Organic Frame template to turn my concept into a soft-tech radial node graph — a frosted rounded card with curved links drawing in and nodes popping outward around an evolving core. Preserve the template's visual signature, use real content, and avoid lorem ipsum or placeholder images."
   example_prompt_i18n:
-    zh-CN: "用「东方柔和有机帧」模板把我的概念做成一段柔和科技感放射节点图:毛玻璃圆角卡 + 曲线连接描入 + 节点围绕进化核心放射弹出。保持模板的视觉签名,使用真实内容,避免 lorem ipsum 和占位图片。"
+    zh-CN: "Use the \"Eastern Soft Organic Frame\" template to turn my concept into a soft-tech radial node graph — a frosted rounded card with curved links drawing in and nodes popping outward around an evolving core. Preserve the template's visual signature, use real content, and avoid lorem ipsum and placeholder images."
 ---
 
-【模板: 东方柔和有机帧 (Takram Organic)】
-【意图】系统/架构概念揭示 / 温暖产品叙事 / 网络/记忆图解。视觉提炼自 huashu-design 的 Takram 流派 (MIT, © alchaincyf)。
+[Template: Eastern Soft Organic Frame (Takram Organic)]
+[Intent] System/architecture concept reveal / warm product storytelling / network or memory-graph explainer. Visual language distilled from the "Takram" genre in huashu-design (MIT, © alchaincyf).
 
-【画布】1920×1080, 米色底 `#EFEAE0`; 右侧叠 sage 绿径向 wash (`rgba(122,158,127,0.10)`)。整体柔和、自然、有呼吸感。
+[Canvas] 1920×1080, beige background `#EFEAE0`; a sage-green radial wash (`rgba(122,158,127,0.10)`) overlaid on the right. Overall feel: soft, natural, with room to breathe.
 
-【字体】西文 `Manrope` 700/600/400; 中文 `Noto Sans SC`。圆润, 不要太硬。
+[Typography] Latin `Manrope` 700/600/400; CJK `Noto Sans SC`. Rounded, not too hard-edged.
 
-【主结构 (时间轴, 默认 5s)】
-- **0.2s** 左侧毛玻璃圆角卡 (`rgba(255,253,248,0.66)` + blur 8px + border-radius 40px + 柔影) 从下方 26px + scale 0.985 升入。
-- **0.7s** 绿色 eyebrow (`#7A9E7F`, uppercase, letter-spacing 4px) fadeUp。
-- **0.9s** 卡标题 (92px, weight 700) fadeUp; 一个 accent 词用陶土橙 `#C98A5E`。
-- **1.2s** caption (22px, `#8A867C`, line-height 1.8) fadeUp。
-- **1.3s** 右侧放射图中心节点 (陶土橙, r=40) 弹出 (overshoot)。
-- **1.4s 起** 8 条曲线 link (sage `#B8C9BA`, stroke-dasharray draw) 从中心错峰描出。
-- **1.9s 起** 8 个外围节点 (sage 绿, r=22) 错峰 pop (scale 0→1, overshoot)。
-- **2.0s 起** 整个放射图进入 7s 慢漂浮循环 (translateY 微动)。
+[Main structure (timeline, default 5s)]
+- **0.2s** Left frosted rounded card (`rgba(255,253,248,0.66)` + blur 8px + border-radius 40px + soft shadow) rises in from 26px below + scale 0.985.
+- **0.7s** Green eyebrow (`#7A9E7F`, uppercase, letter-spacing 4px) fades up.
+- **0.9s** Card headline (92px, weight 700) fades up; one accent word in terracotta `#C98A5E`.
+- **1.2s** Caption (22px, `#8A867C`, line-height 1.8) fades up.
+- **1.3s** Center node of the right-side radial graph (terracotta, r=40) pops in (overshoot).
+- **From 1.4s** 8 curved links (sage `#B8C9BA`, stroke-dasharray draw) trace out from the center in a staggered sequence.
+- **From 1.9s** 8 outer nodes (sage green, r=22) pop in a staggered sequence (scale 0→1, overshoot).
+- **From 2.0s** The whole radial graph enters a 7s slow floating loop (subtle translateY motion).
 
-【配色纪律】米色 `#EFEAE0` / 暖白卡 / sage 绿 `#7A9E7F`·`#B8C9BA` / 陶土橙 `#C98A5E` / 暖灰文字。**禁止**高饱和科技蓝/紫。绿是结构色, 橙是强调色 (核心节点 + 标题 accent 词)。
+[Color discipline] Beige `#EFEAE0` / warm white card / sage green `#7A9E7F`·`#B8C9BA` / terracotta `#C98A5E` / warm gray text. **Forbidden**: high-saturation tech blue/purple. Green is the structural color, terracotta is the accent color (center node + headline accent word).
 
-【内容纪律】
-- 节点图是"艺术品", 节点数 4-8 按内容调 (改 SVG 里 node/link 数量 + 角度)。
-- 必须用真实概念/关系, 严禁 lorem ipsum。
-- 动效用 `@keyframes` + SVG stroke-dashoffset, `prefers-reduced-motion` 下全部停在终态。
-- 单文件 HTML。
+[Content discipline]
+- The node graph is "art" — node count 4-8, adjusted per content (edit the node/link count and angles in the SVG).
+- Must use real concepts/relationships; lorem ipsum is strictly forbidden.
+- Motion uses `@keyframes` + SVG stroke-dashoffset; everything settles into its final state under `prefers-reduced-motion`.
+- Single-file HTML.

@@ -438,7 +438,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             sse({
               type: 'audio_failed',
               message:
-                'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
+                'MiniMax API key not configured — add it in Settings → Audio (or set MINIMAX_API_KEY).',
             });
             res.end();
             return;
@@ -639,57 +639,6 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return json(res, 200, { agents });
       }
 
-      // Agent models — currently AMR only. Lists the live `vela model list`
-      // catalog so the UI can offer a model picker (deepseek/claude/gpt/…).
-      const modelsMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/models$/);
-      if (modelsMatch && modelsMatch[1] && m === 'GET') {
-        const agentId = modelsMatch[1];
-        if (agentId !== 'amr') return json(res, 200, { models: [] });
-        const def = findAgent(agentId);
-        if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
-        const { resolveBin, listAmrModels } = await import('@html-video/runtime');
-        const bin = await resolveBin(def);
-        if (!bin) return json(res, 400, { error: 'vela binary not found' });
-        try {
-          const models = await listAmrModels(bin);
-          return json(res, 200, { models, default: def.defaultModel ?? null });
-        } catch (err) {
-          return json(res, 200, { models: [], error: err instanceof Error ? err.message : String(err) });
-        }
-      }
-
-      // Agent login — currently AMR/vela only. Spawns `vela login`, which opens
-      // the browser for OAuth; we wait for the process to exit (auth complete or
-      // cancelled). The user signs in with their OWN Open Design account.
-      const loginMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/login$/);
-      if (loginMatch && loginMatch[1] && m === 'POST') {
-        const agentId = loginMatch[1];
-        if (agentId !== 'amr') return json(res, 400, { error: `agent "${agentId}" has no login flow` });
-        const def = findAgent(agentId);
-        if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
-        const { resolveBin } = await import('@html-video/runtime');
-        const bin = await resolveBin(def);
-        if (!bin) return json(res, 400, { error: 'vela binary not found' });
-        try {
-          const { spawn } = await import('node:child_process');
-          const code = await new Promise<number>((resolveCode, rejectCode) => {
-            const child = spawn(bin, ['login'], { stdio: 'ignore' });
-            // vela login opens the browser itself; it exits once auth completes
-            // or is cancelled. Cap the wait so a never-finished login can't hang.
-            const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* */ } rejectCode(new Error('login timed out (5 min)')); }, 5 * 60_000);
-            child.on('error', (e: Error) => { clearTimeout(timer); rejectCode(e); });
-            child.on('exit', (c: number | null) => { clearTimeout(timer); resolveCode(c ?? -1); });
-          });
-          if (code !== 0) return json(res, 400, { ok: false, error: `vela login exited with code ${code}` });
-          // Re-detect (force) so the agent flips to available immediately.
-          const agents = await detectAll({ force: true });
-          const amr = agents.find((a) => a.id === 'amr');
-          return json(res, 200, { ok: !!amr?.available, available: !!amr?.available, ...(amr?.hint && { hint: amr.hint }) });
-        } catch (err) {
-          return json(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) });
-        }
-      }
-
       // Agent smoke test — fires a tiny prompt at the requested agent and
       // reports timing + bytes. Used by the Settings modal so the user can
       // confirm a CLI is actually responding (not just on PATH).
@@ -822,10 +771,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // No template required — agent can synthesize from scratch when none picked.
 
         // Resolve the agent. Pinned project agent wins. Otherwise pick the first
-        // available agent that needs no extra setup (skip AMR — it's available
-        // but billed/needs balance, so it must be an explicit choice, not a
-        // silent default). anthropic-api is the final HTTP fallback. This keeps
-        // "what the toolbar shows" === "what actually runs".
+        // available agent that needs no extra setup. anthropic-api is the final
+        // HTTP fallback. This keeps "what the toolbar shows" === "what actually
+        // runs".
         let agentId = project.agentId;
         if (!agentId) {
           const detected = await detectAll();
@@ -836,7 +784,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           // probe miss drops the CLI agent). Persist the choice so every
           // subsequent turn in this project uses the same agent, not whatever
           // a fresh probe happens to return.
-          const ready = detected.filter((a) => a.available && a.id !== 'amr');
+          const ready = detected.filter((a) => a.available);
           const apiReady = ready.find((a) => a.id === 'anthropic-api');
           agentId =
             ready.find((a) => a.id !== 'anthropic-api')?.id ??
@@ -854,7 +802,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         if (!agentDef) {
           return json(res, 400, { error: `agent "${agentId}" not registered` });
         }
-        // Model the user picked for this agent (AMR); undefined → agent default.
+        // Model the user picked for this agent, if it supports selection; undefined → agent default.
         const agentModel = project.agentModel ?? undefined;
 
         // Append user message to history (with attachment summary)
@@ -1030,8 +978,8 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           if (rewriteInputs) {
             const n = (project.frames ?? []).length || Number(phaseInfo.inputs.collected?.frame_count ?? '3');
             const notice = restyleOnly
-              ? `🎨 沿用文案，按新风格重做全部 ${n} 帧…\n`
-              : `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
+              ? `🎨 keeping the copy, redoing all ${n} frames in the new style…\n`
+              : `🔄 redoing all ${n} frames from the new content (manually-edited frames will be overwritten)…\n`;
             assistantText += notice;
             sseWrite({ type: 'text', chunk: notice });
           }
@@ -1100,7 +1048,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           // that only ships the user's request + a tiny instruction. This
           // catches the 6-8KB-prompt empty-reply mode.
           if (assistantText.trim().length < 32 && phaseInfo.phase === 'iterate' && priorHtml) {
-            sseWrite({ type: 'text', chunk: '\n↻ 第一次输出为空，重试中…\n' });
+            sseWrite({ type: 'text', chunk: '\n↻ first attempt came back empty, retrying…\n' });
             // Retry without inlining the prior HTML — same observation as
             // the iterate prompt itself: claude --print silently no-ops
             // when fed multi-KB of HTML to rewrite.
@@ -1186,7 +1134,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // without having to send an extra "ok" message.
         if (phaseInfo.phase === 'content' && !/<!--\s*hv-phase:content-question\s*-->/i.test(assistantText)) {
           const autoPickedType = lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType ?? '';
-          const stylePrompt = buildStylePhasePrompt(autoPickedType);
+          const stylePrompt = buildStylePhasePrompt(autoPickedType, userText);
           const styleHandle = spawnAgent({
             def: agentDef,
             prompt: stylePrompt,
@@ -1941,7 +1889,7 @@ function detectPhase(
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'format', inputs, postGen: true };
       }
-      // default / "内容 / content / 文案 / 主题 / 重写"
+      // default / "content / copy / topic / rewrite"
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = collectContentTurns(history);
       return { phase: 'content', inputs, postGen: true };
@@ -2052,17 +2000,19 @@ function detectPhase(
   if (prev.kind === 'content-question') {
     // User is replying to content question. Could be (a) more content, or
     // (b) a "skip / I'm done" signal.
-    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed)
+    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道|pular|pronto|chega|não sei|nao sei|saltar|listo|ya|no sé|no se)$/i.test(trimmed)
       || trimmed.length <= 3;
     // "Free rein" answers — the user is handing the subject's details to the
-    // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机"). These should advance the
-    // flow (and pop the style card) just like a skip, instead of being treated
-    // as more content to collect — which left the user stuck re-typing "风格选择".
+    // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机" in Chinese; "tanto faz" /
+    // "você decide" in Portuguese; "lo que sea" / "tú decides" in Spanish).
+    // These should advance the flow (and pop the style card) just like a skip,
+    // instead of being treated as more content to collect — which left the
+    // user stuck re-typing "风格选择".
     // Substring match (not anchored) with a length guard so it doesn't swallow a
-    // real sentence that merely contains "随便".
+    // real sentence that merely contains one of these words.
     const isFreeRein =
       trimmed.length <= 16 &&
-      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(trimmed);
+      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你|tanto faz|qualquer coisa|você decide|voce decide|você escolhe|voce escolhe|surpreenda|aleatório|aleatorio|lo que sea|cualquier cosa|tú decides|tu decides|tú eliges|tu eliges|sorpréndeme|sorprendeme)/i.test(trimmed);
     // With source material attached there's nothing to collect — advance as
     // soon as the user says anything (the article already is the content).
     if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
@@ -2150,7 +2100,10 @@ function lastCardPickByPhase(history: ChatMessage[], phase: string): string | un
 function isControlPhrase(t: string): boolean {
   const s = t.trim().toLowerCase().replace(/[。.!！~\s]+$/u, '');
   if (s.length > 12) return false; // real content is longer; keep it
-  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认)$/u.test(s);
+  // Chinese, English, Portuguese (pt-BR), and Spanish short "move forward"
+  // phrases — a student typing "continua"/"vamos"/"confirmar" instead of
+  // clicking the card must not have that word collected as video content.
+  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|continua|continuar|continúa|próximo|proximo|siguiente|começar|comecar|começa|comeca|empezar|comenzar|empieza|comienza|vamos|bora|beleza|vale|dale|pode|confirma(r)?|tá|ta|tá bom|ta bom|listo)$/u.test(s);
 }
 
 function collectContentTurns(history: ChatMessage[]): string[] {
@@ -2448,23 +2401,25 @@ function isMultiFrameType(pickedType: string): boolean {
   return !single;
 }
 
-function buildStylePhasePrompt(pickedType: string): string {
+function buildStylePhasePrompt(pickedType: string, langRef?: string): string {
   const p: string[] = [];
-  p.push(`The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
+  p.push(`The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card.`);
   p.push('```hv-options');
   p.push(JSON.stringify({
     meta: { phase: 'style' },
-    question: '视觉风格怎么定？',
+    question: 'How do you want the visual style?',
     options: [
-      { label: 'Cyberpunk glitch',    hint: '霓虹 / 故障感 / 高对比' },
-      { label: 'Swiss minimalist',    hint: '网格 / 无衬线 / 留白' },
-      { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
-      { label: 'Mono brutalist',      hint: '黑白 / 块状 / 粗体' },
-      { label: '从设计模板选',        hint: '上方挑一个现成模板' },
+      { label: 'Cyberpunk glitch',    hint: 'neon / glitch / high contrast' },
+      { label: 'Swiss minimalist',    hint: 'grid / sans-serif / whitespace' },
+      { label: 'Warm-grain magazine', hint: 'paper texture / serif / warm tones' },
+      { label: 'Mono brutalist',      hint: 'black & white / blocky / bold' },
+      { label: 'Pick from templates', hint: 'choose a ready-made template above' },
     ],
     allow_freeform: true,
   }, null, 2));
   p.push('```');
+  p.push('');
+  p.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only — not literal text to copy. Rewrite "question" and every option's "hint" into the SAME language the user has been chatting in${langRef ? ` (their latest message: "${langRef.slice(0, 200).replace(/"/g, "'")}")` : ''}. Keep "meta" verbatim; option "label" values may stay in English (they're style-genre names) or be translated too, your call — just make sure "question" and "hint" are never left in a different language than the user's.`);
   p.push('');
   p.push(`Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`);
   p.push('');
@@ -2493,19 +2448,21 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   // ---- edit-menu: post-generation "what do you want to change?" card ----
   if (phase === 'edit-menu') {
     const em: string[] = [];
-    em.push(`The user wants to change the already-generated video but hasn't said what. Reply with ONE short line in their language asking what to change, then ONE fenced \`\`\`hv-options block. Use this EXACT JSON — keep "meta" verbatim:`);
+    em.push(`The user wants to change the already-generated video but hasn't said what. Reply with ONE short line in their language asking what to change, then ONE fenced \`\`\`hv-options block.`);
     em.push('```hv-options');
     em.push(JSON.stringify({
       meta: { phase: 'edit-menu' },
-      question: '想改哪方面？',
+      question: 'What would you like to change?',
       options: [
-        { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
-        { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
-        { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
+        { label: '🎨 Style', hint: 'keep the content, switch the visual style' },
+        { label: '✏️ Content', hint: 'rewrite the copy / topic / script' },
+        { label: '⏱️ Duration', hint: 'adjust per-frame timing / pace' },
       ],
       allow_freeform: true,
     }, null, 2));
     em.push('```');
+    em.push('');
+    em.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only. Keep "meta" verbatim, but rewrite "question" and every "hint" into the SAME language the user has been chatting in (their latest message: "${trimmed.slice(0, 200).replace(/"/g, "'")}") — never leave "question"/"hint" in a different language than the user's.`);
     em.push('');
     em.push(`Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.`);
     return em.join('\n');
@@ -2520,20 +2477,21 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     opener.push('');
     opener.push(`Reply with TWO things, in this exact order:`);
     opener.push(`1. ONE friendly opening sentence in the user's language (≤ 25 chars).`);
-    opener.push(`2. A fenced \`\`\`hv-options block with the 4 content-type choices below. JSON shape EXACTLY as shown — do not change keys or omit "meta":`);
+    opener.push(`2. A fenced \`\`\`hv-options block with the 4 content-type choices below — keep all keys, especially "meta", but see the translation note after it.`);
     opener.push('```hv-options');
     opener.push(JSON.stringify({
       meta: { phase: 'type' },
-      question: '想做哪种内容？',
+      question: 'What kind of content?',
       options: [
-        { label: '单帧标题卡',   hint: 'logo / 封面 / 单画面 - 5-10s' },
-        { label: '多帧预告片',   hint: '产品 / 活动 teaser, 3-6 帧' },
-        { label: '数据大字报',   hint: '1-2 个核心数字, 社媒爆款风' },
-        { label: '概念解说短片', hint: '几帧讲清一个 idea / feature' },
+        { label: 'Single title card', hint: 'logo / cover / one still — 5-10s' },
+        { label: 'Multi-frame teaser', hint: 'product / campaign teaser, 3-6 frames' },
+        { label: 'Data poster',        hint: '1-2 core numbers, viral social style' },
+        { label: 'Concept explainer',  hint: 'a few frames explaining one idea / feature' },
       ],
       allow_freeform: true,
     }, null, 2));
     opener.push('```');
+    opener.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only, not literal text to copy. Rewrite "question" and every "hint" into the SAME language as the user's own message quoted above; "label" values may stay in English or be translated too, your call.`);
     opener.push('');
     if (tmpl) {
       opener.push(
@@ -2599,27 +2557,29 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
 
   // ---- style: hv-options card with style presets + "pick template" + freeform ----
   if (phase === 'style') {
-    return buildStylePhasePrompt(inputs.pickedType ?? '');
+    return buildStylePhasePrompt(inputs.pickedType ?? '', userText);
   }
 
   // ---- need-template: user chose "from design template" but hasn't picked one
   if (phase === 'need-template') {
     const p: string[] = [];
-    p.push(`The user chose "从设计模板选" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar 模板 / Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead. JSON shape EXACTLY — keep "meta" verbatim:`);
+    p.push(`The user chose "pick from templates" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead.`);
     p.push('```hv-options');
     p.push(JSON.stringify({
       meta: { phase: 'need-template' },
-      question: '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
+      question: 'Pick a template from the top bar, then continue below — or choose a built-in style instead:',
       options: [
-        { label: '我已选好模板，继续', hint: '用顶部选中的模板生成' },
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
+        { label: "I've picked a template, continue", hint: 'generate using the template selected above' },
+        { label: 'Cyberpunk glitch',    hint: 'neon / glitch / high contrast' },
+        { label: 'Swiss minimalist',    hint: 'grid / sans-serif / whitespace' },
+        { label: 'Warm-grain magazine', hint: 'paper texture / serif / warm tones' },
+        { label: 'Mono brutalist',      hint: 'black & white / blocky / bold' },
       ],
       allow_freeform: true,
     }, null, 2));
     p.push('```');
+    p.push('');
+    p.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only. Keep "meta" verbatim, but rewrite "question" and every "hint" into the SAME language the user has been chatting in (their latest message: "${trimmed.slice(0, 200).replace(/"/g, "'")}"); "label" values may stay in English or be translated too, your call.`);
     p.push('');
     p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
     return p.join('\n');
@@ -2645,7 +2605,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     if (isEdit) {
       p.push(`The user wants to revise the format. Re-emit the SAME hv-form card with each \`default\` set to their last answer so they only need to change what they want.`);
     } else {
-      p.push(`Now ask about format with ONE hv-form card — three segmented controls, no text inputs. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
+      p.push(`Now ask about format with ONE hv-form card — three segmented controls, no text inputs.`);
     }
     // The card is the ONLY acceptable way to ask this. Asking in prose makes
     // the user type a free-form answer with no submit marker, which the flow
@@ -2654,16 +2614,19 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     p.push('```hv-form');
     p.push(JSON.stringify({
       meta: { phase: 'format' },
-      title: isEdit ? '改一下格式' : (isMulti ? '最后一步：尺寸 / 每帧时长 / 帧数' : '最后一步：选个尺寸 / 时长'),
+      title: isEdit ? 'Adjust the format' : (isMulti ? 'Last step: aspect / per-frame duration / frame count' : 'Last step: pick an aspect ratio / duration'),
       fields: [
         {
-          key: 'aspect', label: '画面尺寸', kind: 'buttons', required: true,
+          key: 'aspect', label: 'Aspect ratio', kind: 'buttons', required: true,
           default: defaults.aspect,
+          // NOTE: "value" carries the ratio digits FIRST, optionally followed by a
+          // space + descriptor — server code strips at the first space to read the
+          // ratio, so keep that shape if you translate the descriptor.
           options: [
-            { value: '16:9 横屏',     label: '16:9 横屏' },
-            { value: '9:16 手机竖屏', label: '9:16 竖屏' },
-            { value: '1:1 方形',      label: '1:1 方形' },
-            { value: '4:5 小红书',    label: '4:5 小红书' },
+            { value: '16:9 横屏',     label: '16:9 Landscape' },
+            { value: '9:16 手机竖屏', label: '9:16 Portrait' },
+            { value: '1:1 方形',      label: '1:1 Square' },
+            { value: '4:5 小红书',    label: '4:5 Social post' },
           ],
         },
         // Multi-frame: pace by PER-FRAME duration (total = per_frame × frames,
@@ -2671,13 +2634,13 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
         ...(isMulti
           ? [
               {
-                key: 'per_frame', label: '每帧时长 (秒)', kind: 'buttons', required: true,
+                key: 'per_frame', label: 'Per-frame duration (s)', kind: 'buttons', required: true,
                 default: defaults.per_frame,
-                hint: '总时长 = 每帧时长 × 帧数',
+                hint: 'Total = per-frame duration × frame count',
                 options: ['2', '3', '4', '5', '6', '8'].map((v) => ({ value: v, label: `${v}s` })),
               },
               {
-                key: 'frame_count', label: '帧数', kind: 'buttons', required: true,
+                key: 'frame_count', label: 'Frame count', kind: 'buttons', required: true,
                 default: defaults.frame_count,
                 options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({ value: v, label: v })),
               },
@@ -2685,18 +2648,18 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
               // bars grow) instead of static hyperframes HTML. Default OFF —
               // Remotion is a user-chosen enhancement, the AI never flips it.
               {
-                key: 'remotion_enhance', label: '⚡ 数据帧用 Remotion', kind: 'buttons', required: false,
-                default: '关',
-                hint: '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
+                key: 'remotion_enhance', label: '⚡ Data frames use Remotion', kind: 'buttons', required: false,
+                default: 'off',
+                hint: 'Data frames render natively with Remotion (rolling numbers / growing bars); other frames still use Hyperframes',
                 options: [
-                  { value: '关', label: '关' },
-                  { value: '开', label: '开 · Remotion' },
+                  { value: 'off', label: 'Off' },
+                  { value: 'on', label: 'On · Remotion' },
                 ],
               },
             ]
           : [
               {
-                key: 'duration', label: '时长 (秒)', kind: 'buttons', required: true,
+                key: 'duration', label: 'Duration (s)', kind: 'buttons', required: true,
                 default: defaults.duration,
                 options: ['3', '5', '10', '15'].map((v) => ({ value: v, label: `${v}s` })),
               },
@@ -2705,6 +2668,8 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       allow_attachments: false,
     }, null, 2));
     p.push('```');
+    p.push('');
+    p.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only. Keep "meta" and every field's "key"/"value"/"default" exactly as shown (they're machine-read, not display text) — but rewrite "title", every field's "label", and every "hint" into the SAME language the user has been chatting in (their latest message: "${trimmed.slice(0, 200).replace(/"/g, "'")}"). Per-option "label" text (e.g. "16:9 Landscape", "Off", "On · Remotion") may also be translated — just leave "value" untouched.`);
     p.push('');
     p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
     return p.join('\n');
@@ -2717,41 +2682,57 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const pickedStyle = lastCardPickByPhase(history, 'style') ?? '';
     const contentTurns = collectContentTurns(history);
     const summaryRows: { label: string; value: string }[] = [];
-    if (pickedType) summaryRows.push({ label: '类型', value: pickedType });
+    if (pickedType) summaryRows.push({ label: 'Type', value: pickedType });
     if (contentTurns.length > 0) {
-      summaryRows.push({ label: '内容', value: contentTurns.join(' · ').slice(0, 240) });
+      summaryRows.push({ label: 'Content', value: contentTurns.join(' · ').slice(0, 240) });
     }
-    if (pickedStyle) summaryRows.push({ label: '风格', value: pickedStyle });
-    if (tmpl) summaryRows.push({ label: '模板', value: tmpl.name });
+    if (pickedStyle) summaryRows.push({ label: 'Style', value: pickedStyle });
+    if (tmpl) summaryRows.push({ label: 'Template', value: tmpl.name });
     const labelMap: Record<string, string> = {
-      aspect: '尺寸', duration: '时长', frame_count: '帧数', per_frame: '每帧时长',
+      aspect: 'Aspect', duration: 'Duration', frame_count: 'Frames', per_frame: 'Per-frame',
     };
     // When pacing by per-frame, show per-frame + frames + derived total.
     const pf = Number(collected.per_frame ?? '') || 0;
     const keys = pf > 0 ? ['aspect', 'per_frame', 'frame_count'] : ['aspect', 'duration', 'frame_count'];
     for (const k of keys) {
       const v = collected[k];
-      if (v) summaryRows.push({ label: labelMap[k] ?? k, value: k === 'per_frame' ? `${v}s` : v });
+      if (v) {
+        // "aspect" is stored as "16:9 横屏" (ratio + legacy descriptor kept
+        // only for the option "value" the format card matches against) — show
+        // just the ratio here so nothing non-English reaches this card's JSON.
+        const displayV = k === 'aspect' ? (v.split(/\s+/)[0] ?? v) : v;
+        summaryRows.push({ label: labelMap[k] ?? k, value: k === 'per_frame' ? `${displayV}s` : displayV });
+      }
     }
     if (pf > 0) {
       const frames = Number(collected.frame_count ?? '4') || 4;
-      summaryRows.push({ label: '总时长', value: `${pf * frames}s` });
+      summaryRows.push({ label: 'Total duration', value: `${pf * frames}s` });
     }
     if (attachments.length > 0) {
-      summaryRows.push({ label: '素材', value: attachments.map((a) => a.filename).join(', ') });
+      summaryRows.push({ label: 'Assets', value: attachments.map((a) => a.filename).join(', ') });
     }
 
+    // NOTE: `trimmed`/userText at this point is the FORMAT card's submission
+    // marker (`[hv-form:submit]\n{"aspect":"16:9 横屏",...}`), not something a
+    // human typed — using it as a "what language is the user writing in?"
+    // reference is worse than useless (its "16:9 横屏" JSON value contains a
+    // literal Chinese word, which was observed to bias the model into
+    // translating this card into Chinese). Ground on the last real free-text
+    // turn instead, falling back to the opening request.
+    const langRef = contentTurns[contentTurns.length - 1] ?? openingTopic ?? '';
     const p: string[] = [];
-    p.push(`The user has chosen the format. Emit ONE \`\`\`hv-confirm block (no other code blocks) summarising what you've got, in the user's language. Use this exact JSON — keep "meta":`);
+    p.push(`The user has chosen the format. Emit ONE \`\`\`hv-confirm block (no other code blocks) summarising what you've got.`);
     p.push('');
     p.push('```hv-confirm');
     p.push(JSON.stringify({
       meta: { phase: 'confirm' },
-      title: '按这些信息生成？',
+      title: 'Generate with this?',
       summary: summaryRows,
       actions: ['generate', 'edit'],
     }, null, 2));
     p.push('```');
+    p.push('');
+    p.push(`IMPORTANT: the JSON above is an English reference for STRUCTURE and MEANING only. Keep "meta" and "actions" verbatim, but rewrite "title" and every "summary[].label" (the category names — Type/Content/Style/etc.) into the SAME language the user has been chatting in${langRef ? ` (e.g. this message from them: "${langRef.slice(0, 200).replace(/"/g, "'")}")` : ''}. Leave "summary[].value" as-is — those are the user's own picks/content, already in whatever language they were given in.`);
     p.push('');
     // Soft gate: if the subject is too thin to make a meaningful video, nudge
     // the user to add a concrete topic/brand/number — but never block, the card
@@ -2760,7 +2741,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const topicThin =
       attachments.length === 0 &&
       (contentBlob.replace(/\s/g, '').length < 8 ||
-        /^(随机|随便|anything|random|whatever|都行|你定|skip|不知道)$/i.test(contentBlob));
+        /^(随机|随便|anything|random|whatever|都行|你定|skip|不知道|tanto faz|qualquer coisa|aleatório|aleatorio|não sei|nao sei|lo que sea|cualquier cosa|no sé|no se)$/i.test(contentBlob));
     if (topicThin) {
       p.push(`NOTE: the collected content ("${contentBlob || '(empty)'}") is very thin / vague. BEFORE the hv-confirm block, add ONE short friendly sentence in the user's language gently flagging that the topic is sparse and inviting them to add a concrete subject / brand / key number for a stronger video — but STILL emit the hv-confirm block exactly as above so they can generate anyway if they want.`);
       p.push('');
@@ -2803,17 +2784,17 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       p.push('');
     }
     p.push(`Inputs (use these LITERALLY — do NOT make up brand names or facts beyond what is stated):`);
-    p.push(`- 类型 / type: ${pickedType || '(未指定)'}`);
+    p.push(`- type: ${pickedType || '(unspecified)'}`);
     if (contentTurns.length > 0) {
-      p.push(`- 内容 / content (what the user told us in the chat):`);
+      p.push(`- content (what the user told us in the chat):`);
       for (const t of contentTurns) p.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
     } else {
-      p.push(`- 内容 / content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)`);
+      p.push(`- content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)`);
     }
-    if (styleLabel) p.push(`- 风格 / style: ${styleLabel}`);
-    p.push(`- 画面尺寸: ${aspect} (${resolution})`);
-    p.push(`- 时长: ${collected.duration ?? '?'} 秒`);
-    p.push(`- 帧数: ${collected.frame_count ?? (isMulti ? '4' : '1')}`);
+    if (styleLabel) p.push(`- style: ${styleLabel}`);
+    p.push(`- aspect ratio: ${aspect} (${resolution})`);
+    p.push(`- duration: ${collected.duration ?? '?'}s`);
+    p.push(`- frame count: ${collected.frame_count ?? (isMulti ? '4' : '1')}`);
     p.push('');
     if (attachments.length > 0) {
       const { specs, content } = partitionAttachments(attachments);
@@ -3122,7 +3103,7 @@ interface SplitGenerateArgs {
   /**
    * Restyle mode: keep the EXISTING content-graph text verbatim and only
    * re-render each frame's HTML in the new style. Skips the Step-1 graph
-   * re-plan. Used by the post-generation "换风格 / 改时长" sub-flows.
+   * re-plan. Used by the post-generation "restyle / edit duration" sub-flows.
    */
   restyleOnly?: boolean;
   /** Called for human-readable progress lines. */
@@ -3163,7 +3144,7 @@ async function runSplitMultiFrameGenerate(
   // Opt-in (format card): render data frames natively with Remotion. When on,
   // the planner must give every data node structured items, and after each
   // data frame's HTML is written we enhance it in place (best-effort).
-  const enhanceData = (collected.remotion_enhance ?? '').startsWith('开');
+  const enhanceData = (collected.remotion_enhance ?? '').startsWith('on');
   // Prefer per-frame pacing (total = per_frame × frames) — set by the format
   // card so a short total ÷ many frames can't produce a rushed clip. Fall back
   // to total ÷ frames for older projects that only stored `duration`.
@@ -3204,24 +3185,24 @@ async function runSplitMultiFrameGenerate(
       throw new Error('restyle requested but the project has no existing storyboard to reuse');
     }
     graph = existing as import('@html-video/content-graph').ContentGraph;
-    onProgress(`✓ 沿用现有文案：${graph.nodes.length} 帧`);
+    onProgress(`✓ reusing existing copy: ${graph.nodes.length} frames`);
     onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   } else {
-  onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
+  onProgress(`📋 planning a ${frameCountReq}-frame storyboard…`);
   const graphPromptParts: string[] = [];
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
   graphPromptParts.push('');
   graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
-  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
+  graphPromptParts.push(`- type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
   // Lock the storyboard to the user's opening subject (unless a SOURCE MATERIAL
   // block below supersedes it). This is the path the user actually hits, and
   // where "随机" turned into a randomness explainer instead of the Open Design
   // promo they asked for.
   if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
-    graphPromptParts.push(`- 主题 / subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
+    graphPromptParts.push(`- subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
   }
   if (contentTurns.length > 0) {
-    graphPromptParts.push(`- 内容 / content:`);
+    graphPromptParts.push(`- content:`);
     for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
   }
   // Inline the fetched article / repo / uploaded text — THIS is the subject of
@@ -3238,8 +3219,8 @@ async function runSplitMultiFrameGenerate(
       graphPromptParts.push((a.inlineText ?? '').slice(0, 6000));
     }
   }
-  if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
-  graphPromptParts.push(`- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
+  if (styleLabel) graphPromptParts.push(`- style: ${styleLabel}`);
+  graphPromptParts.push(`- total duration: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
   graphPromptParts.push('');
   if (sourceTexts.length > 0) {
     graphPromptParts.push(`GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`);
@@ -3304,7 +3285,7 @@ async function runSplitMultiFrameGenerate(
     throw new Error('graph has no nodes');
   }
   await ctx.orchestrator.writeContentGraph(projectId, graph);
-  onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
+  onProgress(`✓ storyboard generated: ${graph.nodes.length} frames (${graph.intent})`);
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   }
 
@@ -3312,7 +3293,7 @@ async function runSplitMultiFrameGenerate(
   for (let i = 0; i < graph.nodes.length; i++) {
     const node = graph.nodes[i]!;
     const nodeId = node.id;
-    onProgress(`🎬 生成第 ${i + 1}/${graph.nodes.length} 帧 (${nodeId})…`);
+    onProgress(`🎬 generating frame ${i + 1}/${graph.nodes.length} (${nodeId})…`);
     onSse({ type: 'frame_started', node_id: nodeId, order: i, total: graph.nodes.length });
 
     const frameContext = describeNode(node);
@@ -3331,6 +3312,7 @@ async function runSplitMultiFrameGenerate(
     fp.push(`Type: ${pickedType}`);
     if (styleLabel) fp.push(`Style: ${styleLabel}`);
     fp.push(`Resolution: ${aspect} (${resolution})`);
+    fp.push(`Write all on-screen text in the SAME language as the content/subject above. Use punctuation native to that language — e.g. don't wrap a non-Chinese title in CJK title marks like 《》 just for visual flair.`);
     fp.push('');
     if (contentTurns.length > 0) {
       fp.push(`Source material from the user (use literally; do NOT invent facts):`);
@@ -3394,7 +3376,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
 
     // One retry on empty: shorter prompt, just the skeleton call.
     if (!extracted) {
-      onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
+      onProgress(`  ↻ frame ${i + 1} came back empty on first try, retrying…`);
       const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
       frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
       extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
@@ -3416,19 +3398,19 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
         // frame is flagged remotion but has no previewMp4Path, so the studio
         // tries to play a <video> that 404s → black thumbnail + preview.
         await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion 动效 (数字滚动 / 柱子生长)…`);
+        onProgress(`  ⚡ rendering frame ${i + 1} with Remotion (rolling numbers / growing bars)…`);
         await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
         onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
-        onProgress(`  ⚠️ 第 ${i + 1} 帧无法用 Remotion 增强（回落静态 HTML）：${msg}`);
+        onProgress(`  ⚠️ frame ${i + 1} couldn't be enhanced with Remotion (falling back to static HTML): ${msg}`);
         // Revert the engine flag so the frame falls back to its hyperframes HTML
         // (the <iframe> path) instead of showing a broken <video>.
         try { await ctx.orchestrator.unenhanceFrame(projectId, nodeId); } catch { /* ignore */ }
       }
     }
-    onProgress(`  ✓ 第 ${i + 1}/${graph.nodes.length} 帧完成 (${nodeId})`);
+    onProgress(`  ✓ frame ${i + 1}/${graph.nodes.length} done (${nodeId})`);
     onSse({ type: 'frame_done', node_id: nodeId, order: i, total: graph.nodes.length });
   }
 

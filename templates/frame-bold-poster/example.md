@@ -1,24 +1,24 @@
-# 大胆海报帧 · Manifesto
+# Bold Poster Frame · Manifesto
 
-> 暖白纸底 + 番红强调 + 巨型倾斜 Shrikhand 大字 + 三行标题逐行升起
+> Warm off-white paper background + tomato-red accent + giant tilted Shrikhand display type + three-line headline rising line-by-line
 
-## Kicker（左上 mono 标签）
+## Kicker (top-left mono label)
 Manifesto
 
-## Date（右上 mono 日期）
+## Date (top-right mono date)
 Vol. 04 · 2026
 
-## Figure（巨型番红大字）
+## Figure (giant tomato-red display figure)
 03
 
-## Headline（最多 3 行，第 2 行自动番红）
+## Headline (up to 3 lines, line 2 automatically renders in tomato red)
 Make it
 loud.
 Make it last.
 
-## Standfirst（衬线斜体副题）
+## Standfirst (italic serif sub-line)
 Every slide should land like a printed page — heavy type, one red accent, ruled in ink.
 
 ## Footer
-左：Bold Poster
-右（番红）：html-video
+Left: Bold Poster
+Right (tomato red): html-video

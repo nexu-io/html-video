@@ -264,7 +264,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       const needed = Math.min(30, (animMs + 400) / 1000);
       // Only extend when the duration is a soft 'auto' fallback. When the user
       // set an explicit per-frame length (multi-frame export), it's a hard cap —
-      // honoring it keeps "每帧 4s" at 4s instead of letting one long animation
+      // honoring it keeps a "4s per frame" setting at 4s instead of letting one long animation
       // stretch the frame toward the 30s ceiling.
       if (input.config.durationMode !== 'explicit' && needed > totalDuration) {
         ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s for animation`);

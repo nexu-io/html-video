@@ -1,6 +1,6 @@
 /**
  * Content-addressed asset store, scoped per project.
- * RFC-05 §文件存储.
+ * RFC-05 §File Storage.
  */
 
 import { createHash } from 'node:crypto';

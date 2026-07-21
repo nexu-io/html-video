@@ -17,7 +17,7 @@ const SAMPLE_HTML = `<!doctype html>
 html,body{margin:0;height:100%;background:#0f0a2e;color:#fff;font-family:system-ui,sans-serif;display:grid;place-items:center}
 h1{font-size:8vw;letter-spacing:-.02em;text-align:center;padding:0 4vw}
 </style></head><body>
-<h1 data-hv-text="headline">Open Design</h1>
+<h1 data-hv-text="headline">Hello World</h1>
 </body></html>`;
 
 export function App() {

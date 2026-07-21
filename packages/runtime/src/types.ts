@@ -1,5 +1,5 @@
 /**
- * Runtime types — slim variant of OD's RuntimeAgentDef.
+ * Runtime types for local coding-agent CLIs.
  * v0.1: only the fields html-video needs to spawn + read stdout.
  * Future expansion (prompt-budget, stream-json, MCP) lands per-need.
  */
@@ -14,14 +14,13 @@ export interface AgentDef {
    *  recognisable like "anthropic-api". */
   bin: string;
   /** Absolute-path fallbacks tried (in order) when `bin` is not on PATH.
-   *  Used for agents shipped inside another app bundle — e.g. AMR's `vela`
-   *  lives in Open Design.app, not on PATH. List real candidate paths; the
-   *  first existing one wins and is used as the spawn binary. */
+   *  Used for agents shipped inside another app bundle, not on PATH. List real
+   *  candidate paths; the first existing one wins and is used as the spawn binary. */
   binFallbacks?: string[];
   /** Last-resort async binary resolver, tried after PATH + binFallbacks miss.
-   *  Lets an agent pull its binary from a bundled npm package (e.g. AMR resolves
-   *  `vela` via @powerformer/vela-cli, which ships per-platform binaries) so the
-   *  product works without any external install. Return an absolute path or null. */
+   *  Lets an agent pull its binary from a bundled npm package (which ships
+   *  per-platform binaries) so the product works without any external install.
+   *  Return an absolute path or null. */
   resolveBinFallback?: () => Promise<string | null>;
   /** Args to print version (used in `doctor`). Ignored for http agents. */
   versionArgs: string[];
@@ -32,23 +31,23 @@ export interface AgentDef {
    * - `plain`: free-form text (everything printed is output)
    * - `claude-stream`: claude --output-format stream-json (NDJSON wrapped events)
    * - `json-event-stream`: NDJSON {type, ...} event stream
-   * - `acp-json-rpc`: bidirectional ACP JSON-RPC over stdio (AMR/vela). Spawn
-   *   stays open; we drive initialize → session/new → session/prompt and read
-   *   streamed session/update notifications. Handled by a dedicated path.
+   * - `acp-json-rpc`: bidirectional ACP JSON-RPC over stdio. Spawn stays open;
+   *   we drive initialize → session/new → session/prompt and read streamed
+   *   session/update notifications. Handled by a dedicated path.
    */
   streamFormat: 'plain' | 'claude-stream' | 'json-event-stream' | 'acp-json-rpc';
   /** Pass prompt via stdin instead of argv (recommended for long prompts) */
   promptViaStdin?: boolean;
   /**
    * Optional extra availability gate run AFTER the binary is found (child
-   * agents only). Lets an agent report "installed but not usable" — e.g. AMR
+   * agents only). Lets an agent report "installed but not usable" — e.g. it
    * is on disk but the user isn't logged in. Return available=false + a hint.
    * `resolvedBin` is the path that detection settled on (PATH or a fallback).
    */
   extraDetect?: (resolvedBin: string) => Promise<{ available: boolean; version?: string | null; hint?: string }>;
   /** Default model id for ACP agents that REQUIRE session/set_model before
-   * session/prompt (AMR rejects a missing model). The ACP client sends this via
-   * set_model when the caller doesn't specify one. */
+   * session/prompt (some reject a missing model). The ACP client sends this
+   * via set_model when the caller doesn't specify one. */
   defaultModel?: string;
   /** Extra fixed env vars on spawn */
   env?: Record<string, string>;
@@ -83,7 +82,7 @@ export interface AgentInvokeContext {
   cwd: string;
   /** Allowed working dirs (e.g. project's .html-video/projects/<id>/) */
   extraAllowedDirs?: string[];
-  /** Model override for agents that support selection (e.g. AMR). Falls back to
+  /** Model override for agents that support selection. Falls back to
    *  the agent's defaultModel when unset. */
   model?: string;
 }
@@ -96,7 +95,7 @@ export interface DetectedAgent {
   path?: string;
   version?: string | null;
   installUrl?: string;
-  /** Why it's unavailable / what to do — e.g. AMR found but not logged in. */
+  /** Why it's unavailable / what to do — e.g. found but not logged in. */
   hint?: string;
 }
 

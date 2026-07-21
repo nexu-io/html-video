@@ -1,15 +1,15 @@
-# 大胆信号帧 · 01/04
+# Bold Signal Frame · 01/04
 
-> 暗渐变底 + 橙色焦点卡 + 大编号 + 导航面包屑
+> Dark gradient background + orange focal card + big number + nav breadcrumb
 
 ## Section
 01/04
 
-## Nav (首项 active)
+## Nav (first item active)
 Signal · Build · Ship · Scale
 
-## 卡片 label
+## Card label
 Launch · 2026
 
-## 卡片标题
+## Card title
 Bring your own agent.

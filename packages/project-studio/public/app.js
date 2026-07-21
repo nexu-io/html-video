@@ -322,8 +322,8 @@ function isExportIntent(text) {
   // "生成/做一个视频" is the most common way to ask to CREATE a video — it must
   // NOT count as export. Only match explicit export/render verbs that target an
   // already-produced result: 导出 / 出片 / 渲染 / export / render / encode / 输出mp4.
-  return /^\s*(?:export|render|encode|导出(?:视频|为?\s?mp4)?|出片|渲染|输出\s?mp4|存为\s?mp4)\s*$/i.test(t)
-    || /(?:^|\s)(?:导出|出片|渲染成?|export|render|encode)(?:$|\s|视频|为?\s?mp4|成\s?mp4)/i.test(t);
+  return /^\s*(?:export|render|encode|exportar|renderizar|导出(?:视频|为?\s?mp4)?|出片|渲染|输出\s?mp4|存为\s?mp4)\s*$/i.test(t)
+    || /(?:^|\s)(?:导出|出片|渲染成?|export|render|encode|exportar|renderizar)(?:$|\s|视频|为?\s?mp4|成\s?mp4)/i.test(t);
 }
 
 async function revealExportedFile() {
@@ -552,73 +552,26 @@ function renderAgentPill() {
     dot.className = 'agent-dot';
     return;
   }
-  const currentId = p.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
+  const currentId = p.agentId ?? (state.agents.find((a) => a.available)?.id ?? 'anthropic-api');
   const a = state.agents.find((x) => x.id === currentId);
   const available = a?.available ?? false;
   label.textContent = a?.name ?? currentId;
   logo.innerHTML = AGENT_LOGOS[currentId] ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />` : '';
   dot.className = 'agent-dot ' + (available ? 'ok' : 'missing');
   pill.title = available ? t('toolbar.agent_ready') : t('settings.agent.unavailable');
-  renderModelSwitch(currentId);
-}
-
-/** Model picker — only for AMR (the one agent with a model catalog). Lazily
- *  fetches the live list, fills the dropdown, and persists the choice to the
- *  project so generation drives session/set_model with it. */
-async function renderModelSwitch(currentAgentId) {
-  const wrap = document.getElementById('model-switch');
-  const sel = document.getElementById('model-select');
-  if (!wrap || !sel) return;
-  if (!state.selected || currentAgentId !== 'amr') { wrap.hidden = true; return; }
-  wrap.hidden = false;
-  // Fetch once per session; cache on state.
-  if (!state._amrModels) {
-    try {
-      const data = await fetch('/api/agents/amr/models').then((r) => r.json());
-      state._amrModels = data.models ?? [];
-      state._amrDefaultModel = data.default ?? null;
-    } catch { state._amrModels = []; }
-  }
-  const models = state._amrModels;
-  if (!models.length) { wrap.hidden = true; return; }
-  const chosen = state.selected.agentModel ?? state._amrDefaultModel ?? models[0].id;
-  sel.innerHTML = models.map((m) => `<option value="${esc(m.id)}"${m.id === chosen ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
-  sel.onchange = async () => {
-    if (!state.selected) return;
-    try {
-      await API.setAgent(state.selected.id, 'amr', sel.value);
-      state.selected = (await API.getProject(state.selected.id)).project;
-      toast(`✓ ${sel.value}`, 'success');
-    } catch (e) { toast(`${e?.message ?? e}`, 'error'); }
-  };
 }
 
 /** Open/refresh the top-bar agent dropdown. */
 function renderAgentMenu() {
   const menu = document.getElementById('agent-menu');
   if (!menu || !state.selected) return;
-  const currentId = state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
+  const currentId = state.selected.agentId ?? (state.agents.find((a) => a.available)?.id ?? 'anthropic-api');
   menu.innerHTML = state.agents.map((a) => {
     const cur = a.id === currentId ? ' current' : '';
     const logo = AGENT_LOGOS[a.id] ? `<img src="${esc(AGENT_LOGOS[a.id])}" alt="" />` : '';
-    // AMR is "found but needs login": it can be made available by signing in,
-    // unlike a genuinely missing CLI. Offer a login button instead of just
-    // greying it out + the misleading "Not installed".
-    const needsLogin = !a.available && a.id === 'amr' && !!a.hint;
-    // Star the recommended agent (AMR) to draw the eye.
-    const star = a.id === 'amr' ? `<span class="mi-star" title="${esc(t('agent.recommended'))}">★</span>` : '';
     const inner = `<span class="mi-dot ${a.available ? 'ok' : ''}"></span>
       <span class="mi-logo">${logo}</span>
-      <span class="mi-name">${esc(a.name)}</span>${star}`;
-    // AMR-needs-login: render the row as a DIV (not a button) so a real, separate
-    // Sign-in <button> can live beside it — nesting a button inside a button is
-    // invalid HTML and the outer one eats the inner one's clicks.
-    if (needsLogin) {
-      return `<div class="agent-menu-item is-unselectable" title="${esc(a.hint ?? '')}">
-        ${inner}
-        <button type="button" class="mi-login" data-login-agent="${esc(a.id)}">${esc(t('agent.sign_in'))}</button>
-      </div>`;
-    }
+      <span class="mi-name">${esc(a.name)}</span>`;
     const tag = a.available ? '' : `<span class="mi-tag">${esc(t('settings.agent.unavailable'))}</span>`;
     const unsel = a.available ? '' : ' is-unselectable';
     return `<button type="button" class="agent-menu-item${cur}${unsel}" data-agent-id="${esc(a.id)}" data-selectable="${a.available ? '1' : '0'}" title="${esc(a.hint ?? '')}">
@@ -627,8 +580,6 @@ function renderAgentMenu() {
   }).join('');
   menu.querySelectorAll('.agent-menu-item').forEach((item) => {
     item.onclick = async (e) => {
-      // Login button inside the item: don't treat as agent-select.
-      if (e.target.closest('.mi-login')) return;
       const aid = item.dataset.agentId;
       if (!state.selected || item.dataset.selectable !== '1') return;
       try {
@@ -640,35 +591,6 @@ function renderAgentMenu() {
       }
       closeAgentMenu();
       renderToolbar();
-    };
-  });
-  // AMR "Sign in" → spawn `vela login` server-side (opens the browser), then
-  // re-detect so the agent flips to available.
-  menu.querySelectorAll('.mi-login').forEach((btn) => {
-    btn.onclick = async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (btn.dataset.busy === '1') return;
-      const label = btn.textContent;
-      btn.textContent = t('agent.signing_in');
-      btn.dataset.busy = '1';
-      btn.classList.add('busy');
-      try {
-        const res = await fetch(`/api/agents/${btn.dataset.loginAgent}/login`, { method: 'POST' });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-          toast(t('agent.signed_in'), 'success');
-          state.agents = (await fetch('/api/agents?force=1').then((r) => r.json())).agents ?? state.agents;
-          renderAgentMenu();
-          renderToolbar();
-        } else {
-          toast(data.error || t('agent.sign_in_failed'), 'error');
-          btn.textContent = label; delete btn.dataset.busy; btn.classList.remove('busy');
-        }
-      } catch (err) {
-        toast(`${err?.message ?? err}`, 'error');
-        btn.textContent = label; delete btn.dataset.busy; btn.classList.remove('busy');
-      }
     };
   });
 }
@@ -1008,7 +930,7 @@ function wireSoundtrackPanel() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          agentId: state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api'),
+          agentId: state.selected.agentId ?? (state.agents.find((a) => a.available)?.id ?? 'anthropic-api'),
           ...(frameId && { frameId }),
         }),
       });
@@ -1329,7 +1251,7 @@ function renderChatLog() {
       <div style="font-weight:500;margin-bottom:6px;">${t('chat.empty.title')}</div>
       ${t('chat.empty.body')}
       <div class="examples">
-        <b>"Warm-grain magazine outro: Open Design — design that evolves itself"</b>
+        <b>"Warm-grain magazine outro: your brand — a tagline that sticks"</b>
         <b>"Cyberpunk glitch title saying SYSTEM ONLINE, neon cyan/magenta"</b>
         <b>"Swiss-grid data card: Templates 231, Skills 15, Systems 150, Craft 11"</b>
       </div>
@@ -1576,8 +1498,8 @@ function renderMessage(m, idx) {
       const after = state.messages.slice(idx + 1);
       const nextUser = after.find((x) => x.role === 'user');
       if (nextUser) {
-        const t = (nextUser.content ?? '').trim();
-        if (t === '[hv-confirm:generate]') {
+        const nextText = (nextUser.content ?? '').trim();
+        if (nextText === '[hv-confirm:generate]') {
           // Did anything productive happen between this user click and the
           // next user turn?
           const userIdx = after.indexOf(nextUser);
@@ -1593,9 +1515,9 @@ function renderMessage(m, idx) {
             }
             return false;
           });
-          if (sawSuccess) resolved = '✓ 开始生成';
-        } else if (t === '[hv-confirm:edit]') {
-          resolved = '✏️ 改一下';
+          if (sawSuccess) resolved = t('chat.summary.confirm_generate');
+        } else if (nextText === '[hv-confirm:edit]') {
+          resolved = t('chat.summary.confirm_edit');
         }
       }
     }
@@ -1792,14 +1714,14 @@ function renderFormCard(form, submitted, msgIdx) {
     : '';
   const dropHtml = allowAttachments && !submitted ? `
     <div class="form-attachments" data-form-msg="${msgIdx}">
-      <div class="form-drop-hint">📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）</div>
+      <div class="form-drop-hint">${esc(t('form.drop_hint'))}</div>
       <div class="form-attachment-list" id="form-att-${msgIdx}"></div>
       <input type="file" id="form-file-${msgIdx}" multiple style="display:none" />
-      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">+ 添加文件</button>
+      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">${esc(t('form.add_file'))}</button>
     </div>` : '';
   const actionsHtml = submitted ? '' : `
     <div class="form-actions">
-      <button class="form-submit" data-form-msg="${msgIdx}">提交 ↵</button>
+      <button class="form-submit" data-form-msg="${msgIdx}">${esc(t('form.submit'))}</button>
     </div>`;
   return `<div class="form-card${submitted ? ' submitted' : ''}">
     <div class="form-title">${esc(title)}</div>
@@ -1825,8 +1747,8 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
   }).join('');
   const actionsHtml = resolved ? '' : `
     <div class="confirm-actions">
-      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">✓ 开始生成</button>` : ''}
-      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">✏️ 修改</button>` : ''}
+      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${esc(t('chat.summary.confirm_generate'))}</button>` : ''}
+      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${esc(t('chat.summary.confirm_edit'))}</button>` : ''}
     </div>`;
   return `<div class="confirm-card${resolved ? ' resolved' : ''}">
     <div class="confirm-title">${esc(title)}</div>
@@ -2066,7 +1988,7 @@ async function commitInlineTextEdits(iframe) {
     if (!r.ok) throw new Error(`fetch failed ${r.status}`);
     serverHtml = await r.text();
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('toast.save_failed', { message: e.message }), 'error');
     return;
   }
   const parser = new DOMParser();
@@ -2099,7 +2021,7 @@ async function commitInlineTextEdits(iframe) {
       body: JSON.stringify({ html: out }),
     });
     if (!r.ok) throw new Error(`save failed ${r.status}`);
-    toast(`已保存 ${changed} 处修改`, 'success');
+    toast(t('toast.saved_changes', { n: changed }), 'success');
     // Refresh local project state so frames-strip thumbnails cache-bust.
     if (fid) {
       const pr = await API.getProject(projectId);
@@ -2107,7 +2029,7 @@ async function commitInlineTextEdits(iframe) {
       renderFramesStrip();
     }
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('toast.save_failed', { message: e.message }), 'error');
   }
 }
 
@@ -2193,7 +2115,7 @@ function renderFramesStrip() {
       <div class="frame-thumb">
         ${thumbInner}
         ${enhanceCtl}
-        ${isFocus ? '<div class="focus-mark" title="正在编辑此帧">✎</div>' : ''}
+        ${isFocus ? `<div class="focus-mark" title="${esc(t('frame.editing_now'))}">✎</div>` : ''}
       </div>
       <div class="frame-tab-label">
         <span class="order">${String(f.order + 1).padStart(2, '0')}</span>
@@ -2916,15 +2838,14 @@ function wireModals() {
 }
 
 // ============== Settings modal ==============
-// Real brand logos (SVG, copied from open-design/agent-icons). Served from
-// /agent-icons/<id>.svg. Agents without a brand logo fall back to a glyph.
+// Real brand logos (SVG). Served from /agent-icons/<id>.svg. Agents without a
+// brand logo fall back to a glyph.
 const AGENT_LOGOS = {
   'anthropic-api': '/agent-icons/anthropic.svg',
   'claude': '/agent-icons/claude.svg',
   'cursor-agent': '/agent-icons/cursor-agent.svg',
   'codex': '/agent-icons/codex.svg',
   'hermes': '/agent-icons/hermes.svg',
-  'amr': '/agent-icons/amr.svg',
   'gemini': '/agent-icons/gemini.svg',
   'grok': '/agent-icons/grok.svg',
   'qwen': '/agent-icons/qwen.svg',
@@ -3193,18 +3114,17 @@ function renderSettingsAgent(panel) {
 
 function renderSettingsLanguage(panel) {
   const cur = getLocale();
+  // Data-driven over AVAILABLE_LOCALES so adding/removing a supported
+  // language only requires editing i18n.js, not this button list.
+  const buttons = AVAILABLE_LOCALES.map((loc) => `
+      <button data-lang="${esc(loc)}" class="${cur === loc ? 'active' : ''}">
+        <div class="lang-name">${esc(t(`settings.language.${loc}`))}</div>
+        <div class="lang-sub">${esc(t(`settings.language.${loc}_sub`))}</div>
+      </button>`).join('');
   panel.innerHTML = `
     <h3>${esc(t('settings.language.title'))}</h3>
     <div class="panel-sub">${esc(t('settings.language.subtitle'))}</div>
-    <div class="lang-options">
-      <button data-lang="en" class="${cur === 'en' ? 'active' : ''}">
-        <div class="lang-name">${esc(t('settings.language.en'))}</div>
-        <div class="lang-sub">${esc(t('settings.language.en_sub'))}</div>
-      </button>
-      <button data-lang="zh" class="${cur === 'zh' ? 'active' : ''}">
-        <div class="lang-name">${esc(t('settings.language.zh'))}</div>
-        <div class="lang-sub">${esc(t('settings.language.zh_sub'))}</div>
-      </button>
+    <div class="lang-options">${buttons}
     </div>
   `;
   panel.querySelectorAll('[data-lang]').forEach((btn) => {
@@ -3225,7 +3145,6 @@ function renderSettingsAbout(panel) {
       <div class="about-line"><span class="k">${esc(t('settings.about.repo'))}</span><span class="v"><a href="https://github.com/nexu-io/html-video" target="_blank" rel="noopener">github.com/nexu-io/html-video</a></span></div>
       <div class="about-line"><span class="k">${esc(t('settings.about.discord'))}</span><span class="v"><a href="https://discord.com/invite/keeVPMrueT" target="_blank" rel="noopener">discord.com/invite/keeVPMrueT</a></span></div>
       <div class="about-line"><span class="k">${esc(t('settings.about.license'))}</span><span class="v">Apache-2.0</span></div>
-      <div class="about-line"><span class="k">${esc(t('settings.about.related'))}</span><span class="v"><a href="https://github.com/nexu-io/open-design" target="_blank" rel="noopener">Open Design</a></span></div>
     </div>
   `;
 }
@@ -3244,14 +3163,14 @@ function esc(s) {
 
 window.addEventListener('error', (e) => {
   console.error('[hv-studio] uncaught:', e.error || e.message);
-  try { toast(`错误：${e.error?.message || e.message}`, 'error'); } catch {}
+  try { toast(t('toast.uncaught_error', { message: e.error?.message || e.message }), 'error'); } catch {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[hv-studio] unhandled rejection:', e.reason);
-  try { toast(`错误：${e.reason?.message || e.reason}`, 'error'); } catch {}
+  try { toast(t('toast.uncaught_error', { message: e.reason?.message || e.reason }), 'error'); } catch {}
 });
 init().catch((e) => {
   console.error('[hv-studio] init failed:', e);
-  try { toast(`init 失败：${e.message}`, 'error'); } catch {}
+  try { toast(t('toast.init_failed', { message: e.message }), 'error'); } catch {}
 });
 

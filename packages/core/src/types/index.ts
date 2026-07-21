@@ -404,7 +404,7 @@ export interface Project {
   templateId: string | null;
   /** Agent runtime to use (detected agent id, e.g. "claude" / "cursor-agent"). null = default first available */
   agentId?: string | null;
-  /** Model id for agents that support model selection (e.g. AMR: deepseek-v4-flash,
+  /** Model id for agents that support model selection (e.g. deepseek-v4-flash,
    *  claude-opus-4.8…). null = agent's default. */
   agentModel?: string | null;
   /**

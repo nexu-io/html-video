@@ -1,8 +1,8 @@
-# Logo 收尾帧
+# Logo Outro Frame
 
-> Midnight Indigo 调色, 用作视频结尾的品牌 reveal
+> Midnight Indigo palette, used as a brand reveal at the end of a video
 
-## 品牌
+## Brand
 HTML Anything
 
 ## Tagline

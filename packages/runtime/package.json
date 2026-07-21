@@ -1,7 +1,7 @@
 {
   "name": "@html-video/runtime",
   "version": "0.1.0",
-  "description": "Local coding agent runtime adapter (forked-from-OD slim variant)",
+  "description": "Local coding agent runtime adapter",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,8 +23,5 @@
   },
   "devDependencies": {
     "typescript": "^5.7.2"
-  },
-  "dependencies": {
-    "@powerformer/vela-cli": "^0.0.16"
   }
 }

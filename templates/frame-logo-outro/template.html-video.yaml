@@ -57,7 +57,7 @@ inputs:
         maximum: 10
         default: 5
   examples:
-    - {"brand_name": "Open Design", "tagline": "Design that evolves itself", "primary_url": "open-design.ai", "duration_sec": 5}
+    - {"brand_name": "HTML Anything", "tagline": "Anything → beautiful HTML", "primary_url": "htmlanything.dev", "duration_sec": 5}
 
 license:
   spdx: Apache-2.0
@@ -68,7 +68,6 @@ license:
 author:
   name: nexu-io
   url: https://github.com/nexu-io
-  contact: open-design@nexu.io
 
 version: 0.1.0
 changelog:

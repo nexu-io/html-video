@@ -1,21 +1,21 @@
 ---
 name: frame-light-leak-cinema
-zh_name: "胶片漏光电影帧"
+zh_name: "Light-Leak Cinematic Frame"
 en_name: "Light-Leak Cinematic Frame"
 emoji: "🎞️"
 description: "Film light leaks, grain, 16:9 letterbox, and large serif type for cinematic openings or chapter cards."
-zh_description: "胶片漏光 + 颗粒噪点 + 16:9 letterbox + 衬线大字, 电影感开场 / 章节卡"
+zh_description: "Film light leaks + grain noise + 16:9 letterbox + large serif type, cinematic opening / chapter card"
 en_description: "Film light leaks, grain, 16:9 letterbox, and large serif type for cinematic openings or chapter cards."
 category: video
 scenario: video
-aspect_hint: "2.39:1 letterbox (1920×800) 或 16:9 (1920×1080)"
+aspect_hint: "2.39:1 letterbox (1920×800) or 16:9 (1920×1080)"
 featured: 36
 tags: ["cinema", "film", "light-leak", "grain", "letterbox", "frame"]
 example_id: sample-frame-light-leak-cinema
-example_name: "胶片漏光 · REEL 03"
+example_name: "Light Leak · REEL 03"
 example_format: markdown
-example_tagline: "暖橙漏光 + 35mm 颗粒"
-example_desc: "2.39:1 letterbox + 衬线斜体大字 + 胶片齿孔"
+example_tagline: "Warm amber light leak + 35mm grain"
+example_desc: "2.39:1 letterbox + italic serif display type + film sprocket holes"
 example_source_url: "https://hyperframes.heygen.com/catalog"
 example_source_label: "hyperframes · light-leak"
 od:
@@ -31,36 +31,36 @@ od:
     requires: false
   example_prompt: "Use the Light-Leak Cinematic Frame template to turn my content into a cinematic opening or chapter card with film light leaks, grain, letterbox framing, and large serif type. Preserve the template's visual signature, use real content and data, and avoid lorem ipsum or placeholder images."
   example_prompt_i18n:
-    zh-CN: "用「胶片漏光电影帧」模板把我的内容做成一段「胶片漏光 + 颗粒噪点 + 16:9 letterbox + 衬线大字, 电影感开场 / 章节卡」。保持模板的视觉签名，使用真实内容和数据，避免 lorem ipsum 和占位图片。"
+    zh-CN: "Use the Light-Leak Cinematic Frame template to turn my content into a \"film light leaks + grain noise + 16:9 letterbox + large serif type, cinematic opening / chapter card\". Preserve the template's visual signature, use real content and data, and avoid lorem ipsum or placeholder images."
 ---
 
-【模板: 胶片漏光电影帧】
-【意图】纪录片 / 个人短片 / 视频章节卡的开场单帧 —— 暖橙漏光 + 35mm 颗粒 + 衬线大字, 古典胶片质感。Inspired by hyperframes light-leak。
+[Template: Light-Leak Cinematic Frame]
+[Intent] An opening single frame for documentaries / personal short films / video chapter cards — warm amber light leaks + 35mm grain + large serif type, classic film texture. Inspired by hyperframes light-leak.
 
-【画布】
-- **2.39:1 letterbox** (推荐): 1920×800, 上下黑边各 140px (`#000`)。
-- 或 16:9: 1920×1080, 无 letterbox。
+[Canvas]
+- **2.39:1 letterbox** (recommended): 1920×800, top and bottom black bars 140px each (`#000`).
+- Or 16:9: 1920×1080, no letterbox.
 
-【背景】
-- 底层: 深暖色 (深红棕 `#1a0d08` / 墨绿 `#0a1410` / 蓝紫 `#0d0e1a`) 或场景描绘 (CSS gradient 模拟天空 / 室内 / 室外)。
-- **胶片漏光 (Light Leak)**: 2-3 个大 `radial-gradient(ellipse at top right, #ffb547 0%, transparent 50%)` + 1 个底部 `linear-gradient(to top, #d97757 0%, transparent 30%)`; 颜色取暖橙 / 桃 / 玫红 / 暗黄, **不要冷蓝**。
-- **35mm Grain**: 全屏覆盖 SVG turbulence noise 图层, opacity 14%, `mix-blend-mode: overlay`; 也可用 `background-image: url("data:image/svg+xml,...feTurbulence...")`。
-- 可选: 1 道 `feDisplacementMap` 模拟胶片摆动 (慎用)。
+[Background]
+- Base layer: a dark warm tone (deep red-brown `#1a0d08` / dark green `#0a1410` / blue-violet `#0d0e1a`) or a depicted scene (CSS gradient simulating sky / interior / exterior).
+- **Light Leak**: 2-3 large `radial-gradient(ellipse at top right, #ffb547 0%, transparent 50%)` + 1 bottom `linear-gradient(to top, #d97757 0%, transparent 30%)`; use warm orange / peach / rose / dark yellow, **never cool blue**.
+- **35mm Grain**: a full-screen SVG turbulence noise layer, opacity 14%, `mix-blend-mode: overlay`; can also use `background-image: url("data:image/svg+xml,...feTurbulence...")`.
+- Optional: one `feDisplacementMap` pass to simulate film wobble (use sparingly).
 
-【文字】
-- 中央或左下: 大字衬线 (Source Serif Pro / Playfair Display / EB Garamond) 5-8vw, weight 500 italic; 颜色暖白 `#f5e9d6` 或 cream。
-- 副标 (24-28px) 一行, opacity 0.7, 同样衬线。
-- 角落 caption (uppercase letterspace 0.18em, 10-11px, mono, opacity 0.5): "REEL 03 · CH I · 1985"。
-- 底部 timecode + 拍摄地 + 日期 (mono, opacity 0.4)。
+[Text]
+- Center or bottom-left: large serif display type (Source Serif Pro / Playfair Display / EB Garamond) 5-8vw, weight 500 italic; color warm white `#f5e9d6` or cream.
+- Subtitle (24-28px), one line, opacity 0.7, same serif.
+- Corner caption (uppercase, letter-spacing 0.18em, 10-11px, mono, opacity 0.5): "REEL 03 · CH I · 1985".
+- Bottom timecode + shooting location + date (mono, opacity 0.4).
 
-【可选附加】
-- "胶片划痕": 几条 1-2px 竖向白线, opacity 0.2, 不规则间距 (用 `box-shadow` 多重 inset 或多个 `<div>`)。
-- "胶片齿孔": letterbox 黑边内, 等距小白方块 (CSS repeating-linear-gradient)。
-- 入场动效: 整画面从 underexposed (brightness 0.3) → normal, 800ms 内; 漏光位置缓慢漂移 12s 一个周期。
+[Optional extras]
+- "Film scratches": a few 1-2px vertical white lines, opacity 0.2, irregular spacing (use multiple `box-shadow` insets or multiple `<div>` elements).
+- "Sprocket holes": evenly-spaced small white squares inside the letterbox black bars (CSS repeating-linear-gradient).
+- Entrance animation: the whole frame goes from underexposed (brightness 0.3) → normal within 800ms; the light-leak position drifts slowly on a 12s cycle.
 
-【设计细节】
-- 颜色绝不超过 4 个色相 (深背景 + 2 个暖漏光色 + 文字 cream)。
-- 严禁: 蓝紫漏光 (违反胶片质感)、emoji、霓虹色、几何 dashboard 装饰。
-- 中文: `Noto Serif SC` italic 不存在 → 用 `Noto Serif SC` regular + 字距加大。
-- 必须用用户提供的标题; 自动估算合理"年份 / 章节 / 地点" 元数据 (但来源用户内容)。
-- 单文件 HTML, 用 `prefers-reduced-motion` 关动效。
+[Design details]
+- Never use more than 4 hues total (dark background + 2 warm light-leak colors + cream text).
+- Strictly forbidden: blue-violet light leaks (breaks the film texture), emoji, neon colors, geometric dashboard decoration.
+- Chinese text: `Noto Serif SC` italic does not exist → use `Noto Serif SC` regular with increased letter-spacing instead.
+- Must use the title provided by the user; auto-estimate reasonable "year / chapter / location" metadata (but derive it from the user's content).
+- Single-file HTML; use `prefers-reduced-motion` to disable animation.

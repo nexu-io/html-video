@@ -51,7 +51,7 @@ function loadRemotion(): { bundle: Bundler; renderer: Renderer } {
 // Keyed by entry path so the bridge entry AND each native template entry each
 // bundle once and are reused across frames in one process. A video that enhances
 // three data frames with the same native template bundles it once, not thrice.
-// (RFC-08 §5 "bundle 复用" — generalized for Phase 2 native templates.)
+// (RFC-08 §5 "bundle reuse" — generalized for Phase 2 native templates.)
 const bundleCache = new Map<string, string>(); // entryPath -> serveUrl
 
 async function bundleOnce(bundle: Bundler, entry: string, ctx: RenderContext): Promise<string> {

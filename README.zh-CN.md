@@ -4,25 +4,15 @@
   <img src="docs/assets/hero.png" alt="html-video — 在你的电脑上，把 HTML 变成视频" width="100%" />
 </p>
 
-> **在你的电脑上，把 HTML 变成视频。** 接上你本地的 coding agent（Open Design · Windsurf CLI · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · 或 Anthropic API），描述一个视频，或者**直接粘一个文章链接 / GitHub 仓库**，agent 就把它变成一支多帧、带动画的视频 —— 然后就在你这台机器上渲染成真实 MP4。一个 agent 循环、可插拔渲染引擎、精选模板库、可选 AI 配乐。Apache-2.0，无单次渲染费用，不绑定厂商。
+> **在你的电脑上，把 HTML 变成视频。** 接上你本地的 coding agent（Windsurf CLI · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · 或 Anthropic API），描述一个视频，或者**直接粘一个文章链接 / GitHub 仓库**，agent 就把它变成一支多帧、带动画的视频 —— 然后就在你这台机器上渲染成真实 MP4。一个 agent 循环、可插拔渲染引擎、精选模板库、可选 AI 配乐。Apache-2.0，无单次渲染费用，不绑定厂商。
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
-  <a href="#支持的-agent"><img alt="Agents" src="https://img.shields.io/badge/agents-14%20backends-111?style=flat-square" /></a>
+  <a href="#支持的-agent"><img alt="Agents" src="https://img.shields.io/badge/agents-13%20backends-111?style=flat-square" /></a>
   <a href="#作品展示"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
   <a href="#把链接变成视频"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#配乐"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
   <a href="#快速开始"><img alt="Quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-22a34a?style=flat-square" /></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/nexu-io/open-design#community"><img alt="Discord" src="https://img.shields.io/badge/discord-join-5865f2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://x.com/nexudotio"><img alt="Follow @nexudotio on X" src="https://img.shields.io/badge/follow-%40nexudotio-000000?style=flat-square&logo=x&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design"><img alt="By the Open Design team" src="https://img.shields.io/badge/by-nexu--io%2Fopen--design-ff7043?style=flat-square&logo=github&logoColor=white" /></a>
-</p>
-
-<p align="center">
-  <b>Open Design 团队官方出品</b> · <a href="https://open-design.ai">open-design.ai</a>
 </p>
 
 <p align="center"><a href="README.md">English</a> · <b>简体中文</b></p>
@@ -79,8 +69,6 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 
 **html-video 是凌驾于它们之上的 meta-layer。** 你跟 agent 对话，它挑引擎、挑模板、填进你的内容、渲染视频。引擎只是一个适配器接口背后的实现细节 —— 一份 `render(input, ctx)` 契约，任何后端满足它即可接入。加一个新引擎，所有模板、所有 agent、整条 studio 工作流就都自动用上了。不用学新的 DSL，换引擎也不用重写。
 
-同一套思路也驱动着 [Open Design](https://github.com/nexu-io/open-design) 在*设计*领域的产品 —— 凌驾于众多工具之上的 agent meta-layer。html-video 是同一团队在*动态视频*这一面的对应物。
-
 > **状态：** 可插拔引擎架构已就位，**Hyperframes 引擎已完整接通、能渲染出真实 MP4** —— 无头 Chromium 逐帧录制带动画的 HTML，再用 ffmpeg 编码（libx264）。Remotion、Motion Canvas / Revideo、Manim 在路线图上：适配器接口已为它们设计好，但适配器本身还没写。上表「在 html-video 中」这一列，是当下真正可运行内容的唯一权威来源。
 
 ---
@@ -89,7 +77,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 
 | | |
 |---|---|
-| **Coding agent（14 个）** | Open Design (Vela) · Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API —— 在 `PATH` 上自动探测，顶栏一键切换。 |
+| **Coding agent（13 个）** | Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API —— 在 `PATH` 上自动探测，顶栏一键切换。 |
 | **真实 MP4 渲染** | 无头 Chromium 录制带动画的 HTML，ffmpeg 编码（libx264）—— 全在本地，无云端渲染，无单片费用。 |
 | **文章 / 仓库 → 视频** | 粘一个 URL 或 GitHub 仓库；studio 在服务端抓取（支持微信公众号文章），用真实内容生成视频。 |
 | **21 个模板** | 精选、许可清晰的样式：数据可视化、产品宣传、社媒短片、解说、动感排版、转场 —— 在模板库里实时预览。 |
@@ -191,11 +179,10 @@ node packages/cli/dist/bin.js search-templates --intent "github stars race" --to
 
 ## 支持的 Agent
 
-在 `PATH` 上自动探测；在 studio 顶栏切换当前 agent。studio 默认把 **Open Design (Vela)** 排在最前 —— 一次登录、多种模型、成本更低 —— 然后回落到第一个*可用*的 agent，保证新项目永远有一个能用的后端。
+在 `PATH` 上自动探测；在 studio 顶栏切换当前 agent。回落到第一个*可用*的 agent，保证新项目永远有一个能用的后端。
 
 | Agent | 探测 | 调用 |
 |---|---|---|
-| **Open Design (Vela)** | `vela` / Open Design 应用内置 | ACP over stdio —— 在 Open Design 里登录一次，任选模型 |
 | **Windsurf CLI** | `windsurf` | `windsurf --yolo`，ACP over stdio |
 | **Trae CLI** | `traecli` | `traecli acp serve --yolo`，ACP over stdio |
 | **Claude Code** | `claude` | `claude --print`，prompt 走 stdin |
@@ -246,7 +233,7 @@ packages/
 │                          MiniMax provider + ffmpeg 音轨混合
 ├── content-graph/         多帧故事板中间表示（节点 + 边，拓扑排序）
 │ runtime/               Agent 运行时 —— 探测 / spawn / 流式
-│                          （Open Design/Vela · Windsurf CLI · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API）
+│                          （Windsurf CLI · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API）
 ├── adapter-hyperframes/   Hyperframes 引擎适配器 —— 经 Chromium + ffmpeg 真实渲染
 ├── cli/                   `html-video` 命令 + studio HTTP server + 来源抓取
 └── project-studio/        浏览器 studio UI（对话、模板库、帧、配乐、导出）
@@ -265,7 +252,6 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 - [x] 来源素材：文章 / GitHub 仓库 → 视频
 - [x] AI 配乐（MiniMax 音乐 + 旁白），导出时混合
 - [x] 真实 MP4 渲染 —— Hyperframes 引擎经无头 Chromium + ffmpeg
-- [x] Agent 模型选择 —— Open Design (Vela) 后端，实时模型目录
 - [ ] Remotion / Motion Canvas / Revideo 适配器
 - [ ] Agent skill 包 + 模板市场
 
@@ -275,7 +261,6 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 
 | 项目 | 在这里的角色 |
 |---|---|
-| [Open Design](https://github.com/nexu-io/open-design) | 姊妹项目 —— 设计 agent meta-layer；同一团队、同一理念 |
 | [HTML Anything](https://github.com/nexu-io/html-anything) | 姊妹项目 —— 面向*静态*交付物的 HTML；html-video 是*动态*那一面 |
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | 已发布的引擎适配器；HTML+CSS+GSAP 渲染范式，也是若干 Apache-2.0 模板的来源 |
 
@@ -285,4 +270,4 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 
 ## 出品
 
-[nexu-io](https://github.com/nexu-io) —— [Open Design](https://github.com/nexu-io/open-design) 背后的团队。加入 [Discord](https://github.com/nexu-io/open-design#community) · 关注 [@nexudotio](https://x.com/nexudotio)。
+[nexu-io](https://github.com/nexu-io)。关注 [@nexudotio](https://x.com/nexudotio)。

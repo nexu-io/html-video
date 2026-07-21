@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio-custom",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["packages/cli/dist/bin.js", "studio"],
+      "port": 3072
+    }
+  ]
+}

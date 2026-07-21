@@ -5,11 +5,10 @@
  *
  * Credential precedence when resolving (config file wins over env, since the
  * GUI is the explicit user choice):
- *   media-config.json  →  OD_MINIMAX_API_KEY / MINIMAX_API_KEY env
+ *   media-config.json  →  MINIMAX_API_KEY env
  *
- * Mirrors open-design's `.od/media-config.json` shape loosely; we only need
- * MiniMax here. The file holds the raw key, so it lives in the gitignored
- * `.html-video/` runtime dir, never the repo.
+ * The file holds the raw key, so it lives in the gitignored `.html-video/`
+ * runtime dir, never the repo.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';

@@ -4,26 +4,15 @@
   <img src="docs/assets/hero.png" alt="html-video — HTML becomes video, on your laptop" width="100%" />
 </p>
 
-> **HTML becomes video — on your laptop.** Bring your local coding agent (Open Design · Windsurf CLI · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — then renders it to a real MP4 right on your machine. One agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
+> **HTML becomes video — on your laptop.** Bring your local coding agent (Windsurf CLI · Trae CLI · Claude Code · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · or the Anthropic API). Describe a video, or **paste an article link / GitHub repo**, and the agent turns it into a multi-frame, fully animated video — then renders it to a real MP4 right on your machine. One agent loop, pluggable rendering engines, a curated template gallery, optional AI soundtrack. Apache-2.0, no per-render fees, no vendor lock-in.
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
-  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-14%20backends-111?style=flat-square" /></a>
+  <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-13%20backends-111?style=flat-square" /></a>
   <a href="#showcase"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
   <a href="#turn-a-link-into-a-video"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#soundtrack"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
   <a href="#quick-start"><img alt="Quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-22a34a?style=flat-square" /></a>
-</p>
-
-<!-- Built by the team behind Open Design — these link to its community on purpose. -->
-<p align="center">
-  <a href="https://github.com/nexu-io/open-design#community"><img alt="Discord" src="https://img.shields.io/badge/discord-join-5865f2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://x.com/nexudotio"><img alt="Follow @nexudotio on X" src="https://img.shields.io/badge/follow-%40nexudotio-000000?style=flat-square&logo=x&logoColor=white" /></a>
-  <a href="https://github.com/nexu-io/open-design"><img alt="By the Open Design team" src="https://img.shields.io/badge/by-nexu--io%2Fopen--design-ff7043?style=flat-square&logo=github&logoColor=white" /></a>
-</p>
-
-<p align="center">
-  <b>An official project by the <a href="https://open-design.ai">Open Design</a> team</b> · <a href="https://open-design.ai">open-design.ai</a>
 </p>
 
 <p align="center"><b>English</b> · <a href="README.zh-CN.md">简体中文</a></p>
@@ -80,8 +69,6 @@ Picking the right engine per use case, learning each model, and stitching them i
 
 **html-video is the meta-layer that sits above all of them.** You talk to your agent; it picks the engine, picks the template, fills in your content, and renders the video. The engine is an implementation detail behind a single adapter interface — one `render(input, ctx)` contract that any backend can satisfy. Add a new engine and every template, every agent, and the whole studio workflow get it for free. No new DSL to learn, no rewrite when you switch engines.
 
-The same idea powers [Open Design](https://github.com/nexu-io/open-design) in the *design* space — an agent meta-layer over many tools. html-video is the *motion* counterpart from the same team.
-
 > **Status:** the pluggable-engine architecture is in place, and the **Hyperframes engine is fully wired up and renders real MP4** — headless Chromium records the animated HTML frame-by-frame and ffmpeg encodes it (libx264). Remotion, Motion Canvas / Revideo, and Manim are on the roadmap: the adapter interface is designed for them, but their adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable today.
 
 ---
@@ -90,7 +77,7 @@ The same idea powers [Open Design](https://github.com/nexu-io/open-design) in th
 
 | | |
 |---|---|
-| **Coding agents (14)** | Open Design (Vela) · Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
+| **Coding agents (13)** | Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
 | **Real MP4 render** | Headless Chromium records the animated HTML and ffmpeg encodes it (libx264) — locally, no cloud render, no per-clip fee. |
 | **Article / repo → video** | Paste a URL or GitHub repo; the studio fetches it server-side (handles WeChat 公众号 articles) and builds the video from the real content. |
 | **21 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
@@ -141,8 +128,8 @@ Single-frame videos take a fast path that skips the content-graph — one templa
 This is what most people reach for: hand your agent a link, get a video back. The agents run as local CLIs with no network access of their own, so the studio fetches the source **server-side** and feeds the real content into the generation prompt — no copy-pasting article bodies, and pages behind a login-free server render (like WeChat 公众号) just work.
 
 ```
-You:   做一个解读视频  https://mp.weixin.qq.com/s/…
-Agent: 好，我读完了《用嘴剪视频的时代来了？…》这篇文章 — 这就基于它生成。下一步选风格。
+You:   make an explainer video from this article  https://example.com/the-rise-of-voice-editing
+Agent: Got it, read the article — building the video from it. Next: pick a style.
 →      multi-frame explainer, built from the article's actual points
 ```
 
@@ -192,11 +179,10 @@ node packages/cli/dist/bin.js search-templates --intent "github stars race" --to
 
 ## Supported agents
 
-Auto-detected on your `PATH`; switch the active one from the studio's top bar. The studio leads with **Open Design (Vela)** — one login, many models, lower cost — then falls back to the first *available* agent so a fresh project always has a working backend.
+Auto-detected on your `PATH`; switch the active one from the studio's top bar. Falls back to the first *available* agent so a fresh project always has a working backend.
 
 | Agent | Detection | Invocation |
 |---|---|---|
-| **Open Design (Vela)** | `vela` / bundled in the Open Design app | ACP over stdio — one login in Open Design, pick any model |
 | **Windsurf CLI** | `windsurf` | `windsurf --yolo`, ACP over stdio |
 | **Trae CLI** | `traecli` | `traecli acp serve --yolo`, ACP over stdio |
 | **Claude Code** | `claude` | `claude --print`, prompt via stdin |
@@ -247,7 +233,7 @@ packages/
 │                          MiniMax provider + ffmpeg audio mux
 ├── content-graph/         Multi-frame storyboard IR (nodes + edges, topo-sort)
 │ runtime/               Agent runtime — detect / spawn / stream
-│                          (Open Design/Vela · Windsurf CLI · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API)
+│                          (Windsurf CLI · Trae CLI · Claude · Cursor · Codex · Gemini · Grok · Qwen · OpenCode · Copilot · Aider · Hermes · Anthropic API)
 ├── adapter-hyperframes/   Hyperframes engine adapter — real render via Chromium + ffmpeg
 ├── cli/                   `html-video` command + the studio HTTP server + source fetching
 └── project-studio/        Browser studio UI (chat, template gallery, frames, soundtrack, export)
@@ -266,7 +252,6 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 - [x] Source material: article / GitHub-repo → video
 - [x] AI soundtrack (MiniMax music + narration), mixed at export
 - [x] Real MP4 render — Hyperframes engine via headless Chromium + ffmpeg
-- [x] Agent model selection — Open Design (Vela) backend, live model catalog
 - [ ] Adapters for Remotion / Motion Canvas / Revideo
 - [ ] Agent skill packages + a template marketplace
 
@@ -276,7 +261,6 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 
 | Project | Role here |
 |---|---|
-| [Open Design](https://github.com/nexu-io/open-design) | Sister project — the design-agent meta-layer; same team, shared philosophy |
 | [HTML Anything](https://github.com/nexu-io/html-anything) | Sister project — HTML for *static* deliverables; html-video is the *motion* side |
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | The shipped engine adapter; the HTML+CSS+GSAP rendering paradigm and the source of several Apache-2.0 templates |
 
@@ -286,4 +270,4 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 
 ## Built by
 
-[nexu-io](https://github.com/nexu-io) — the team behind [Open Design](https://github.com/nexu-io/open-design). Join the [Discord](https://github.com/nexu-io/open-design#community) · follow [@nexudotio](https://x.com/nexudotio).
+[nexu-io](https://github.com/nexu-io). Follow [@nexudotio](https://x.com/nexudotio).

@@ -1,11 +1,11 @@
-# 全球 AI agent 月活 · 2018-2026
+# Global AI Agent MAU · 2018-2026
 
-> NYT 风折线图, 一个结论 + 8 个数据点
+> NYT-style line chart, one conclusion + 8 data points
 
-## 结论
-**AI agent 月活在 2024 之后呈两段抛物线增长** — 第一段由 Claude / GPT 工作流推动, 第二段由本地 CLI agent (Cursor / Codex / Aider) 普及推动。
+## Conclusion
+**AI agent MAU has grown in two parabolic waves since 2024** — the first driven by cloud Claude / GPT workflows, the second driven by the rise of local CLI agents (Cursor / Codex / Aider).
 
-## 数据 (CSV)
+## Data (CSV)
 year,MAU_millions
 2018,12
 2019,28

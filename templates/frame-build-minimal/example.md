@@ -1,13 +1,13 @@
-# 奢华极简帧 · Agent
+# Luxury Minimal Frame · Agent
 
-> 超细 Inter 单词逐字浮现 + 暖金细线 + 70% 留白
+> Ultra-thin Inter word reveal letter by letter + warm-gold hairline + 70% whitespace
 
 ## Eyebrow
 Design Agent
 
-## Hero 单词
+## Hero Word
 Agent
 
-## 描述 (两行)
+## Description (two lines)
 Every use is an evolution.
 From craft, to assist, to self-evolving.

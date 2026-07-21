@@ -2,13 +2,12 @@
 
 > **English** · [中文](#中文)
 
-Thank you for your interest in contributing! html-video is an Apache-2.0 project by the [Open Design](https://github.com/nexu-io/open-design) team. We welcome contributions of all kinds — code, docs, templates, bug reports, and ideas.
+Thank you for your interest in contributing! html-video is an Apache-2.0 project. We welcome contributions of all kinds — code, docs, templates, bug reports, and ideas.
 
 ---
 
 ## Community
 
-- **Discord**: [Join the Open Design Discord](https://github.com/nexu-io/open-design#community) — the main hub for questions, design discussions, and real-time help.
 - **X (Twitter)**: Follow [@nexudotio](https://x.com/nexudotio) for project updates.
 - **GitHub Issues**: Bug reports, feature requests, and template proposals all go here.
 
@@ -297,7 +296,6 @@ By contributing, you agree that your contributions will be licensed under the [A
 
 ## Questions?
 
-- **Real-time chat**: Join the [Open Design Discord](https://github.com/nexu-io/open-design#community)
 - **Bugs & features**: Open an issue on [GitHub](https://github.com/nexu-io/html-video/issues)
 - **Design decisions**: Read the RFCs in [`research/`](research/)
 
@@ -305,11 +303,10 @@ By contributing, you agree that your contributions will be licensed under the [A
 
 ## 中文 {#中文}
 
-感谢你有意为 html-video 贡献！html-video 是 [Open Design](https://github.com/nexu-io/open-design) 团队维护的 Apache-2.0 项目。我们欢迎所有形式的贡献 —— 代码、文档、模板、bug 反馈和想法。
+感谢你有意为 html-video 贡献！html-video 是一个 Apache-2.0 项目。我们欢迎所有形式的贡献 —— 代码、文档、模板、bug 反馈和想法。
 
 ### 社区
 
-- **Discord**：[加入 Open Design Discord](https://github.com/nexu-io/open-design#community) — 主要的问答、设计讨论和实时求助渠道。
 - **X（Twitter）**：关注 [@nexudotio](https://x.com/nexudotio) 获取项目动态。
 - **GitHub Issues**：提 bug、功能建议、模板提案都来这里。
 
@@ -497,6 +494,5 @@ pnpm test         # 运行所有测试
 
 ### 有问题？
 
-- **实时聊天**：加入 [Open Design Discord](https://github.com/nexu-io/open-design#community)
 - **Bug 和功能**：在 [GitHub](https://github.com/nexu-io/html-video/issues) 提 issue
 - **设计决策**：阅读 [`research/`](research/) 中的 RFC

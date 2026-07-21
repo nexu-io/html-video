@@ -1,17 +1,17 @@
-# 电光分屏帧 · 引言
+# Electric Studio Split Frame · Quote
 
-> 白/蓝双屏开合 + 黑色 accent 条 + 跨屏引言逐行浮现
+> White/blue panels open + black accent bar + quote reveals line by line across the panels
 
-## 引言 (逐行, 末行落蓝屏)
+## Quote (line by line, last line lands on the blue panel)
 One agent.
 Every HTML
 video engine.
 
-## 署名
+## Attribution
 html-video
 
-## 角色
+## Role
 Meta-layer for coding agents
 
-## 品牌 mark
+## Brand mark
 nexu.io

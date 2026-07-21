@@ -1,11 +1,11 @@
-# VFX 光标开场帧
+# VFX Cursor Opening Frame
 
-> 逐字揭示 + chromatic 拖光, hot pink + cyan
+> Word-by-word reveal with chromatic light trail, hot pink + cyan
 
-## 金句
-Markdown 是给作者的中间过程, HTML 才是给读者的最终形态。
+## Quote
+Markdown is the draft for the writer; HTML is the final form for the reader.
 
-## 章节标记
+## Chapter Marker
 FRAME 01 · OPENING
 
 ## Timecode

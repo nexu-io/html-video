@@ -1,7 +1,7 @@
 {
   "name": "@html-video/template-frame-logo-outro",
   "version": "0.1.0",
-  "description": "html-video template: frame-logo-outro (cherry-picked from nexu-io/open-design)",
+  "description": "html-video template: frame-logo-outro",
   "license": "Apache-2.0",
   "private": true,
   "files": ["template.html-video.yaml", "source", "SKILL.md", "example.md", "preview.png"]

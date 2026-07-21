@@ -6,8 +6,7 @@
  * payload in a `base_resp` envelope and return the audio as a hex string in
  * `data.audio`. So one provider + one key covers both narration and music.
  *
- * The request/parse pattern is ported from open-design's `renderMinimaxTTS`
- * (apps/daemon/src/media.ts): fetch → Bearer → check `base_resp.status_code`
+ * Request/parse pattern: fetch → Bearer → check `base_resp.status_code`
  * (an HTTP 200 can still be a logical failure) → `Buffer.from(hex, 'hex')`.
  *
  * Credentials are read from the environment so the studio works without any
@@ -21,13 +20,13 @@ import { HtmlVideoError } from './errors.js';
  *  (issue #4). MiniMax now has two region-bound endpoints — international
  *  `api.minimax.io` and China `api.minimaxi.com` — and a key only authenticates
  *  against its own region. We default to international; override via
- *  OD_MINIMAX_BASE_URL / MINIMAX_BASE_URL (or the Studio Settings UI). */
+ *  MINIMAX_BASE_URL (or the Studio Settings UI). */
 const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimax.io/v1';
 
 /** Hard ceiling for a single MiniMax request. Music generation is slow but a
  *  request that hasn't returned in 2 minutes is hung, not slow. */
 const MINIMAX_REQUEST_TIMEOUT_MS = 120_000;
-/** Fast turbo speech tier (same default open-design ships). */
+/** Fast turbo speech tier (default). */
 const MINIMAX_TTS_MODEL = 'speech-02-turbo';
 /**
  * Music model. We use music-1.5, NOT the newer music-2.6 family: 2.6's
@@ -59,15 +58,15 @@ export interface MinimaxAudioResult {
  * when no key is set, so the studio can show a friendly "configure your key"
  * message instead of a 500.
  *
- * Key precedence:  OD_MINIMAX_API_KEY → MINIMAX_API_KEY
- * Base precedence: OD_MINIMAX_BASE_URL → MINIMAX_BASE_URL → default
+ * Key:  MINIMAX_API_KEY
+ * Base: MINIMAX_BASE_URL → default
  */
 export function resolveMinimaxCredentials(
   env: NodeJS.ProcessEnv = process.env,
 ): MinimaxCredentials | null {
-  const apiKey = (env.OD_MINIMAX_API_KEY || env.MINIMAX_API_KEY || '').trim();
+  const apiKey = (env.MINIMAX_API_KEY || '').trim();
   if (!apiKey) return null;
-  const baseUrl = (env.OD_MINIMAX_BASE_URL || env.MINIMAX_BASE_URL || MINIMAX_DEFAULT_BASE_URL)
+  const baseUrl = (env.MINIMAX_BASE_URL || MINIMAX_DEFAULT_BASE_URL)
     .trim()
     .replace(/\/$/, '');
   return { apiKey, baseUrl };
@@ -109,7 +108,7 @@ async function postAndDecode(
     throw new HtmlVideoError(
       'render-failed',
       isTimeout
-        ? `minimax ${label} timed out after ${Math.round(MINIMAX_REQUEST_TIMEOUT_MS / 1000)}s (the API did not respond — try again, or check OD_MINIMAX_BASE_URL)`
+        ? `minimax ${label} timed out after ${Math.round(MINIMAX_REQUEST_TIMEOUT_MS / 1000)}s (the API did not respond — try again, or check MINIMAX_BASE_URL)`
         : `minimax ${label} request failed: ${msg} (check the API region — international is api.minimax.io, China is api.minimaxi.com; a key only works against its own region)`,
       true,
     );

@@ -1,12 +1,12 @@
-# 故障标题帧 · SIGNAL_LOST
+# Glitch Title Frame · SIGNAL_LOST
 
-> Cyan / magenta 像散, CRT 扫描线 + ASCII 噪点
+> Cyan/magenta chromatic aberration, CRT scanlines + ASCII noise
 
-## 标题
+## Title
 SIGNAL_LOST
 
-## 副标
+## Subtitle
 04 · DATA CORRUPTION · 14:32:08
 
-## 章节标识
-CH-04 / SIGNAL CORRUPTED — 数据失真重组
+## Chapter ID
+CH-04 / SIGNAL CORRUPTED — data desync, reassembling
