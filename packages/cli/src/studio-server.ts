@@ -11,9 +11,18 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
+import { resolveAgentModelSelection } from './agent-config.js';
 import { AssetStore, generateTts, generateMusic } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
-import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
+import {
+  detectAll,
+  discoverAgentModels,
+  findAgent,
+  isValidModelId,
+  spawnAgent,
+  type AgentDef,
+  type ModelCatalog,
+} from '@html-video/runtime';
 
 interface StudioHandle {
   url: string;
@@ -36,6 +45,8 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const MODEL_CATALOG_TTL_MS = 10 * 60 * 1000;
+
 function resolveUiRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
@@ -49,6 +60,34 @@ function resolveUiRoot(): string {
 
 export async function startStudioServer(ctx: CliContext, port: number): Promise<StudioHandle> {
   const uiRoot = resolveUiRoot();
+  const modelCatalogCache = new Map<string, { expiresAt: number; catalog: ModelCatalog }>();
+
+  const loadModelCatalog = async (agentId: string, refresh = false): Promise<ModelCatalog | null> => {
+    const def = findAgent(agentId);
+    if (!def) return null;
+    const cached = modelCatalogCache.get(agentId);
+    if (!refresh && cached && cached.expiresAt > Date.now()) return cached.catalog;
+
+    const detected = (await detectAll(refresh ? { force: true } : undefined)).find((entry) => entry.id === agentId);
+    const catalog = await discoverAgentModels(def, {
+      agentId,
+      ...(detected?.path && { bin: detected.path }),
+      toolVersion: detected?.version,
+      cwd: ctx.projectRoot,
+    });
+    const expiresAt = Date.now() + MODEL_CATALOG_TTL_MS;
+    if (catalog.status === 'error' && cached?.catalog.status === 'available') {
+      const stale: ModelCatalog = {
+        ...cached.catalog,
+        stale: true,
+        refreshError: catalog.message ?? 'Model catalog refresh failed.',
+      };
+      modelCatalogCache.set(agentId, { expiresAt, catalog: stale });
+      return stale;
+    }
+    modelCatalogCache.set(agentId, { expiresAt, catalog });
+    return catalog;
+  };
 
   const server = createServer(async (req, res) => {
     try {
@@ -530,6 +569,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           if (!body.agentId) return json(res, 400, { error: 'No agent selected.' });
           const agentDef = findAgent(body.agentId);
           if (!agentDef) return json(res, 400, { error: `agent "${body.agentId}" not registered` });
+          const project = await ctx.orchestrator.load(projectId);
+          const narrationModel = resolveEffectiveAgentModel(ctx, project, body.agentId);
+          const narrationVersion = (await detectAll()).find((entry) => entry.id === body.agentId)?.version ?? null;
+          const narrationModelSource = project.agentModel
+            ? 'project override'
+            : ctx.agentConfig.get(body.agentId)
+              ? 'global agent selection'
+              : 'native/Automatic';
           const projectDir = await ctx.projects.ensureDir(projectId);
           // Only TextNode carries copy; fall back to label/id for entity/data.
           const nodeText = (n: typeof graph.nodes[number]): string =>
@@ -554,7 +601,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               `Write ONE short spoken sentence narrating frame ${target.idx + 1} ("${target.text}") specifically — distinct, not generic.`,
               `Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.`,
             ].filter((l) => l !== undefined).join('\n');
-            const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
+            const raw = (await callAgentSimple(agentDef, prompt, projectDir, narrationModel)).trim();
             const line = raw.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim()).find((l) => l.length > 0) ?? raw;
             narrationByFrame[target.id] = line;
           } else {
@@ -573,13 +620,22 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               `- The lines should still flow as a continuous voiceover read top to bottom.`,
               `- Same language as the frame text. Plain text only: one sentence per line, no numbering, bullets, blank lines, or markdown.`,
             ].filter((l) => l !== undefined).join('\n');
-            const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
+            const raw = (await callAgentSimple(agentDef, prompt, projectDir, narrationModel)).trim();
             const lines = raw.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim()).filter((l) => l.length > 0);
             // Map lines onto frames positionally; if the model under/over-produced,
             // pair as far as they line up and leave the rest blank.
             allFrames.forEach((f, i) => { if (lines[i]) narrationByFrame[f.id] = lines[i]!; });
           }
-          return json(res, 200, { narrationByFrame });
+          return json(res, 200, {
+            narrationByFrame,
+            execution: {
+              agentId: body.agentId,
+              model: narrationModel ?? null,
+              modelSource: narrationModelSource,
+              catalogSource: modelCatalogCache.get(body.agentId)?.catalog.source ?? null,
+              toolVersion: narrationVersion,
+            },
+          });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`[studio:draft-narration] proj=${projectId} failed: ${msg}\n`);
@@ -632,11 +688,78 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
       }
 
+      // Per-agent model configuration. Catalogs are memory-only snapshots;
+      // agent-config.json stores only the user's explicit global selection.
+      const agentModelsMatch = url.pathname.match(/^\/api\/config\/agents\/([^/]+)\/models$/);
+      if (agentModelsMatch?.[1] && m === 'GET') {
+        const agentId = decodeURIComponent(agentModelsMatch[1]);
+        const catalog = await loadModelCatalog(agentId, url.searchParams.get('refresh') === '1');
+        if (!catalog) return json(res, 404, { error: `agent "${agentId}" not registered` });
+        return json(res, 200, {
+          catalog,
+          configuredModel: ctx.agentConfig.get(agentId),
+        });
+      }
+
+      const agentModelMatch = url.pathname.match(/^\/api\/config\/agents\/([^/]+)\/model$/);
+      if (agentModelMatch?.[1] && m === 'PUT') {
+        const agentId = decodeURIComponent(agentModelMatch[1]);
+        const def = findAgent(agentId);
+        if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
+        if (!def.supportsModelSelection) {
+          return json(res, 400, { error: `${def.name} does not support explicit model selection.` });
+        }
+        const body = (await readBody(req)) as { model?: unknown };
+        if (!Object.prototype.hasOwnProperty.call(body, 'model')) {
+          return json(res, 400, { error: 'model is required; use null for Automatic' });
+        }
+        if (body.model !== null && typeof body.model !== 'string') {
+          return json(res, 400, { error: 'model must be a string or null' });
+        }
+        try {
+          const configuredModel = ctx.agentConfig.set(agentId, body.model as string | null);
+          return json(res, 200, { agentId, configuredModel });
+        } catch (error) {
+          return json(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+
+      const agentModelTestMatch = url.pathname.match(/^\/api\/config\/agents\/([^/]+)\/model-test$/);
+      if (agentModelTestMatch?.[1] && m === 'POST') {
+        const agentId = decodeURIComponent(agentModelTestMatch[1]);
+        const def = findAgent(agentId);
+        if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
+        const body = (await readBody(req)) as { model?: unknown };
+        const hasCandidate = Object.prototype.hasOwnProperty.call(body, 'model');
+        const rawModel = hasCandidate ? body.model : ctx.agentConfig.get(agentId);
+        if (rawModel !== null && rawModel !== undefined && typeof rawModel !== 'string') {
+          return json(res, 400, { error: 'model must be a string or null' });
+        }
+        const model = typeof rawModel === 'string' && rawModel.trim() ? rawModel.trim() : undefined;
+        if (model && !isValidModelId(model)) {
+          return json(res, 400, { error: 'Invalid model id.' });
+        }
+        const result = await runAgentSmokeTest(def, ctx.projectRoot, model);
+        const detected = (await detectAll()).find((entry) => entry.id === agentId);
+        return json(res, 200, {
+          ...result,
+          catalog_source: modelCatalogCache.get(agentId)?.catalog.source ?? null,
+          tool_version: detected?.version ?? null,
+        });
+      }
+
       // Agents (detected on each call; cheap thanks to the in-process cache)
       if (url.pathname === '/api/agents' && m === 'GET') {
         const force = url.searchParams.get('force') === '1';
         const agents = await detectAll(force ? { force: true } : undefined);
-        return json(res, 200, { agents });
+        const configured = ctx.agentConfig.list();
+        return json(res, 200, {
+          agents: agents.map((agent) => ({
+            ...agent,
+            supportsModelSelection: findAgent(agent.id)?.supportsModelSelection === true,
+            configuredModel: configured[agent.id] ?? null,
+          })),
+        });
       }
 
       // Agent smoke test — fires a tiny prompt at the requested agent and
@@ -647,27 +770,12 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const agentId = testMatch[1];
         const def = findAgent(agentId);
         if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
-        const prompt = 'Reply with one word: hello.';
-        const t0 = Date.now();
-        let out = '';
-        let err = '';
-        const handle = spawnAgent({
-          def,
-          prompt,
-          context: { cwd: process.cwd() },
-          onEvent: (ev) => {
-            if (ev.type === 'text') out += ev.chunk;
-            else if (ev.type === 'error') err = ev.message;
-          },
-        });
-        const exit = await handle.done;
+        const result = await runAgentSmokeTest(def, ctx.projectRoot, ctx.agentConfig.get(agentId) ?? undefined);
+        const detected = (await detectAll()).find((entry) => entry.id === agentId);
         return json(res, 200, {
-          ok: exit.exitCode === 0 && out.trim().length > 0,
-          exit_code: exit.exitCode,
-          ms: Date.now() - t0,
-          bytes: out.length,
-          stdout_head: out.slice(0, 200),
-          error: err || (out.trim().length === 0 ? 'empty reply' : undefined),
+          ...result,
+          catalog_source: modelCatalogCache.get(agentId)?.catalog.source ?? null,
+          tool_version: detected?.version ?? null,
         });
       }
 
@@ -803,7 +911,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return json(res, 400, { error: `agent "${agentId}" not registered` });
         }
         // Model the user picked for this agent, if it supports selection; undefined → agent default.
-        const agentModel = project.agentModel ?? undefined;
+        const agentModel = resolveEffectiveAgentModel(ctx, project, agentId);
+        const agentModelSource = project.agentModel
+          ? 'project override'
+          : ctx.agentConfig.get(agentId)
+            ? 'global agent selection'
+            : 'native/Automatic';
+        const agentVersion = (await detectAll()).find((entry) => entry.id === agentId)?.version ?? null;
+        const catalogSource = modelCatalogCache.get(agentId)?.catalog.source ?? null;
 
         // Append user message to history (with attachment summary)
         const attachmentSummary = attachments.length > 0
@@ -897,7 +1012,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           await fs.writeFile(promptDumpPath, fullPrompt, 'utf8');
         } catch {/* non-fatal */}
         process.stderr.write(
-          `[studio:msg] proj=${id} phase=${phaseInfo.phase} prompt=${fullPrompt.length}B user=${JSON.stringify(userText.slice(0, 80))} attachments=${attachments.length}\n`,
+          `[studio:msg] proj=${id} phase=${phaseInfo.phase} agent=${agentId} model=${agentModel ?? 'Automatic'} model_source=${JSON.stringify(agentModelSource)} tool_version=${JSON.stringify(agentVersion)} prompt=${fullPrompt.length}B user=${JSON.stringify(userText.slice(0, 80))} attachments=${attachments.length}\n`,
         );
 
         // Mark this project as generating so a returning client knows the task
@@ -924,6 +1039,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         let assistantText = '';
         let textChunks = 0;
         let summaryLine = '';
+        let generationMeta: ChatMessage['generation'];
 
         // ---- generate-phase: multi-frame path runs split (graph + per-frame) ----
         // Empirically claude --print returns 1 byte ~50% of the time when asked
@@ -1006,6 +1122,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             summaryLine = rewriteInputs
               ? `✓ ${result.frameCount}-frame storyboard ${restyleOnly ? 'restyled' : 'regenerated'} (intent: ${result.intent})`
               : `✓ ${result.frameCount}-frame storyboard generated (intent: ${result.intent})`;
+            generationMeta = { kind: 'multi', frameCount: result.frameCount };
             sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: result.frameCount });
             sseWrite({ type: 'message_end', reason: 'ok' });
           } catch (err) {
@@ -1068,7 +1185,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             const retryHandle = spawnAgent({
               def: agentDef,
               prompt: retryPrompt,
-              context: { cwd: projectDir },
+              context: { cwd: projectDir, ...(agentModel && { model: agentModel }) },
               onEvent: (ev) => {
                 if (ev.type === 'text') {
                   retryText += ev.chunk;
@@ -1095,6 +1212,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
                 await ctx.orchestrator.writeFrameHtml(id, focusFrameId, extracted);
                 sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, focused_frame: focusFrameId });
                 summaryLine = `✓ frame ${focusFrameId} updated`;
+                generationMeta = { kind: 'frame', frameId: focusFrameId };
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 sseWrite({ type: 'text', chunk: `\n[frame ${focusFrameId} write failed: ${msg}]\n` });
@@ -1116,12 +1234,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               }
               sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: multi.frames.length });
               summaryLine = `✓ ${multi.frames.length}-frame storyboard generated (intent: ${multi.graph.intent})`;
+              generationMeta = { kind: 'multi', frameCount: multi.frames.length };
             } else {
               const extracted = extractHtmlDocument(assistantText);
               if (extracted) {
                 await ctx.orchestrator.writePreviewHtmlRaw(id, extracted);
                 sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}` });
                 summaryLine = '✓ updated the HTML preview';
+                generationMeta = { kind: 'single', frameCount: 1 };
               }
             }
           }
@@ -1175,6 +1295,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           role: 'assistant',
           agent: agentDef.id,
           content: persistText,
+          ...(generationMeta && { generation: generationMeta }),
+          execution: {
+            agentId,
+            model: agentModel ?? null,
+            modelSource: agentModelSource,
+            catalogSource,
+            toolVersion: agentVersion,
+          },
           ts: Date.now(),
         });
         MESSAGES.set(id, history);
@@ -1678,12 +1806,24 @@ void AssetStore;
 // on first GET / POST per project; writes go through saveMessages().
 // ---------------------------------------------------------------------------
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   agent?: string;
   tool?: string;
   output?: unknown;
+  generation?: {
+    kind: 'single' | 'multi' | 'frame';
+    frameCount?: number;
+    frameId?: string;
+  };
+  execution?: {
+    agentId: string;
+    model: string | null;
+    modelSource: string;
+    catalogSource: string | null;
+    toolVersion: string | null;
+  };
   ts: number;
 }
 
@@ -1808,8 +1948,8 @@ type ConvPhase =
   | 'iterate-format';  // re-time / re-render with a new per-frame length
 
 /** Did the user pick the "choose from design templates" style option? */
-function isFromTemplateStyle(style: string): boolean {
-  return /^从设计模板选|design template|pick.*template|from template/i.test(style.trim());
+export function isFromTemplateStyle(style: string): boolean {
+  return /^从设计模板选|design template|pick.*template|from template|modelo de design|escolh(?:er|a).*modelo|a partir d[eo] modelo|plantilla|elegir.*plantilla/i.test(style.trim());
 }
 
 interface PhaseInputs {
@@ -1824,7 +1964,7 @@ interface PhaseInputs {
  * storyboard rather than starting fresh. */
 type PhaseResult = { phase: ConvPhase; inputs: PhaseInputs; postGen?: boolean };
 
-function detectPhase(
+export function detectPhase(
   history: ChatMessage[],
   userText: string,
   hasTemplate: boolean,
@@ -1838,7 +1978,9 @@ function detectPhase(
   if (trimmed.startsWith('[hv-form:submit]')) {
     const body = trimmed.slice('[hv-form:submit]'.length).trim();
     try { inputs.collected = JSON.parse(body); } catch { /* ignore */ }
-    return { phase: 'confirm', inputs };
+    return hadGenerationYet(history)
+      ? { phase: 'iterate-format', inputs, postGen: true }
+      : { phase: 'confirm', inputs };
   }
   if (trimmed === '[hv-confirm:generate]') {
     inputs.collected = lastFormSubmission(history);
@@ -1881,11 +2023,11 @@ function detectPhase(
     if (last?.metaPhase === 'edit-menu') {
       // Route the menu choice. Match by label keywords (works for clicks, which
       // send the option label, and for free text).
-      if (/风格|style|视觉|配色|换个?样子/i.test(trimmed)) {
+      if (/风格|style|视觉|配色|换个?样子|estilo|visual|paleta|cores?|apar[eê]ncia|diseño|colores?/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'style', inputs, postGen: true };
       }
-      if (/时长|时间|duration|长度|快|慢|秒|节奏/i.test(trimmed)) {
+      if (/时长|时间|duration|长度|快|慢|秒|节奏|dura[cç][aã]o|tempo|ritmo|r[aá]pid[oa]|lent[oa]|segundos?|duraci[oó]n/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'format', inputs, postGen: true };
       }
@@ -1922,15 +2064,15 @@ function detectPhase(
       return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
     }
     // Direct shortcuts when the instruction is unambiguous about WHAT to change.
-    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(trimmed)) {
+    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss|estilo|paleta|cores?|apar[eê]ncia|tema visual|modelo visual|diseño|colores?|plantilla/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'style', inputs, postGen: true };
     }
-    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒/i.test(trimmed)) {
+    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒|dura[cç][aã]o|tempo por (?:frame|quadro)|ritmo|mais r[aá]pid[oa]|mais lent[oa]|mais curt[oa]|mais long[oa]|quantos segundos|duraci[oó]n/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'format', inputs, postGen: true };
     }
-    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(trimmed)) {
+    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite|texto|conte[uú]do|assunto|reescrev|mudar? (?:o )?texto|fale sobre|apresente|dados|benef[ií]cios|contenido|tema|reescribir/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = [...collectContentTurns(history), trimmed].filter((s) => !isControlPhrase(s));
       return { phase: 'iterate-content', inputs, postGen: true };
@@ -1983,7 +2125,7 @@ function detectPhase(
     inputs.pickedType = lastCardPickByPhase(history, 'type');
     inputs.contentTurns = collectContentTurns(history);
     // Picked a built-in style instead → use it.
-    if (!isFromTemplateStyle(trimmed) && !/^我已选好模板|继续|done|ready|next$/i.test(trimmed)) {
+    if (!isFromTemplateStyle(trimmed) && !/^(?:我已选好模板|继续|done|ready|next|j[aá] escolhi|continuar|pronto|seguinte|ya eleg[ií]|listo)$/i.test(trimmed)) {
       inputs.pickedStyle = trimmed;
       return { phase: 'format', inputs };
     }
@@ -2078,8 +2220,8 @@ function lastAssistantCardWithMeta(history: ChatMessage[]): {
 }
 
 /** Look back for the user message that answered an hv-options card with meta.phase=X. */
-function lastCardPickByPhase(history: ChatMessage[], phase: string): string | undefined {
-  for (let i = 0; i < history.length - 1; i++) {
+export function lastCardPickByPhase(history: ChatMessage[], phase: string): string | undefined {
+  for (let i = history.length - 2; i >= 0; i--) {
     const a = history[i]!;
     const u = history[i + 1]!;
     if (a.role !== 'assistant' || u.role !== 'user') continue;
@@ -2202,7 +2344,7 @@ function lastFormSubmission(history: ChatMessage[]): Record<string, string> | un
 }
 
 /** Has a successful generation already happened in this conversation? */
-function hadGenerationYet(history: ChatMessage[]): boolean {
+export function hadGenerationYet(history: ChatMessage[]): boolean {
   // Only count a real storyboard/video generation, not any assistant turn that
   // happens to contain a "✓". The old broad check (`✓\s`) matched the persisted
   // summary lines of the iteration sub-flow itself, so once you'd generated, the
@@ -2210,7 +2352,8 @@ function hadGenerationYet(history: ChatMessage[]): boolean {
   return history.some(
     (m) =>
       m.role === 'assistant' &&
-      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(m.content),
+      (Boolean(m.generation)
+        || /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)|^✓ updated the HTML preview$/im.test(m.content)),
   );
 }
 
@@ -3088,7 +3231,7 @@ function extractContentGraphAndFrames(
 // Each step writes its result to disk and pushes an SSE event so the UI
 // can show "frame N/M" progress.
 // ---------------------------------------------------------------------------
-interface SplitGenerateArgs {
+export interface SplitGenerateArgs {
   ctx: CliContext;
   projectId: string;
   projectDir: string;
@@ -3118,7 +3261,7 @@ interface SplitGenerateArgs {
 // (style / content / duration) and the user's pick drives restyle /
 // iterate-content / iterate-format.
 
-async function runSplitMultiFrameGenerate(
+export async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
   const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, restyleOnly, onProgress, onSse } = args;
@@ -3140,7 +3283,17 @@ async function runSplitMultiFrameGenerate(
     } catch { /* fall back to description-only */ }
   }
   const aspect = ((collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9');
-  const frameCountReq = Math.max(2, Math.min(10, Number(collected.frame_count ?? '4') || 4));
+  // Post-generation format/style changes keep the existing storyboard shape.
+  // A re-shown format card may carry a stale/default frame_count; accepting it
+  // would silently add/drop frames. Only a fresh generation may set the count.
+  const existingGraph = restyleOnly
+    ? await ctx.orchestrator.readContentGraph(projectId)
+    : null;
+  if (restyleOnly && (!existingGraph || existingGraph.nodes.length === 0)) {
+    throw new Error('restyle requested but the project has no existing storyboard to reuse');
+  }
+  const requestedFrameCount = Math.max(2, Math.min(10, Number(collected.frame_count ?? '4') || 4));
+  const frameCountReq = existingGraph?.nodes.length ?? requestedFrameCount;
   // Opt-in (format card): render data frames natively with Remotion. When on,
   // the planner must give every data node structured items, and after each
   // data frame's HTML is written we enhance it in place (best-effort).
@@ -3159,18 +3312,6 @@ async function runSplitMultiFrameGenerate(
   if (aspect === '9:16') resolution = '1080×1920';
   else if (aspect === '1:1') resolution = '1080×1080';
   else if (aspect === '4:5') resolution = '1080×1350';
-  // Persist the chosen resolution on the project so EXPORT records at the right
-  // aspect (it reads project.preferences.resolution; without this it defaulted
-  // to 1920×1080 and squashed a 4:5 / 9:16 frame into a 16:9 canvas).
-  {
-    const [w, h] = resolution.split('×').map(Number);
-    if (w && h) {
-      const proj = await ctx.projects.load(projectId);
-      proj.preferences = { ...proj.preferences, resolution: { width: w, height: h } };
-      await ctx.projects.save(proj);
-    }
-  }
-
   const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
     ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
     : pickedStyle;
@@ -3180,11 +3321,10 @@ async function runSplitMultiFrameGenerate(
   if (restyleOnly) {
     // Restyle / re-time: keep the EXISTING storyboard text verbatim, skip the
     // re-plan entirely. Only Step 2 (per-frame HTML) re-runs, in the new style.
-    const existing = await ctx.orchestrator.readContentGraph(projectId);
-    if (!existing || !Array.isArray(existing.nodes) || existing.nodes.length === 0) {
-      throw new Error('restyle requested but the project has no existing storyboard to reuse');
-    }
-    graph = existing as import('@html-video/content-graph').ContentGraph;
+    // Clone before re-timing so an agent failure leaves the persisted graph and
+    // frame durations untouched.
+    graph = JSON.parse(JSON.stringify(existingGraph)) as import('@html-video/content-graph').ContentGraph;
+    graph.nodes = graph.nodes.map((node) => ({ ...node, durationSec: perFrameDurationSec })) as typeof graph.nodes;
     onProgress(`✓ reusing existing copy: ${graph.nodes.length} frames`);
     onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   } else {
@@ -3284,12 +3424,19 @@ async function runSplitMultiFrameGenerate(
   if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
     throw new Error('graph has no nodes');
   }
-  await ctx.orchestrator.writeContentGraph(projectId, graph);
   onProgress(`✓ storyboard generated: ${graph.nodes.length} frames (${graph.intent})`);
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   }
 
   // ---- Step 2: one call per node, output a single ```html block ----
+  // Keep generated HTML in memory until every agent call succeeds. This is the
+  // transaction boundary that preserves the prior graph + frames on failures.
+  const generatedFrames: Array<{
+    nodeId: string;
+    html: string;
+    node: import('@html-video/content-graph').Node;
+    order: number;
+  }> = [];
   for (let i = 0; i < graph.nodes.length; i++) {
     const node = graph.nodes[i]!;
     const nodeId = node.id;
@@ -3385,33 +3532,80 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     if (!extracted) {
       throw new Error(`frame "${nodeId}" generation returned empty (${frameText.length}B)`);
     }
-    await ctx.orchestrator.writeFrameHtml(projectId, nodeId, extracted);
-    // Native Remotion enhancement (opt-in via format card). The frame now has a
-    // FrameRecord, so enhanceFrameNative can set engine/nativeTemplateId/data in
-    // place. Best-effort: if the data node lacks usable {label,value} items it
-    // throws — we keep the hyperframes HTML and warn rather than fail the run.
-    // 'frame-data-rollup' is the only native template today (TODO: picker).
-    if (enhanceData && node.kind === 'data') {
-      try {
-        // Two steps, same as the manual enhance endpoint: (1) set the frame's
-        // engine/data, (2) actually RENDER the preview MP4. Without step 2 the
-        // frame is flagged remotion but has no previewMp4Path, so the studio
-        // tries to play a <video> that 404s → black thumbnail + preview.
-        await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(`  ⚡ rendering frame ${i + 1} with Remotion (rolling numbers / growing bars)…`);
-        await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
-        onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
-        onProgress(`  ⚠️ frame ${i + 1} couldn't be enhanced with Remotion (falling back to static HTML): ${msg}`);
-        // Revert the engine flag so the frame falls back to its hyperframes HTML
-        // (the <iframe> path) instead of showing a broken <video>.
-        try { await ctx.orchestrator.unenhanceFrame(projectId, nodeId); } catch { /* ignore */ }
-      }
-    }
+    generatedFrames.push({ nodeId, html: extracted, node, order: i });
     onProgress(`  ✓ frame ${i + 1}/${graph.nodes.length} done (${nodeId})`);
     onSse({ type: 'frame_done', node_id: nodeId, order: i, total: graph.nodes.length });
+  }
+
+  // ---- Step 3: commit graph, resolution and frames as one recoverable unit ----
+  const projectBeforeCommit = JSON.parse(JSON.stringify(
+    await ctx.projects.load(projectId),
+  )) as Awaited<ReturnType<typeof ctx.projects.load>>;
+  const graphBeforeCommit = await ctx.orchestrator.readContentGraph(projectId);
+  const previousFrameHtml = new Map<string, string>();
+  for (const frame of projectBeforeCommit.frames ?? []) {
+    try {
+      if (existsSync(frame.htmlPath)) previousFrameHtml.set(frame.htmlPath, await readFile(frame.htmlPath, 'utf8'));
+    } catch { /* a missing old frame cannot be restored */ }
+  }
+
+  try {
+    // Export reads preferences.resolution. Delay this write until all agent
+    // calls have succeeded, so a failed rewrite changes no visible state.
+    const [width, height] = resolution.split('×').map(Number);
+    if (width && height) {
+      const projectForCommit = await ctx.projects.load(projectId);
+      projectForCommit.preferences = {
+        ...projectForCommit.preferences,
+        resolution: { width, height },
+      };
+      await ctx.projects.save(projectForCommit);
+    }
+
+    await ctx.orchestrator.writeContentGraph(projectId, graph, { preserveFrames: restyleOnly });
+    for (const generated of generatedFrames) {
+      await ctx.orchestrator.writeFrameHtml(projectId, generated.nodeId, generated.html);
+    }
+  } catch (error) {
+    // Roll back the prior graph metadata and any overwritten frame files. New
+    // orphan files are harmless because the restored project never references
+    // them; preserving the user's working storyboard is the priority.
+    try {
+      if (graphBeforeCommit && projectBeforeCommit.contentGraphPath) {
+        const fs = await import('node:fs/promises');
+        await fs.writeFile(
+          projectBeforeCommit.contentGraphPath,
+          JSON.stringify(graphBeforeCommit, null, 2),
+          'utf8',
+        );
+      }
+      const fs = await import('node:fs/promises');
+      for (const [htmlPath, html] of previousFrameHtml) {
+        await fs.writeFile(htmlPath, html, 'utf8');
+      }
+      await ctx.projects.save(projectBeforeCommit);
+    } catch (rollbackError) {
+      const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+      throw new Error(`${error instanceof Error ? error.message : String(error)} (rollback also failed: ${rollbackMessage})`);
+    }
+    throw error;
+  }
+
+  // Native Remotion enhancement is best-effort and happens only after the
+  // complete Hyperframes fallback storyboard has committed successfully.
+  for (const generated of generatedFrames) {
+    if (!enhanceData || generated.node.kind !== 'data') continue;
+    try {
+      await ctx.orchestrator.enhanceFrameNative(projectId, generated.nodeId, 'frame-data-rollup');
+      onProgress(`  ⚡ rendering frame ${generated.order + 1} with Remotion (rolling numbers / growing bars)…`);
+      await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: generated.nodeId });
+      onSse({ type: 'frame_enhanced', node_id: generated.nodeId, order: generated.order });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${generated.nodeId} enhance skipped: ${message}\n`);
+      onProgress(`  ⚠️ frame ${generated.order + 1} couldn't be enhanced with Remotion (falling back to static HTML): ${message}`);
+      try { await ctx.orchestrator.unenhanceFrame(projectId, generated.nodeId); } catch { /* keep static HTML */ }
+    }
   }
 
   return { frameCount: graph.nodes.length, intent: graph.intent };
@@ -3434,6 +3628,46 @@ function describeNode(node: import('@html-video/content-graph').Node): string {
 }
 
 /** Spawn the agent, collect all stdout text, return when done. */
+function resolveEffectiveAgentModel(
+  ctx: CliContext,
+  project: { agentModel?: string | null },
+  agentId: string,
+): string | undefined {
+  // Legacy project override intentionally remains first in precedence.
+  return resolveAgentModelSelection(project.agentModel, ctx.agentConfig.get(agentId));
+}
+
+async function runAgentSmokeTest(
+  def: AgentDef,
+  cwd: string,
+  model?: string,
+): Promise<Record<string, unknown>> {
+  const prompt = 'Reply with one word: hello.';
+  const t0 = Date.now();
+  let out = '';
+  let err = '';
+  const handle = spawnAgent({
+    def,
+    prompt,
+    context: { cwd, ...(model && { model }) },
+    onEvent: (event) => {
+      if (event.type === 'text') out += event.chunk;
+      else if (event.type === 'error') err = err ? `${err}; ${event.message}` : event.message;
+    },
+  });
+  const exit = await handle.done;
+  return {
+    ok: exit.exitCode === 0 && out.trim().length > 0,
+    exit_code: exit.exitCode,
+    ms: Date.now() - t0,
+    bytes: out.length,
+    stdout_head: out.slice(0, 200),
+    model: model ?? null,
+    model_mode: model ? 'explicit' : 'automatic',
+    error: err || (out.trim().length === 0 ? 'empty reply' : undefined),
+  };
+}
+
 async function callAgentSimple(
   def: import('@html-video/runtime').AgentDef,
   prompt: string,

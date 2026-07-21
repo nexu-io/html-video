@@ -55,6 +55,8 @@
   .agent-pill .agent-pill-logo { display: inline-flex; }
   .agent-pill .agent-pill-logo img { width: 16px; height: 16px; object-fit: contain;
     display: block; }
+  .agent-pill .label { max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
   .agent-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
     min-width: 240px; background: var(--bg-panel); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 6px;
@@ -182,6 +184,36 @@
     background: var(--bg-subtle); border-radius: var(--radius-sm); }
   .settings-panel .agent-test-result.ok { color: var(--green, #4ade80); }
   .settings-panel .agent-test-result.error { color: rgb(220, 60, 60); }
+  .agent-model-editor { grid-column: 1 / -1; border-top: 1px solid var(--border);
+    margin-top: 2px; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .model-loading { color: var(--text-muted); font-size: 11.5px; font-family: var(--font-mono); }
+  .model-catalog-head { display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; color: var(--text-faint); font-size: 10.5px; font-family: var(--font-mono); }
+  .model-catalog-status { border-radius: var(--radius-pill); padding: 2px 7px;
+    background: var(--bg-subtle); color: var(--text-muted); }
+  .model-catalog-status.available { background: var(--green-bg); color: var(--green); }
+  .model-catalog-status.error { color: rgb(220, 60, 60); }
+  .model-catalog-meta { display: grid; gap: 3px; color: var(--text-muted);
+    font-size: 10.5px; line-height: 1.4; font-family: var(--font-mono); overflow-wrap: anywhere; }
+  .model-catalog-meta b { color: var(--text-faint); font-weight: 500; }
+  .model-catalog-note { padding: 7px 9px; border-radius: var(--radius-sm);
+    background: var(--bg-subtle); color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+  .model-catalog-note.warning { background: rgba(225, 151, 38, .09); color: #b87516; }
+  .agent-model-field { display: flex; flex-direction: column; gap: 5px; }
+  .agent-model-field > span { color: var(--text-muted); font-size: 11px; }
+  .agent-model-field select, .agent-model-field input { width: 100%; box-sizing: border-box;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); padding: 8px 10px; font: 11.5px var(--font-mono); }
+  .agent-model-field select:focus, .agent-model-field input:focus { outline: none; border-color: var(--accent); }
+  .agent-model-field small { color: var(--text-faint); font-size: 10.5px; line-height: 1.4; }
+  .agent-model-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .agent-model-actions button { background: var(--bg-subtle); color: var(--text-muted);
+    border: 1px solid var(--border); padding: 6px 10px; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 11px; }
+  .agent-model-actions button:hover { border-color: var(--accent); color: var(--text); }
+  .agent-model-actions button.primary-action { background: var(--accent); border-color: var(--accent);
+    color: var(--accent-fg); }
+  .agent-model-editor .model-test-result { margin-top: 0; }
   .audio-config { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
   .audio-status { font-size: 12.5px; color: var(--text-muted); display: flex;
     align-items: center; gap: 8px; }
@@ -1158,6 +1190,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.7"></script>
+<script type="module" src="/app.js?v=0.8"></script>
 </body>
 </html>

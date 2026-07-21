@@ -15,6 +15,7 @@ import {
 import hfAdapter from '@html-video/adapter-hyperframes';
 import remotionAdapter, { remotionInstalled } from '@html-video/adapter-remotion';
 import { MediaConfigStore } from './media-config.js';
+import { AgentConfigStore } from './agent-config.js';
 
 export interface CliContext {
   projectRoot: string;
@@ -25,6 +26,7 @@ export interface CliContext {
   orchestrator: ProjectOrchestrator;
   templatesDir: string;
   mediaConfig: MediaConfigStore;
+  agentConfig: AgentConfigStore;
 }
 
 export function findProjectRoot(start: string = process.cwd()): string {
@@ -79,6 +81,7 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
   });
 
   const mediaConfig = new MediaConfigStore(projectRoot);
+  const agentConfig = new AgentConfigStore(projectRoot);
 
-  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
+  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig, agentConfig };
 }

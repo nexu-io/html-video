@@ -23,6 +23,9 @@ const MUSIC_PRESETS = [
   { key: 'epic',      prompt: 'epic orchestral, powerful drums, soaring brass, dramatic and inspiring' },
 ];
 
+const MODEL_CATALOG_TTL_MS = 10 * 60 * 1000;
+let modelCatalogRefreshTimer = null;
+
 // Narration voices — MiniMax built-in voice_ids, all verified usable.
 // `key` maps to a localized label (soundtrack.voice_<key>).
 const NARRATION_VOICES = [
@@ -52,12 +55,35 @@ const API = {
   unenhanceFrame: (id, nodeId) => fetch(`/api/projects/${id}/frames/${encodeURIComponent(nodeId)}/unenhance`, { method: 'POST' }).then(r => r.json()),
   testAgent: id => fetch(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' }).then(r => r.json()),
   rescanAgents: () => fetch('/api/agents?force=1').then(r => r.json()),
+  modelCatalog: (id, refresh = false) => apiJson(fetch(`/api/config/agents/${encodeURIComponent(id)}/models${refresh ? '?refresh=1' : ''}`)),
+  setAgentModel: (id, model) => apiJson(fetch(`/api/config/agents/${encodeURIComponent(id)}/model`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })),
+  testAgentModel: (id, model) => apiJson(fetch(`/api/config/agents/${encodeURIComponent(id)}/model-test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model }),
+  })),
 };
+
+async function apiJson(responsePromise) {
+  const response = await responsePromise;
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+  return body;
+}
 
 const state = {
   projects: [],
   templates: [],
   agents: [],
+  modelCatalogs: {},       // { [agentId]: { catalog, configuredModel } }, memory only
+  modelCatalogLoading: {},
+  modelCatalogCheckedAt: {},
+  agentModelOpenId: null,
+  agentModelDrafts: {},
   selectedId: null,
   selected: null,
   messages: [],
@@ -555,10 +581,17 @@ function renderAgentPill() {
   const currentId = p.agentId ?? (state.agents.find((a) => a.available)?.id ?? 'anthropic-api');
   const a = state.agents.find((x) => x.id === currentId);
   const available = a?.available ?? false;
-  label.textContent = a?.name ?? currentId;
+  const effectiveModel = p.agentModel || a?.configuredModel || '';
+  const modelLabel = effectiveModel || t('settings.agent.model.automatic_short');
+  label.textContent = `${a?.name ?? currentId} · ${modelLabel}`;
   logo.innerHTML = AGENT_LOGOS[currentId] ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />` : '';
   dot.className = 'agent-dot ' + (available ? 'ok' : 'missing');
-  pill.title = available ? t('toolbar.agent_ready') : t('settings.agent.unavailable');
+  const modelSource = p.agentModel
+    ? t('settings.agent.model.source_project')
+    : a?.configuredModel
+      ? t('settings.agent.model.source_global')
+      : t('settings.agent.model.source_native');
+  pill.title = `${available ? t('toolbar.agent_ready') : t('settings.agent.unavailable')} · ${modelLabel} · ${modelSource}`;
 }
 
 /** Open/refresh the top-bar agent dropdown. */
@@ -2879,10 +2912,21 @@ function openSettingsModal(tab = 'agent') {
     b.classList.toggle('active', b.dataset.settingsTab === tab);
   });
   renderSettingsPanel(tab);
+  if (modelCatalogRefreshTimer) clearInterval(modelCatalogRefreshTimer);
+  modelCatalogRefreshTimer = setInterval(() => {
+    const activeAgentTab = modal.querySelector('[data-settings-tab="agent"].active');
+    const panel = document.getElementById('settings-panel');
+    const agentId = state.agentModelOpenId
+      || state.selected?.agentId
+      || state.agents.find((agent) => agent.available)?.id;
+    if (activeAgentTab && panel && agentId) void ensureAgentModelCatalog(agentId, panel);
+  }, MODEL_CATALOG_TTL_MS);
 }
 function closeSettingsModal() {
   const modal = document.getElementById('settings-modal');
   if (modal) modal.classList.remove('show');
+  if (modelCatalogRefreshTimer) clearInterval(modelCatalogRefreshTimer);
+  modelCatalogRefreshTimer = null;
 }
 
 function renderSettingsPanel(tab) {
@@ -2984,6 +3028,129 @@ async function renderSettingsAudio(panel) {
   };
 }
 
+function modelAvailabilityText(value) {
+  if (value === 'known') return t('settings.agent.model.state_known');
+  if (value === 'unverifiable') return t('settings.agent.model.state_unverifiable');
+  return t('settings.agent.model.state_available');
+}
+
+function agentModelDraft(a, catalog) {
+  const configured = a.configuredModel || '';
+  const known = (catalog?.models ?? []).some((model) => model.id === configured);
+  let draft = state.agentModelDrafts[a.id];
+  if (!draft) {
+    draft = configured
+      ? (known ? { choice: configured, manual: '' } : { choice: '__manual__', manual: configured })
+      : { choice: '', manual: '' };
+    state.agentModelDrafts[a.id] = draft;
+  } else if (draft.choice && draft.choice !== '__manual__'
+      && !(catalog?.models ?? []).some((model) => model.id === draft.choice)) {
+    draft.manual = draft.choice;
+    draft.choice = '__manual__';
+  }
+  return draft;
+}
+
+function renderAgentModelEditor(a) {
+  const response = state.modelCatalogs[a.id];
+  const catalog = response?.catalog;
+  const loading = state.modelCatalogLoading[a.id];
+  if (loading && !catalog) {
+    return `<div class="agent-model-editor"><div class="model-loading">${esc(t('settings.agent.model.loading'))}</div></div>`;
+  }
+  if (!catalog) {
+    return `<div class="agent-model-editor"><div class="model-loading">${esc(t('settings.agent.model.loading'))}</div></div>`;
+  }
+
+  const draft = agentModelDraft(a, catalog);
+  const configured = a.configuredModel || response?.configuredModel || '';
+  const models = catalog.models ?? [];
+  const configuredFound = !configured || models.some((model) => model.id === configured);
+  const statusKey = catalog.status === 'available'
+    ? 'settings.agent.model.catalog_available'
+    : catalog.status === 'error'
+      ? 'settings.agent.model.catalog_error'
+      : 'settings.agent.model.catalog_unverifiable';
+  const fetched = catalog.fetchedAt ? new Date(catalog.fetchedAt).toLocaleString(getLocale()) : '—';
+  const legacyOverride = state.selected?.agentId === a.id && state.selected?.agentModel;
+
+  const modelOptions = models.map((model) => {
+    const configuredTag = configured === model.id ? ` · ${t('settings.agent.model.state_configured')}` : '';
+    const defaultTag = model.isDefault ? ` · ${t('settings.agent.model.default')}` : '';
+    const stateTag = ` · ${modelAvailabilityText(model.availability)}`;
+    return `<option value="${esc(model.id)}" ${draft.choice === model.id ? 'selected' : ''}>${esc(model.name)} (${esc(model.id)})${esc(defaultTag + stateTag + configuredTag)}</option>`;
+  }).join('');
+
+  return `<div class="agent-model-editor" data-model-editor="${esc(a.id)}">
+    <div class="model-catalog-head">
+      <span class="model-catalog-status ${esc(catalog.status)}">${esc(t(statusKey))}</span>
+      <span>${esc(t('settings.agent.model.updated', { time: fetched }))}</span>
+    </div>
+    <div class="model-catalog-meta">
+      <span><b>${esc(t('settings.agent.model.source'))}:</b> ${esc(catalog.source || '—')}</span>
+      <span><b>${esc(t('settings.agent.model.scope'))}:</b> ${esc(catalog.scope || '—')}</span>
+      <span><b>${esc(t('settings.agent.model.version'))}:</b> ${esc(catalog.toolVersion || a.version || t('settings.agent.model.version_api'))}</span>
+    </div>
+    ${catalog.message ? `<div class="model-catalog-note">${esc(catalog.message)}</div>` : ''}
+    ${catalog.stale ? `<div class="model-catalog-note warning">${esc(t('settings.agent.model.stale', { message: catalog.refreshError || '' }))}</div>` : ''}
+    ${configured && !configuredFound ? `<div class="model-catalog-note warning">${esc(t('settings.agent.model.not_found', { model: configured }))}</div>` : ''}
+    ${legacyOverride ? `<div class="model-catalog-note warning">${esc(t('settings.agent.model.project_override', { model: legacyOverride }))}</div>` : ''}
+    <label class="agent-model-field">
+      <span>${esc(t('settings.agent.model.selection'))}</span>
+      <select class="agent-model-select" data-agent-model="${esc(a.id)}">
+        <option value="" ${draft.choice === '' ? 'selected' : ''}>${esc(t('settings.agent.model.automatic'))}</option>
+        ${modelOptions}
+        <option value="__manual__" ${draft.choice === '__manual__' ? 'selected' : ''}>${esc(t('settings.agent.model.manual_choice'))}</option>
+      </select>
+    </label>
+    ${draft.choice === '__manual__' ? `<label class="agent-model-field manual">
+      <span>${esc(t('settings.agent.model.manual_label'))}</span>
+      <input type="text" data-agent-model-manual="${esc(a.id)}" value="${esc(draft.manual)}" placeholder="provider/model-id" autocomplete="off" spellcheck="false" />
+      <small>${esc(t('settings.agent.model.manual_hint'))}</small>
+    </label>` : ''}
+    <div class="agent-model-actions">
+      <button data-model-act="refresh">${esc(loading ? t('settings.agent.model.refreshing') : t('settings.agent.model.refresh'))}</button>
+      <button data-model-act="test">${esc(t('settings.agent.model.test'))}</button>
+      <button data-model-act="automatic">${esc(t('settings.agent.model.back_auto'))}</button>
+      <button data-model-act="save" class="primary-action">${esc(t('settings.agent.model.save'))}</button>
+    </div>
+    <div class="agent-test-result model-test-result" data-model-test-result="${esc(a.id)}" style="display:none"></div>
+  </div>`;
+}
+
+function syncConfiguredAgentModel(agentId, configuredModel) {
+  const agent = state.agents.find((entry) => entry.id === agentId);
+  if (agent) agent.configuredModel = configuredModel || null;
+  if (state.modelCatalogs[agentId]) state.modelCatalogs[agentId].configuredModel = configuredModel || null;
+}
+
+async function ensureAgentModelCatalog(agentId, panel, refresh = false) {
+  if (state.modelCatalogLoading[agentId]) return;
+  state.modelCatalogLoading[agentId] = true;
+  if (panel?.isConnected) renderSettingsAgent(panel);
+  try {
+    const response = await API.modelCatalog(agentId, refresh);
+    state.modelCatalogs[agentId] = response;
+    syncConfiguredAgentModel(agentId, response.configuredModel);
+  } catch (error) {
+    state.modelCatalogs[agentId] = {
+      configuredModel: state.agents.find((entry) => entry.id === agentId)?.configuredModel || null,
+      catalog: {
+        status: 'error',
+        source: 'Studio API',
+        scope: 'current installation',
+        fetchedAt: new Date().toISOString(),
+        models: [],
+        message: error?.message ?? String(error),
+      },
+    };
+  } finally {
+    state.modelCatalogCheckedAt[agentId] = Date.now();
+    state.modelCatalogLoading[agentId] = false;
+    if (panel?.isConnected) renderSettingsAgent(panel);
+  }
+}
+
 function renderSettingsAgent(panel) {
   // Default to local CLI mode; BYOK = anthropic-api which is itself an HTTP agent
   const mode = panel.dataset.mode || 'local';
@@ -3039,6 +3206,7 @@ function renderSettingsAgent(panel) {
           </div>
           <div class="agent-actions">
             ${a.available ? `<button data-act="test">${esc(t('settings.agent.test'))}</button>` : ''}
+            ${a.supportsModelSelection ? `<button data-act="model">${esc(t('settings.agent.model.button'))}</button>` : ''}
             ${a.available
               ? (isCurrent
                   ? `<span style="font-size:11px;color:var(--accent);font-family:var(--font-mono)">${esc(t('settings.agent.in_use'))}</span>`
@@ -3046,6 +3214,7 @@ function renderSettingsAgent(panel) {
               : (a.installUrl ? `<a href="${a.installUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-faint)">install ↗</a>` : '')}
           </div>
           <div class="agent-test-result" data-test-result="${esc(a.id)}" style="display:none;grid-column:1 / -1"></div>
+          ${state.agentModelOpenId === a.id ? renderAgentModelEditor(a) : ''}
         </div>`;
       }).join('')}
     </div>
@@ -3107,9 +3276,107 @@ function renderSettingsAgent(panel) {
         } finally {
           btn.disabled = false;
         }
+      } else if (act === 'model') {
+        state.agentModelOpenId = state.agentModelOpenId === aid ? null : aid;
+        renderSettingsAgent(panel);
       }
     };
   });
+
+  panel.querySelectorAll('.agent-model-select').forEach((select) => {
+    select.onchange = () => {
+      const aid = select.dataset.agentModel;
+      const draft = state.agentModelDrafts[aid] || { choice: '', manual: '' };
+      draft.choice = select.value;
+      state.agentModelDrafts[aid] = draft;
+      renderSettingsAgent(panel);
+    };
+  });
+  panel.querySelectorAll('[data-agent-model-manual]').forEach((input) => {
+    input.oninput = () => {
+      const aid = input.dataset.agentModelManual;
+      const draft = state.agentModelDrafts[aid] || { choice: '__manual__', manual: '' };
+      draft.manual = input.value;
+      state.agentModelDrafts[aid] = draft;
+    };
+  });
+  panel.querySelectorAll('.agent-model-editor [data-model-act]').forEach((btn) => {
+    btn.onclick = async () => {
+      const editor = btn.closest('.agent-model-editor');
+      const aid = editor.dataset.modelEditor;
+      const action = btn.dataset.modelAct;
+      const draft = state.agentModelDrafts[aid] || { choice: '', manual: '' };
+      const model = draft.choice === '__manual__' ? draft.manual.trim() : (draft.choice || null);
+      const result = editor.querySelector('[data-model-test-result]');
+      if (action === 'refresh') {
+        await ensureAgentModelCatalog(aid, panel, true);
+        return;
+      }
+      if (action === 'automatic') {
+        btn.disabled = true;
+        try {
+          await API.setAgentModel(aid, null);
+          syncConfiguredAgentModel(aid, null);
+          state.agentModelDrafts[aid] = { choice: '', manual: '' };
+          renderToolbar();
+          renderSettingsAgent(panel);
+          toast(t('settings.agent.model.auto_saved'), 'success');
+        } catch (error) {
+          toast(error?.message ?? String(error), 'error');
+        } finally {
+          btn.disabled = false;
+        }
+        return;
+      }
+      if (draft.choice === '__manual__' && !model) {
+        result.style.display = 'block';
+        result.className = 'agent-test-result model-test-result error';
+        result.textContent = t('settings.agent.model.manual_required');
+        return;
+      }
+      btn.disabled = true;
+      if (action === 'save') {
+        try {
+          const response = await API.setAgentModel(aid, model);
+          syncConfiguredAgentModel(aid, response.configuredModel);
+          renderToolbar();
+          renderSettingsAgent(panel);
+          toast(t('settings.agent.model.saved'), 'success');
+        } catch (error) {
+          result.style.display = 'block';
+          result.className = 'agent-test-result model-test-result error';
+          result.textContent = error?.message ?? String(error);
+        } finally {
+          btn.disabled = false;
+        }
+      } else if (action === 'test') {
+        result.style.display = 'block';
+        result.className = 'agent-test-result model-test-result';
+        result.textContent = t('settings.agent.model.testing');
+        try {
+          const response = await API.testAgentModel(aid, model);
+          result.classList.add(response.ok ? 'ok' : 'error');
+          result.textContent = response.ok
+            ? t('settings.agent.model.test_ok', { ms: response.ms, model: response.model || t('settings.agent.model.automatic_short') })
+            : t('settings.agent.model.test_fail', { message: response.error || `exit ${response.exit_code}` });
+        } catch (error) {
+          result.classList.add('error');
+          result.textContent = t('settings.agent.model.test_fail', { message: error?.message ?? String(error) });
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    };
+  });
+
+  const catalogAgentId = state.agentModelOpenId || currentId;
+  const catalogAgent = agents.find((agent) => agent.id === catalogAgentId);
+  const lastCatalogCheck = state.modelCatalogCheckedAt[catalogAgentId] || 0;
+  if (catalogAgent?.supportsModelSelection
+      && (!state.modelCatalogs[catalogAgentId] || Date.now() - lastCatalogCheck >= MODEL_CATALOG_TTL_MS)
+      && !state.modelCatalogLoading[catalogAgentId]) {
+    void ensureAgentModelCatalog(catalogAgentId, panel);
+  }
 }
 
 function renderSettingsLanguage(panel) {
