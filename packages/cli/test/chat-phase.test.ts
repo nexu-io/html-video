@@ -5,6 +5,7 @@ import {
   detectPhase,
   hadGenerationYet,
   isFromTemplateStyle,
+  isMultiFrameType,
   lastCardPickByPhase,
   type ChatMessage,
 } from '../dist/studio-server.js';
@@ -91,6 +92,29 @@ test('Portuguese post-generation intentions route to style, duration and content
 
   const menuHistory = [...generated, optionsCard('edit-menu'), user('Duração')];
   assert.equal(detectPhase(menuHistory, 'Duração', false).phase, 'format');
+});
+
+test('Portuguese control phrases advance a content question without becoming content', () => {
+  for (const control of ['continuar', 'pronto']) {
+    const history = [
+      optionsCard('type'),
+      user('Cartão de título'),
+      assistant('Qual será o assunto?\n\n<!-- hv-phase:content-question -->'),
+      user(control),
+    ];
+    const result = detectPhase(history, control, false);
+    assert.equal(result.phase, 'style', control);
+    assert.equal(result.inputs.contentTurns?.includes(control), false, control);
+  }
+});
+
+test('Portuguese and Spanish title-card labels remain single-frame types', () => {
+  for (const label of ['Cartão com título', 'Cartão de título', 'Imagem única', 'Tarjeta de título', 'Portada']) {
+    assert.equal(isMultiFrameType(label), false, label);
+  }
+  assert.equal(isMultiFrameType('Teaser em vários quadros'), true);
+  assert.equal(isMultiFrameType('Vídeo de capacitação em vários quadros'), true);
+  assert.equal(isMultiFrameType('Explicación en varios cuadros'), true);
 });
 
 test('Portuguese and Spanish template choices are recognized without English labels', () => {

@@ -2142,7 +2142,8 @@ export function detectPhase(
   if (prev.kind === 'content-question') {
     // User is replying to content question. Could be (a) more content, or
     // (b) a "skip / I'm done" signal.
-    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道|pular|pronto|chega|não sei|nao sei|saltar|listo|ya|no sé|no se)$/i.test(trimmed)
+    const isSkip = isControlPhrase(trimmed)
+      || /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道|pular|pronto|chega|não sei|nao sei|saltar|listo|ya|no sé|no se)$/i.test(trimmed)
       || trimmed.length <= 3;
     // "Free rein" answers — the user is handing the subject's details to the
     // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机" in Chinese; "tanto faz" /
@@ -2160,7 +2161,10 @@ export function detectPhase(
     if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
       // Move forward: style if no template, else format.
       inputs.pickedType = lastCardPickByPhase(history, 'type');
-      inputs.contentTurns = [...collectContentTurns(history), trimmed];
+      const collectedTurns = collectContentTurns(history);
+      inputs.contentTurns = isSkip || isFreeRein
+        ? collectedTurns
+        : [...collectedTurns, trimmed];
       return hasTemplate
         ? { phase: 'format', inputs }
         : { phase: 'style', inputs };
@@ -2245,7 +2249,7 @@ function isControlPhrase(t: string): boolean {
   // Chinese, English, Portuguese (pt-BR), and Spanish short "move forward"
   // phrases — a student typing "continua"/"vamos"/"confirmar" instead of
   // clicking the card must not have that word collected as video content.
-  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|continua|continuar|continúa|próximo|proximo|siguiente|começar|comecar|começa|comeca|empezar|comenzar|empieza|comienza|vamos|bora|beleza|vale|dale|pode|confirma(r)?|tá|ta|tá bom|ta bom|listo)$/u.test(s);
+  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|continua|continuar|pronto|continúa|próximo|proximo|siguiente|começar|comecar|começa|comeca|empezar|comenzar|empieza|comienza|vamos|bora|beleza|vale|dale|pode|confirma(r)?|tá|ta|tá bom|ta bom|listo)$/u.test(s);
 }
 
 function collectContentTurns(history: ChatMessage[]): string[] {
@@ -2538,9 +2542,13 @@ function parseGraphJsonTolerant(raw: string): unknown {
  *  (title card / cover / single still). Whitelisting "讲解/explainer/…" was too
  *  narrow — e.g. "概念解说短片" (解说, not 讲解) fell through to single-frame.
  *  Inverting the test makes new/renamed multi-frame types default correctly. */
-function isMultiFrameType(pickedType: string): boolean {
+export function isMultiFrameType(pickedType: string): boolean {
   if (!pickedType) return false;
-  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still/i.test(pickedType);
+  const normalized = pickedType
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still|cartao (?:com|de) titulo|\bcapa\b|imagem unica|tarjeta (?:con|de) titulo|\bportada\b|imagen unica/i.test(normalized);
   return !single;
 }
 
