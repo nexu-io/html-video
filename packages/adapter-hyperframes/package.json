@@ -23,10 +23,14 @@
     "playwright": "^1.49.0"
   },
   "peerDependencies": {
-    "hyperframes": "^0.4.0"
+    "hyperframes": "^0.4.0",
+    "@hyperframes/producer": ">=0.7.0"
   },
   "peerDependenciesMeta": {
     "hyperframes": {
+      "optional": true
+    },
+    "@hyperframes/producer": {
       "optional": true
     }
   },
