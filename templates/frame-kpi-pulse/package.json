@@ -1,0 +1,8 @@
+{
+  "name": "@html-video/template-frame-kpi-pulse",
+  "version": "0.1.0",
+  "description": "html-video template: frame-kpi-pulse (native Remotion single-KPI spring + count-up)",
+  "license": "Apache-2.0",
+  "private": true,
+  "files": ["template.html-video.yaml", "source", "SKILL.md", "example.md", "preview.png"]
+}

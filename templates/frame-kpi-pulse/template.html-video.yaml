@@ -1,0 +1,139 @@
+spec_version: 1
+id: frame-kpi-pulse
+name: KPI Pulse
+description: >
+  Native Remotion single-metric hero: one number springs in and counts up while a soft
+  accent ring pulses. For data frames that are a KPI, not a multi-series chart — the
+  non-chart companion to rollup / donut / hbars / line / radar.
+
+engine: remotion
+engine_version: ^4.0.0
+source_entry: source/entry.ts
+native:
+  compositionId: KpiPulse
+
+category: data-viz
+subcategory: kpi
+tags: [kpi, metric, count-up, spring, pulse, remotion, native, animated, hero]
+
+best_for:
+  - "A single hero metric that should feel alive (ARR, users, latency, fee)"
+  - "Enhancing one data frame that isn't a multi-bar / multi-point chart"
+  - "Title-card energy with a real number, not a decorative fake"
+
+not_for:
+  - "Comparing many categories (use rollup / hbars / donut)"
+  - "Time-series trends (use line)"
+
+output:
+  formats: [mp4, webm]
+  default_format: mp4
+  resolution:
+    default: { width: 1920, height: 1080 }
+    supported_aspects: ["16:9", "9:16", "1:1"]
+  fps:
+    default: 30
+    supported: [30, 60]
+  duration:
+    type: variable
+    min_sec: 2
+    max_sec: 6
+  alpha: true
+  audio:
+    supported: false
+    expected_inputs: []
+
+inputs:
+  schema:
+    type: object
+    required: [data]
+    properties:
+      data:
+        type: object
+        required: [value]
+        properties:
+          title:
+            type: "string"
+            maxLength: 48
+            description: "Optional uppercase eyebrow above the number"
+          label:
+            type: "string"
+            maxLength: 32
+            description: "Short label under the number"
+          caption:
+            type: "string"
+            maxLength: 120
+            description: "Optional supporting line at the bottom"
+          unit:
+            type: "string"
+            maxLength: 4
+            description: "Optional suffix (%, K, ¢, ms)"
+          value:
+            type: "number"
+            description: "The hero metric; rolls 0→value"
+          items:
+            type: "array"
+            maxItems: 1
+            description: "Optional series fallback; first item supplies value/label"
+            items:
+              type: object
+              required: [label, value]
+              properties:
+                label: { type: "string", maxLength: 32 }
+                value: { type: "number" }
+      accent:
+        type: "string"
+        description: "Number + ring color (hex). Default #3CE6AC"
+      background:
+        type: "string"
+        description: "Background (hex). Default #0B0F14"
+      foreground:
+        type: "string"
+        description: "Title / label / caption (hex). Default #F4F7FA"
+  examples:
+    - {"data": {"title": "Local render", "label": "per-clip fee", "caption": "HTML becomes video on your laptop.", "unit": "¢", "value": 0}}
+    - {"data": {"title": "Gallery", "label": "templates", "value": 27, "caption": "License-clean, agent-ready."}, "accent": "#FF5A2C"}
+
+license:
+  spdx: Apache-2.0
+  attribution_required: false
+  redistribution_allowed: true
+  commercial_use: true
+
+provenance:
+  origin:
+    name: "none"
+    kind: none
+    reference: >
+      Original work. Single-metric spring + count-up + accent ring, implemented from
+      scratch as React-tsx for Remotion; not derived from any studio or upstream template.
+  via_skill:
+    name: "none"
+    author: "nexu-io"
+    url: https://github.com/nexu-io/html-video
+    license: Apache-2.0
+    source_file: "(original — templates/frame-kpi-pulse)"
+  transformation: >
+    Original Remotion React-tsx composition. Hero number springs in (scale) and rolls
+    0→value via the same spring; soft accent ring expands with settling opacity.
+    Layout from useVideoConfig for 16:9 / 9:16 / 1:1. System fonts only.
+
+author:
+  name: nexu-io
+  url: https://github.com/nexu-io
+  contact: open-design@nexu.io
+
+version: 0.1.0
+changelog:
+  - version: 0.1.0
+    date: 2026-08-05
+    notes: First non-chart native Remotion enhance template (KPI pulse).
+
+preview:
+  poster: preview.png
+
+performance:
+  reference_render:
+    duration_sec: 4
+    render_wall_clock_sec: 6
+    machine: "M2 MacBook Air"
