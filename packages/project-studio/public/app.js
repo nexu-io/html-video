@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js';
+import { AVAILABLE_LOCALES, getLocale, setLocale, t } from './i18n.js';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -15,43 +15,83 @@ document.documentElement.lang = getLocale();
 // with a tuned English MiniMax prompt (the model follows English best); the
 // label is localized via i18n (soundtrack.preset_<key>). Still editable after.
 const MUSIC_PRESETS = [
-  { key: 'energetic', prompt: 'energetic upbeat electronic, driving beat, punchy synths, modern and confident' },
-  { key: 'calm',      prompt: 'calm ambient pad, soft piano, slow and soothing, gentle and warm' },
-  { key: 'tech',      prompt: 'sleek tech corporate, pulsing synth arpeggio, clean minimal beat, futuristic' },
-  { key: 'narrative', prompt: 'cinematic storytelling score, emotional strings, building piano, reflective' },
-  { key: 'minimal',   prompt: 'minimal lo-fi, sparse beat, mellow keys, understated background bed' },
-  { key: 'epic',      prompt: 'epic orchestral, powerful drums, soaring brass, dramatic and inspiring' },
+  {
+    key: 'energetic',
+    prompt: 'energetic upbeat electronic, driving beat, punchy synths, modern and confident',
+  },
+  { key: 'calm', prompt: 'calm ambient pad, soft piano, slow and soothing, gentle and warm' },
+  {
+    key: 'tech',
+    prompt: 'sleek tech corporate, pulsing synth arpeggio, clean minimal beat, futuristic',
+  },
+  {
+    key: 'narrative',
+    prompt: 'cinematic storytelling score, emotional strings, building piano, reflective',
+  },
+  { key: 'minimal', prompt: 'minimal lo-fi, sparse beat, mellow keys, understated background bed' },
+  { key: 'epic', prompt: 'epic orchestral, powerful drums, soaring brass, dramatic and inspiring' },
 ];
 
 // Narration voices — MiniMax built-in voice_ids, all verified usable.
 // `key` maps to a localized label (soundtrack.voice_<key>).
 const NARRATION_VOICES = [
-  { key: 'male_warm',     voiceId: 'male-qn-qingse' },
-  { key: 'male_pro',      voiceId: 'male-qn-jingying' },
-  { key: 'male_deep',     voiceId: 'audiobook_male_1' },
+  { key: 'male_warm', voiceId: 'male-qn-qingse' },
+  { key: 'male_pro', voiceId: 'male-qn-jingying' },
+  { key: 'male_deep', voiceId: 'audiobook_male_1' },
   { key: 'female_anchor', voiceId: 'presenter_female' },
   { key: 'female_mature', voiceId: 'female-yujie' },
-  { key: 'female_sweet',  voiceId: 'female-shaonv' },
+  { key: 'female_sweet', voiceId: 'female-shaonv' },
 ];
 
 const API = {
-  projects: () => fetch('/api/projects').then(r => r.json()),
-  createProject: b => fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json()),
-  getProject: id => fetch(`/api/projects/${id}`).then(r => r.json()),
-  patchProject: (id, b) => fetch(`/api/projects/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json()),
-  deleteProject: id => fetch(`/api/projects/${id}`, { method: 'DELETE' }).then(r => r.json()),
-  templates: () => fetch('/api/templates').then(r => r.json()),
-  agents: () => fetch('/api/agents').then(r => r.json()),
-  setTemplate: (id, tid) => fetch(`/api/projects/${id}/template`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ template_id: tid }) }).then(r => r.json()),
-  setAgent: (id, aid, model) => fetch(`/api/projects/${id}/agent`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: aid, ...(model !== undefined && { agent_model: model }) }) }).then(r => r.json()),
-  exportMp4: id => fetch(`/api/projects/${id}/export`, { method: 'POST' }).then(r => r.json()),
-  getMessages: id => fetch(`/api/projects/${id}/messages`).then(r => r.json()),
-  rawHtml: id => fetch(`/api/projects/${id}/raw-html`).then(r => r.ok ? r.text() : null),
-  putRawHtml: (id, html) => fetch(`/api/projects/${id}/raw-html`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ html }) }).then(r => r.json()),
-  contentGraph: id => fetch(`/api/projects/${id}/content-graph`).then(r => r.ok ? r.json() : null),
-  unenhanceFrame: (id, nodeId) => fetch(`/api/projects/${id}/frames/${encodeURIComponent(nodeId)}/unenhance`, { method: 'POST' }).then(r => r.json()),
-  testAgent: id => fetch(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' }).then(r => r.json()),
-  rescanAgents: () => fetch('/api/agents?force=1').then(r => r.json()),
+  projects: () => fetch('/api/projects').then((r) => r.json()),
+  createProject: (b) =>
+    fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(b),
+    }).then((r) => r.json()),
+  getProject: (id) => fetch(`/api/projects/${id}`).then((r) => r.json()),
+  patchProject: (id, b) =>
+    fetch(`/api/projects/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(b),
+    }).then((r) => r.json()),
+  deleteProject: (id) => fetch(`/api/projects/${id}`, { method: 'DELETE' }).then((r) => r.json()),
+  templates: () => fetch('/api/templates').then((r) => r.json()),
+  agents: () => fetch('/api/agents').then((r) => r.json()),
+  setTemplate: (id, tid) =>
+    fetch(`/api/projects/${id}/template`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ template_id: tid }),
+    }).then((r) => r.json()),
+  setAgent: (id, aid, model) =>
+    fetch(`/api/projects/${id}/agent`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ agent_id: aid, ...(model !== undefined && { agent_model: model }) }),
+    }).then((r) => r.json()),
+  exportMp4: (id) => fetch(`/api/projects/${id}/export`, { method: 'POST' }).then((r) => r.json()),
+  getMessages: (id) => fetch(`/api/projects/${id}/messages`).then((r) => r.json()),
+  rawHtml: (id) => fetch(`/api/projects/${id}/raw-html`).then((r) => (r.ok ? r.text() : null)),
+  putRawHtml: (id, html) =>
+    fetch(`/api/projects/${id}/raw-html`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ html }),
+    }).then((r) => r.json()),
+  contentGraph: (id) =>
+    fetch(`/api/projects/${id}/content-graph`).then((r) => (r.ok ? r.json() : null)),
+  unenhanceFrame: (id, nodeId) =>
+    fetch(`/api/projects/${id}/frames/${encodeURIComponent(nodeId)}/unenhance`, {
+      method: 'POST',
+    }).then((r) => r.json()),
+  nativeTemplates: () => fetch('/api/native-templates').then((r) => r.json()),
+  testAgent: (id) =>
+    fetch(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' }).then((r) => r.json()),
+  rescanAgents: () => fetch('/api/agents?force=1').then((r) => r.json()),
 };
 
 const state = {
@@ -62,19 +102,22 @@ const state = {
   selected: null,
   messages: [],
   composing: false,
-  textFields: [],          // [{key, original, current}]
+  textFields: [], // [{key, original, current}]
   textSaveTimer: null,
-  pendingAttachments: [],  // [{file, dataUrl?, name, kind, size}] before send
+  pendingAttachments: [], // [{file, dataUrl?, name, kind, size}] before send
   // v0.8: multi-frame timeline state
-  activeFrameId: null,     // graphNodeId currently shown in iframe
+  activeFrameId: null, // graphNodeId currently shown in iframe
   iterateFocusFrameId: null, // graphNodeId iterations should target only (null = whole video)
-  editTextMode: false,     // when true, preview iframe accepts inline text edits
-  exporting: false,        // export run in progress
-  exportProgress: null,    // { pct, stage } during a streamed export
-  lastGraph: null,         // last fetched ContentGraph (for download)
+  editTextMode: false, // when true, preview iframe accepts inline text edits
+  exporting: false, // export run in progress
+  exportProgress: null, // { pct, stage } during a streamed export
+  lastGraph: null, // last fetched ContentGraph (for download)
   // Phase C: per-frame native Remotion enhancement
-  frameKinds: {},          // { [graphNodeId]: 'entity'|'data'|'text' } for the selected project
-  enhancing: null,         // { nodeId, pct, stage } while a single-frame enhance render is in flight
+  frameKinds: {}, // { [graphNodeId]: 'entity'|'data'|'text' } for the selected project
+  enhancing: null, // { nodeId, pct, stage } while a single-frame enhance render is in flight
+  nativeTemplates: [], // from /api/native-templates
+  nativeDefaultId: 'frame-data-rollup',
+  enhancePicker: null, // { nodeId, x, y } while the chart-type menu is open
 };
 
 // ============== boot ==============
@@ -158,7 +201,7 @@ async function startExportStream() {
   } catch (e) {
     state.exporting = false;
     state.exportProgress = null;
-    toast(t('export.failed_short', { message: (e?.message ?? e) }), 'error');
+    toast(t('export.failed_short', { message: e?.message ?? e }), 'error');
     renderToolbar();
     return;
   }
@@ -184,7 +227,11 @@ async function startExportStream() {
       for (const line of events) {
         if (!line.startsWith('data: ')) continue;
         let ev;
-        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        try {
+          ev = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
         if (ev.type === 'export_progress') {
           state.exportProgress = { pct: ev.pct, stage: ev.stage };
           renderToolbar();
@@ -222,7 +269,7 @@ async function startExportStream() {
   } catch (e) {
     state.exporting = false;
     state.exportProgress = null;
-    toast(t('export.stream_interrupted', { message: (e?.message ?? e) }), 'error');
+    toast(t('export.stream_interrupted', { message: e?.message ?? e }), 'error');
     renderToolbar();
   }
 }
@@ -231,10 +278,77 @@ async function startExportStream() {
 // Render ONE data frame with the native Remotion template and stream progress,
 // mirroring startExportStream. On done, swap that frame's thumbnail + centre
 // preview to the rendered <video>. User-initiated only (the toggle's click).
-async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup') {
+/** Short labels for the enhance picker (id → display). */
+function nativeTemplateShortLabel(id) {
+  const map = {
+    'frame-data-rollup': t('enhance.chart.rollup'),
+    'frame-data-donut': t('enhance.chart.donut'),
+    'frame-data-hbars': t('enhance.chart.hbars'),
+    'frame-data-line': t('enhance.chart.line'),
+    'frame-data-radar': t('enhance.chart.radar'),
+  };
+  return map[id] || id.replace(/^frame-data-/, '');
+}
+
+function closeEnhancePicker() {
+  state.enhancePicker = null;
+  const el = document.getElementById('enhance-picker');
+  if (el) el.remove();
+}
+
+/** Show a chart-type menu anchored near the enhance badge, then enhance. */
+function openEnhancePicker(nodeId, anchorEl) {
+  closeEnhancePicker();
+  const list =
+    state.nativeTemplates.length > 0
+      ? state.nativeTemplates
+      : [{ id: state.nativeDefaultId || 'frame-data-rollup', name: 'Data Rollup' }];
+  const rect = anchorEl.getBoundingClientRect();
+  state.enhancePicker = { nodeId };
+  const menu = document.createElement('div');
+  menu.id = 'enhance-picker';
+  menu.className = 'enhance-picker';
+  menu.innerHTML = `<div class="enhance-picker-title">${esc(t('enhance.pick_title'))}</div>${list
+    .map(
+      (tmpl) =>
+        `<button type="button" data-tid="${esc(tmpl.id)}" title="${esc(tmpl.description || tmpl.name || '')}">${esc(nativeTemplateShortLabel(tmpl.id))}<span class="sub">${esc(tmpl.name || tmpl.id)}</span></button>`,
+    )
+    .join('')}`;
+  document.body.appendChild(menu);
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  let left = rect.left + rect.width / 2 - mw / 2;
+  let top = rect.bottom + 6;
+  if (left < 8) left = 8;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, rect.top - mh - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelectorAll('button[data-tid]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tid = btn.dataset.tid;
+      closeEnhancePicker();
+      if (tid) startEnhanceStream(nodeId, tid);
+    });
+  });
+  // Click outside closes (next tick so this open click doesn't immediately close).
+  setTimeout(() => {
+    const onDoc = (e) => {
+      if (menu.contains(e.target)) return;
+      closeEnhancePicker();
+      document.removeEventListener('click', onDoc, true);
+    };
+    document.addEventListener('click', onDoc, true);
+  }, 0);
+}
+
+async function startEnhanceStream(nodeId, nativeTemplateId) {
   if (!state.selected || state.enhancing) return;
+  const tid = nativeTemplateId || state.nativeDefaultId || 'frame-data-rollup';
   const projectId = state.selected.id;
   state.enhancing = { nodeId, pct: 0, stage: 'starting' };
+  closeEnhancePicker();
   renderFramesStrip();
 
   let res;
@@ -242,11 +356,11 @@ async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup'
     res = await fetch(`/api/projects/${projectId}/frames/${encodeURIComponent(nodeId)}/enhance`, {
       method: 'POST',
       headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ nativeTemplateId }),
+      body: JSON.stringify({ nativeTemplateId: tid }),
     });
   } catch (e) {
     state.enhancing = null;
-    toast(t('enhance.failed', { message: (e?.message ?? e) }), 'error');
+    toast(t('enhance.failed', { message: e?.message ?? e }), 'error');
     renderFramesStrip();
     return;
   }
@@ -271,14 +385,25 @@ async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup'
       for (const line of events) {
         if (!line.startsWith('data: ')) continue;
         let ev;
-        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        try {
+          ev = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
         if (ev.type === 'enhance_progress') {
-          if (state.enhancing) { state.enhancing.pct = ev.pct; state.enhancing.stage = ev.stage; }
+          if (state.enhancing) {
+            state.enhancing.pct = ev.pct;
+            state.enhancing.stage = ev.stage;
+          }
           renderFramesStrip();
         } else if (ev.type === 'enhance_done') {
           state.enhancing = null;
           if (ev.project) state.selected = ev.project; // bumped updatedAt → fresh <video> URL
-          state.messages.push({ role: 'preview-event', content: t('enhance.done'), ts: Date.now() });
+          state.messages.push({
+            role: 'preview-event',
+            content: t('enhance.done_with', { template: nativeTemplateShortLabel(tid) }),
+            ts: Date.now(),
+          });
           renderChatLog();
           renderFramesStrip();
           renderPreview();
@@ -292,7 +417,7 @@ async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup'
     }
   } catch (e) {
     state.enhancing = null;
-    toast(t('enhance.failed', { message: (e?.message ?? e) }), 'error');
+    toast(t('enhance.failed', { message: e?.message ?? e }), 'error');
     renderFramesStrip();
   }
 }
@@ -306,7 +431,7 @@ async function unenhanceFrameAction(nodeId) {
     renderPreview();
     refreshProjects();
   } catch (e) {
-    toast(t('enhance.failed', { message: (e?.message ?? e) }), 'error');
+    toast(t('enhance.failed', { message: e?.message ?? e }), 'error');
   }
 }
 
@@ -317,13 +442,17 @@ async function unenhanceFrameAction(nodeId) {
 function isExportIntent(text) {
   if (!text) return false;
   const t = text.trim();
-  if (t.length > 40) return false;        // long messages are content / iterate requests
+  if (t.length > 40) return false; // long messages are content / iterate requests
   if (/https?:\/\//i.test(t)) return false; // a link is ALWAYS source material to build from, never "export"
   // "生成/做一个视频" is the most common way to ask to CREATE a video — it must
   // NOT count as export. Only match explicit export/render verbs that target an
   // already-produced result: 导出 / 出片 / 渲染 / export / render / encode / 输出mp4.
-  return /^\s*(?:export|render|encode|导出(?:视频|为?\s?mp4)?|出片|渲染|输出\s?mp4|存为\s?mp4)\s*$/i.test(t)
-    || /(?:^|\s)(?:导出|出片|渲染成?|export|render|encode)(?:$|\s|视频|为?\s?mp4|成\s?mp4)/i.test(t);
+  return (
+    /^\s*(?:export|render|encode|导出(?:视频|为?\s?mp4)?|出片|渲染|输出\s?mp4|存为\s?mp4)\s*$/i.test(
+      t,
+    ) ||
+    /(?:^|\s)(?:导出|出片|渲染成?|export|render|encode)(?:$|\s|视频|为?\s?mp4|成\s?mp4)/i.test(t)
+  );
 }
 
 async function revealExportedFile() {
@@ -333,16 +462,27 @@ async function revealExportedFile() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || `${r.status}`);
   } catch (e) {
-    toast(t('export.reveal_failed', { message: (e?.message ?? e) }), 'error');
+    toast(t('export.reveal_failed', { message: e?.message ?? e }), 'error');
   }
 }
 async function refreshTemplates() {
   const r = await API.templates();
   state.templates = r.templates ?? [];
+  try {
+    const n = await API.nativeTemplates();
+    state.nativeTemplates = n.templates ?? [];
+    if (n.default_id) state.nativeDefaultId = n.default_id;
+  } catch {
+    // Fall back to native flags on the full template list
+    state.nativeTemplates = (state.templates ?? []).filter((t) => t.native);
+  }
 }
 async function refreshAgents() {
-  try { state.agents = (await API.agents()).agents ?? []; }
-  catch { state.agents = []; }
+  try {
+    state.agents = (await API.agents()).agents ?? [];
+  } catch {
+    state.agents = [];
+  }
 }
 async function refreshProjects() {
   state.projects = (await API.projects()).projects ?? [];
@@ -352,7 +492,7 @@ async function refreshProjects() {
 async function selectProject(id) {
   state.selectedId = id;
   state.selected = (await API.getProject(id)).project;
-  state.activeFrameId = null;  // reset frame selection on project switch
+  state.activeFrameId = null; // reset frame selection on project switch
   state.iterateFocusFrameId = null;
   state.editTextMode = false;
   state.enhancing = null;
@@ -362,21 +502,34 @@ async function selectProject(id) {
   try {
     const cg = await API.contentGraph(id);
     if (cg?.graph?.nodes) for (const n of cg.graph.nodes) state.frameKinds[n.id] = n.kind;
-  } catch { /* no graph (single-frame project) — no toggles, fine */ }
+  } catch {
+    /* no graph (single-frame project) — no toggles, fine */
+  }
   // A generation running for the PREVIOUS project keeps going on the backend
   // (its result persists); just release the composer so this project is usable.
   // The in-flight SSE loop self-stops once it sees selectedId changed.
   state.composing = false;
-  try { state.messages = (await API.getMessages(id)).messages ?? []; }
-  catch { state.messages = []; }
+  try {
+    state.messages = (await API.getMessages(id)).messages ?? [];
+  } catch {
+    state.messages = [];
+  }
   // Export history is persisted on the project — surface the latest export so
   // its "MP4 ready" card survives a session/project switch (it was previously
   // only an in-memory chat message and vanished on switch).
   const exports = state.selected?.exports ?? [];
   if (exports.length && exports[exports.length - 1]?.path) {
-    state.messages.push({ role: 'export-done', content: exports[exports.length - 1].path, ts: Date.now() });
+    state.messages.push({
+      role: 'export-done',
+      content: exports[exports.length - 1].path,
+      ts: Date.now(),
+    });
   } else if (state.selected?.lastOutputMp4Path) {
-    state.messages.push({ role: 'export-done', content: state.selected.lastOutputMp4Path, ts: Date.now() });
+    state.messages.push({
+      role: 'export-done',
+      content: state.selected.lastOutputMp4Path,
+      ts: Date.now(),
+    });
   }
   // If a generation is still running on the backend for this project, surface a
   // live "still generating" line (the in-memory progress lines were lost on the
@@ -384,12 +537,18 @@ async function selectProject(id) {
   try {
     const g = await fetch(`/api/projects/${id}/generating`).then((r) => r.json());
     if (g?.generating && id === state.selectedId) {
-      state.messages.push({ role: 'preview-event', content: t('chat.still_generating'), ts: Date.now() });
+      state.messages.push({
+        role: 'preview-event',
+        content: t('chat.still_generating'),
+        ts: Date.now(),
+      });
     }
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
   renderSidebar();
-  renderToolbar();   // <-- bug fix: toolbar buttons (template / agent / export) must
-                     //     be re-enabled after a project is selected
+  renderToolbar(); // <-- bug fix: toolbar buttons (template / agent / export) must
+  //     be re-enabled after a project is selected
   renderMain();
   await refreshTextFields();
 }
@@ -508,7 +667,7 @@ function renderToolbar() {
 
   pickBtn.disabled = !p;
   if (p && p.templateId) {
-    const tpl = state.templates.find(x => x.id === p.templateId);
+    const tpl = state.templates.find((x) => x.id === p.templateId);
     pickBtn.classList.remove('empty');
     pickBtn.querySelector('.label').textContent = tpl ? tpl.name : p.templateId;
   } else {
@@ -552,11 +711,14 @@ function renderAgentPill() {
     dot.className = 'agent-dot';
     return;
   }
-  const currentId = p.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
+  const currentId =
+    p.agentId ?? state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api';
   const a = state.agents.find((x) => x.id === currentId);
   const available = a?.available ?? false;
   label.textContent = a?.name ?? currentId;
-  logo.innerHTML = AGENT_LOGOS[currentId] ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />` : '';
+  logo.innerHTML = AGENT_LOGOS[currentId]
+    ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />`
+    : '';
   dot.className = 'agent-dot ' + (available ? 'ok' : 'missing');
   pill.title = available ? t('toolbar.agent_ready') : t('settings.agent.unavailable');
   renderModelSwitch(currentId);
@@ -569,7 +731,10 @@ async function renderModelSwitch(currentAgentId) {
   const wrap = document.getElementById('model-switch');
   const sel = document.getElementById('model-select');
   if (!wrap || !sel) return;
-  if (!state.selected || currentAgentId !== 'amr') { wrap.hidden = true; return; }
+  if (!state.selected || currentAgentId !== 'amr') {
+    wrap.hidden = true;
+    return;
+  }
   wrap.hidden = false;
   // Fetch once per session; cache on state.
   if (!state._amrModels) {
@@ -577,19 +742,31 @@ async function renderModelSwitch(currentAgentId) {
       const data = await fetch('/api/agents/amr/models').then((r) => r.json());
       state._amrModels = data.models ?? [];
       state._amrDefaultModel = data.default ?? null;
-    } catch { state._amrModels = []; }
+    } catch {
+      state._amrModels = [];
+    }
   }
   const models = state._amrModels;
-  if (!models.length) { wrap.hidden = true; return; }
+  if (!models.length) {
+    wrap.hidden = true;
+    return;
+  }
   const chosen = state.selected.agentModel ?? state._amrDefaultModel ?? models[0].id;
-  sel.innerHTML = models.map((m) => `<option value="${esc(m.id)}"${m.id === chosen ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+  sel.innerHTML = models
+    .map(
+      (m) =>
+        `<option value="${esc(m.id)}"${m.id === chosen ? ' selected' : ''}>${esc(m.label)}</option>`,
+    )
+    .join('');
   sel.onchange = async () => {
     if (!state.selected) return;
     try {
       await API.setAgent(state.selected.id, 'amr', sel.value);
       state.selected = (await API.getProject(state.selected.id)).project;
       toast(`✓ ${sel.value}`, 'success');
-    } catch (e) { toast(`${e?.message ?? e}`, 'error'); }
+    } catch (e) {
+      toast(`${e?.message ?? e}`, 'error');
+    }
   };
 }
 
@@ -597,34 +774,44 @@ async function renderModelSwitch(currentAgentId) {
 function renderAgentMenu() {
   const menu = document.getElementById('agent-menu');
   if (!menu || !state.selected) return;
-  const currentId = state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
-  menu.innerHTML = state.agents.map((a) => {
-    const cur = a.id === currentId ? ' current' : '';
-    const logo = AGENT_LOGOS[a.id] ? `<img src="${esc(AGENT_LOGOS[a.id])}" alt="" />` : '';
-    // AMR is "found but needs login": it can be made available by signing in,
-    // unlike a genuinely missing CLI. Offer a login button instead of just
-    // greying it out + the misleading "Not installed".
-    const needsLogin = !a.available && a.id === 'amr' && !!a.hint;
-    // Star the recommended agent (AMR) to draw the eye.
-    const star = a.id === 'amr' ? `<span class="mi-star" title="${esc(t('agent.recommended'))}">★</span>` : '';
-    const inner = `<span class="mi-dot ${a.available ? 'ok' : ''}"></span>
+  const currentId =
+    state.selected.agentId ??
+    state.agents.find((a) => a.available && a.id !== 'amr')?.id ??
+    'anthropic-api';
+  menu.innerHTML = state.agents
+    .map((a) => {
+      const cur = a.id === currentId ? ' current' : '';
+      const logo = AGENT_LOGOS[a.id] ? `<img src="${esc(AGENT_LOGOS[a.id])}" alt="" />` : '';
+      // AMR is "found but needs login": it can be made available by signing in,
+      // unlike a genuinely missing CLI. Offer a login button instead of just
+      // greying it out + the misleading "Not installed".
+      const needsLogin = !a.available && a.id === 'amr' && !!a.hint;
+      // Star the recommended agent (AMR) to draw the eye.
+      const star =
+        a.id === 'amr'
+          ? `<span class="mi-star" title="${esc(t('agent.recommended'))}">★</span>`
+          : '';
+      const inner = `<span class="mi-dot ${a.available ? 'ok' : ''}"></span>
       <span class="mi-logo">${logo}</span>
       <span class="mi-name">${esc(a.name)}</span>${star}`;
-    // AMR-needs-login: render the row as a DIV (not a button) so a real, separate
-    // Sign-in <button> can live beside it — nesting a button inside a button is
-    // invalid HTML and the outer one eats the inner one's clicks.
-    if (needsLogin) {
-      return `<div class="agent-menu-item is-unselectable" title="${esc(a.hint ?? '')}">
+      // AMR-needs-login: render the row as a DIV (not a button) so a real, separate
+      // Sign-in <button> can live beside it — nesting a button inside a button is
+      // invalid HTML and the outer one eats the inner one's clicks.
+      if (needsLogin) {
+        return `<div class="agent-menu-item is-unselectable" title="${esc(a.hint ?? '')}">
         ${inner}
         <button type="button" class="mi-login" data-login-agent="${esc(a.id)}">${esc(t('agent.sign_in'))}</button>
       </div>`;
-    }
-    const tag = a.available ? '' : `<span class="mi-tag">${esc(t('settings.agent.unavailable'))}</span>`;
-    const unsel = a.available ? '' : ' is-unselectable';
-    return `<button type="button" class="agent-menu-item${cur}${unsel}" data-agent-id="${esc(a.id)}" data-selectable="${a.available ? '1' : '0'}" title="${esc(a.hint ?? '')}">
+      }
+      const tag = a.available
+        ? ''
+        : `<span class="mi-tag">${esc(t('settings.agent.unavailable'))}</span>`;
+      const unsel = a.available ? '' : ' is-unselectable';
+      return `<button type="button" class="agent-menu-item${cur}${unsel}" data-agent-id="${esc(a.id)}" data-selectable="${a.available ? '1' : '0'}" title="${esc(a.hint ?? '')}">
       ${inner}${tag}
     </button>`;
-  }).join('');
+    })
+    .join('');
   menu.querySelectorAll('.agent-menu-item').forEach((item) => {
     item.onclick = async (e) => {
       // Login button inside the item: don't treat as agent-select.
@@ -658,16 +845,21 @@ function renderAgentMenu() {
         const data = await res.json();
         if (res.ok && data.ok) {
           toast(t('agent.signed_in'), 'success');
-          state.agents = (await fetch('/api/agents?force=1').then((r) => r.json())).agents ?? state.agents;
+          state.agents =
+            (await fetch('/api/agents?force=1').then((r) => r.json())).agents ?? state.agents;
           renderAgentMenu();
           renderToolbar();
         } else {
           toast(data.error || t('agent.sign_in_failed'), 'error');
-          btn.textContent = label; delete btn.dataset.busy; btn.classList.remove('busy');
+          btn.textContent = label;
+          delete btn.dataset.busy;
+          btn.classList.remove('busy');
         }
       } catch (err) {
         toast(`${err?.message ?? err}`, 'error');
-        btn.textContent = label; delete btn.dataset.busy; btn.classList.remove('busy');
+        btn.textContent = label;
+        delete btn.dataset.busy;
+        btn.classList.remove('busy');
       }
     };
   });
@@ -706,7 +898,10 @@ function wireToolbar() {
     agentBtn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!state.selected) { toast(t('composer.placeholder.no_project'), 'error'); return; }
+      if (!state.selected) {
+        toast(t('composer.placeholder.no_project'), 'error');
+        return;
+      }
       const menu = document.getElementById('agent-menu');
       if (!menu) return;
       if (menu.hidden) {
@@ -754,8 +949,9 @@ function renderMain() {
       <div class="project-list" id="project-list"></div>
     </aside>
 
-    ${state.selected
-      ? `
+    ${
+      state.selected
+        ? `
         <section class="chat-pane">
           <div class="chat-log" id="chat-log"></div>
           <div class="composer">
@@ -875,9 +1071,10 @@ function renderMain() {
           </div>
         </div>
       `
-      : `<div class="empty-state"><div><div class="ico">🎬</div>
+        : `<div class="empty-state"><div><div class="ico">🎬</div>
           <h2>${t('app.empty_pick_create')}</h2>
-          <p>${t('app.empty_subtitle')}</p></div></div>`}
+          <p>${t('app.empty_subtitle')}</p></div></div>`
+    }
   `;
   // Re-attach sidebar handlers (renderMain rebuilt the DOM)
   renderSidebar();
@@ -898,10 +1095,14 @@ function renderMain() {
         sendMessage();
       }
     });
-    document.getElementById('btn-attach').onclick = () => document.getElementById('file-input').click();
+    document.getElementById('btn-attach').onclick = () =>
+      document.getElementById('file-input').click();
     document.getElementById('file-input').onchange = (e) => addAttachments([...e.target.files]);
     wireDragAndPaste();
-    document.getElementById('btn-reload').onclick = () => { reloadPreview(); refreshTextFields(); };
+    document.getElementById('btn-reload').onclick = () => {
+      reloadPreview();
+      refreshTextFields();
+    };
     wireSoundtrackPanel();
   }
 }
@@ -934,7 +1135,9 @@ function wireSoundtrackPanel() {
   document.querySelectorAll('#st-music-presets .st-preset').forEach((btn) => {
     btn.onclick = () => {
       musicPrompt.value = btn.dataset.prompt || '';
-      document.querySelectorAll('#st-music-presets .st-preset').forEach((b) => b.classList.remove('active'));
+      document
+        .querySelectorAll('#st-music-presets .st-preset')
+        .forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
     };
   });
@@ -943,11 +1146,17 @@ function wireSoundtrackPanel() {
   // narrationByFrame: { [graphNodeId]: text }. The textarea always shows the
   // line for the CURRENTLY SELECTED frame (state.activeFrameId); editing it
   // writes back to that frame. Switching frames in the strip swaps the text.
-  const sortedFrames = [...(state.selected?.frames ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const sortedFrames = [...(state.selected?.frames ?? [])].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  );
   const hasFrames = sortedFrames.length > 0;
   // Seed from saved soundtrack; migrate a legacy single narrationText onto frame 1.
   state._narrationByFrame = { ...(state.selected?.soundtrack?.narrationByFrame ?? {}) };
-  if (!Object.keys(state._narrationByFrame).length && state.selected?.soundtrack?.narrationText && sortedFrames[0]) {
+  if (
+    !Object.keys(state._narrationByFrame).length &&
+    state.selected?.soundtrack?.narrationText &&
+    sortedFrames[0]
+  ) {
     state._narrationByFrame[sortedFrames[0].graphNodeId] = state.selected.soundtrack.narrationText;
   }
   const frameLabel = (fid) => {
@@ -956,7 +1165,8 @@ function wireSoundtrackPanel() {
   };
   // Read frames LIVE from state (not the wire-time snapshot) so button state is
   // always correct no matter what changed it (generate / regen / switch / clear).
-  const liveFrames = () => [...(state.selected?.frames ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const liveFrames = () =>
+    [...(state.selected?.frames ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const currentFrameId = () => state.activeFrameId ?? liveFrames()[0]?.graphNodeId ?? null;
   const syncNarrationField = () => {
     const frames = liveFrames();
@@ -967,19 +1177,26 @@ function wireSoundtrackPanel() {
       // Spell out which frame the script + "✨ draft this frame" act on, so it's
       // obvious the per-frame buttons follow the selected frame (issues #5):
       // users couldn't tell "draft this frame" only touched the active one.
-      whichEl.textContent = has && i >= 0
-        ? (frames.length > 1
+      whichEl.textContent =
+        has && i >= 0
+          ? frames.length > 1
             ? t('soundtrack.editing_frame', { n: i + 1, total: frames.length })
-            : '')
-        : '';
+            : ''
+          : '';
     }
     // Only overwrite the textarea when it isn't the user's in-progress edit.
     if (document.activeElement !== narrationText) {
       narrationText.value = (fid && state._narrationByFrame[fid]) || '';
     }
     const dis = !has || !fid;
-    if (draftFrameBtn) { draftFrameBtn.disabled = dis; draftFrameBtn.title = dis ? t('soundtrack.draft_need_frames') : ''; }
-    if (draftAllBtn) { draftAllBtn.disabled = !has; draftAllBtn.title = has ? '' : t('soundtrack.draft_need_frames'); }
+    if (draftFrameBtn) {
+      draftFrameBtn.disabled = dis;
+      draftFrameBtn.title = dis ? t('soundtrack.draft_need_frames') : '';
+    }
+    if (draftAllBtn) {
+      draftAllBtn.disabled = !has;
+      draftAllBtn.title = has ? '' : t('soundtrack.draft_need_frames');
+    }
     const fitBtn = document.getElementById('btn-st-fit');
     if (fitBtn) {
       const anyNarr = Object.values(state._narrationByFrame || {}).some((v) => (v || '').trim());
@@ -1002,13 +1219,19 @@ function wireSoundtrackPanel() {
     if (!state.selected) return;
     const btn = frameId ? draftFrameBtn : draftAllBtn;
     const label = btn?.textContent;
-    if (btn) { btn.disabled = true; btn.textContent = t('soundtrack.drafting'); }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = t('soundtrack.drafting');
+    }
     try {
       const res = await fetch(`/api/projects/${state.selected.id}/draft-narration`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          agentId: state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api'),
+          agentId:
+            state.selected.agentId ??
+            state.agents.find((a) => a.available && a.id !== 'amr')?.id ??
+            'anthropic-api',
           ...(frameId && { frameId }),
         }),
       });
@@ -1018,12 +1241,18 @@ function wireSoundtrackPanel() {
         Object.assign(state._narrationByFrame, data.narrationByFrame);
         syncNarrationField();
       } else {
-        if (narrationStatusEl) narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: data.error || `HTTP ${res.status}` });
+        if (narrationStatusEl)
+          narrationStatusEl.textContent = t('soundtrack.draft_failed', {
+            message: data.error || `HTTP ${res.status}`,
+          });
       }
     } catch (e) {
-      if (narrationStatusEl) narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: (e?.message ?? e) });
+      if (narrationStatusEl)
+        narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: e?.message ?? e });
     } finally {
-      if (btn) { btn.textContent = label; }
+      if (btn) {
+        btn.textContent = label;
+      }
       syncNarrationField();
     }
   }
@@ -1033,15 +1262,18 @@ function wireSoundtrackPanel() {
   // "Fit to narration": re-pace each frame's duration by its narration length.
   const fitBtn = document.getElementById('btn-st-fit');
   if (fitBtn) {
-    const anyNarration = () => Object.values(state._narrationByFrame || {}).some((v) => (v || '').trim());
+    const anyNarration = () =>
+      Object.values(state._narrationByFrame || {}).some((v) => (v || '').trim());
     fitBtn.disabled = !hasFrames || !anyNarration();
     fitBtn.onclick = async () => {
       if (!state.selected || !anyNarration()) return;
       const label = fitBtn.textContent;
-      fitBtn.disabled = true; fitBtn.textContent = t('soundtrack.fitting');
+      fitBtn.disabled = true;
+      fitBtn.textContent = t('soundtrack.fitting');
       try {
         const res = await fetch(`/api/projects/${state.selected.id}/fit-durations`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ narrationByFrame: state._narrationByFrame }),
         });
         const data = await res.json();
@@ -1056,7 +1288,8 @@ function wireSoundtrackPanel() {
       } catch (e) {
         toast(`${e?.message ?? e}`, 'error');
       } finally {
-        fitBtn.textContent = label; fitBtn.disabled = !anyNarration();
+        fitBtn.textContent = label;
+        fitBtn.disabled = !anyNarration();
       }
     };
   }
@@ -1071,8 +1304,12 @@ function wireSoundtrackPanel() {
   }
   musicVolVal.textContent = `${musicVol.value} dB`;
   narrationVolVal.textContent = `${narrationVol.value} dB`;
-  musicVol.oninput = () => { musicVolVal.textContent = `${musicVol.value} dB`; };
-  narrationVol.oninput = () => { narrationVolVal.textContent = `${narrationVol.value} dB`; };
+  musicVol.oninput = () => {
+    musicVolVal.textContent = `${musicVol.value} dB`;
+  };
+  narrationVol.oninput = () => {
+    narrationVolVal.textContent = `${narrationVol.value} dB`;
+  };
 
   clearBtn.onclick = async () => {
     if (!state.selected) return;
@@ -1094,17 +1331,29 @@ function wireSoundtrackPanel() {
     const payload = {};
     if (kind === 'music') {
       const mp = musicPrompt.value.trim();
-      if (!mp) { if (statusEl) statusEl.textContent = t('soundtrack.empty_music'); return; }
+      if (!mp) {
+        if (statusEl) statusEl.textContent = t('soundtrack.empty_music');
+        return;
+      }
       payload.music = { prompt: mp, instrumental: true, volumeDb: Number(musicVol.value) };
     } else {
       // Stitch every frame's line in order into one narration track.
       const stitched = sortedFrames
         .map((f) => (state._narrationByFrame[f.graphNodeId] || '').trim())
-        .filter((s) => s.length > 0).join('\n');
+        .filter((s) => s.length > 0)
+        .join('\n');
       const nt = stitched || narrationText.value.trim();
-      if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
+      if (!nt) {
+        if (statusEl) statusEl.textContent = t('soundtrack.empty_narration');
+        return;
+      }
       const voiceSel = document.getElementById('st-narration-voice');
-      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
+      payload.narration = {
+        text: nt,
+        volumeDb: Number(narrationVol.value),
+        byFrame: state._narrationByFrame,
+        ...(voiceSel?.value && { voiceId: voiceSel.value }),
+      };
     }
 
     const label = btn?.textContent;
@@ -1120,12 +1369,17 @@ function wireSoundtrackPanel() {
         body: JSON.stringify(payload),
       });
     } catch (e) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: (e?.message ?? e) });
-      if (btn) btn.disabled = false; clearBtn.disabled = false; return;
+      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: e?.message ?? e });
+      if (btn) btn.disabled = false;
+      clearBtn.disabled = false;
+      return;
     }
     if (!res.ok || !res.body) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: `HTTP ${res.status}` });
-      if (btn) btn.disabled = false; clearBtn.disabled = false; return;
+      if (statusEl)
+        statusEl.textContent = t('soundtrack.failed', { message: `HTTP ${res.status}` });
+      if (btn) btn.disabled = false;
+      clearBtn.disabled = false;
+      return;
     }
 
     const reader = res.body.getReader();
@@ -1141,9 +1395,16 @@ function wireSoundtrackPanel() {
         for (const line of events) {
           if (!line.startsWith('data: ')) continue;
           let ev;
-          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          try {
+            ev = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
           if (ev.type === 'audio_progress' && statusEl) {
-            statusEl.textContent = ev.stage === 'music' ? t('soundtrack.progress_music') : t('soundtrack.progress_narration');
+            statusEl.textContent =
+              ev.stage === 'music'
+                ? t('soundtrack.progress_music')
+                : t('soundtrack.progress_narration');
           } else if (ev.type === 'audio_done') {
             if (statusEl) statusEl.textContent = t('soundtrack.done');
             if (ev.project) state.selected = ev.project;
@@ -1154,9 +1415,12 @@ function wireSoundtrackPanel() {
         }
       }
     } catch (e) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: (e?.message ?? e) });
+      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: e?.message ?? e });
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
       clearBtn.disabled = false;
     }
   }
@@ -1175,8 +1439,14 @@ function renderSoundtrackPreview(soundtrack) {
   const blocks = [];
   const musicSrc = soundtrack.musicAssetId && srcFor(soundtrack.musicAssetId);
   const narrSrc = soundtrack.narrationAssetId && srcFor(soundtrack.narrationAssetId);
-  if (musicSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`);
-  if (narrSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`);
+  if (musicSrc)
+    blocks.push(
+      `<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`,
+    );
+  if (narrSrc)
+    blocks.push(
+      `<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`,
+    );
   previewEl.innerHTML = blocks.join('');
 }
 
@@ -1186,7 +1456,8 @@ function attachmentKind(file) {
   if (t.startsWith('image/')) return 'image';
   if (t.startsWith('video/')) return 'video';
   if (t.startsWith('audio/')) return 'audio';
-  if (t === 'application/json' || t === 'text/csv' || /\.(csv|tsv|json)$/i.test(file.name)) return 'data';
+  if (t === 'application/json' || t === 'text/csv' || /\.(csv|tsv|json)$/i.test(file.name))
+    return 'data';
   if (t.startsWith('text/')) return 'text';
   return 'reference-link';
 }
@@ -1201,7 +1472,10 @@ function addAttachments(files) {
     state.pendingAttachments.push(att);
     if (kind === 'image') {
       const r = new FileReader();
-      r.onload = (e) => { att.dataUrl = e.target.result; renderAttachments(); };
+      r.onload = (e) => {
+        att.dataUrl = e.target.result;
+        renderAttachments();
+      };
       r.readAsDataURL(f);
     }
   }
@@ -1216,15 +1490,19 @@ function removeAttachment(i) {
 function renderAttachments() {
   const wrap = document.getElementById('attachments');
   if (!wrap) return;
-  wrap.innerHTML = state.pendingAttachments.map((a, i) => {
-    const thumb = a.dataUrl ? `<img src="${a.dataUrl}" alt="" />` : `<span class="ico">${iconForKind(a.kind)}</span>`;
-    return `<span class="att-chip">
+  wrap.innerHTML = state.pendingAttachments
+    .map((a, i) => {
+      const thumb = a.dataUrl
+        ? `<img src="${a.dataUrl}" alt="" />`
+        : `<span class="ico">${iconForKind(a.kind)}</span>`;
+      return `<span class="att-chip">
       ${thumb}
       <span class="name" title="${esc(a.name)}">${esc(a.name)}</span>
       <button data-i="${i}" title="Remove">×</button>
     </span>`;
-  }).join('');
-  wrap.querySelectorAll('button[data-i]').forEach(btn => {
+    })
+    .join('');
+  wrap.querySelectorAll('button[data-i]').forEach((btn) => {
     btn.onclick = () => removeAttachment(Number(btn.dataset.i));
   });
 }
@@ -1265,7 +1543,7 @@ function renderComposer() {
   const ta = document.getElementById('composer-input');
   const sendBtn = document.getElementById('btn-send');
   if (!ta) return;
-  const availableAgents = state.agents.filter(a => a.available);
+  const availableAgents = state.agents.filter((a) => a.available);
   const agentsKnown = state.agents.length > 0;
   const canType = !!p && !state.composing;
   const canSend = !!(p && availableAgents.length > 0 && !state.composing);
@@ -1301,12 +1579,17 @@ function renderComposer() {
     }
   }
 
-  ta.placeholder = !p ? t('composer.placeholder.no_project')
-    : !agentsKnown ? t('composer.placeholder.detecting_agents')
-    : availableAgents.length === 0 ? t('composer.placeholder.no_agent')
-    : state.iterateFocusFrameId ? t('composer.placeholder.focus')
-    : !p.templateId ? t('composer.placeholder.no_template')
-    : t('composer.placeholder.with_template');
+  ta.placeholder = !p
+    ? t('composer.placeholder.no_project')
+    : !agentsKnown
+      ? t('composer.placeholder.detecting_agents')
+      : availableAgents.length === 0
+        ? t('composer.placeholder.no_agent')
+        : state.iterateFocusFrameId
+          ? t('composer.placeholder.focus')
+          : !p.templateId
+            ? t('composer.placeholder.no_template')
+            : t('composer.placeholder.with_template');
 }
 
 function renderFooter() {
@@ -1361,7 +1644,7 @@ function renderChatLog() {
       if (!text) return;
       const m = state.messages[msgIdx];
       if (!m || m.pickedOption) return;
-      m.pickedOption = text;  // mark answered so options collapse
+      m.pickedOption = text; // mark answered so options collapse
       pickAndSend(text);
     };
     const autoResize = () => {
@@ -1390,11 +1673,15 @@ function renderChatLog() {
     if (!totalEl) return;
     const card = totalEl.closest('.form-card');
     const val = (key) => {
-      const h = card?.querySelector(`.form-seg[data-form-key="${CSS.escape(key)}"] input[type="hidden"]`);
+      const h = card?.querySelector(
+        `.form-seg[data-form-key="${CSS.escape(key)}"] input[type="hidden"]`,
+      );
       return Number(h?.value || 0);
     };
-    const pf = val('per_frame'), fc = val('frame_count');
-    totalEl.textContent = pf > 0 && fc > 0 ? `${t('soundtrack.total_word') || 'Total'} ≈ ${pf * fc}s` : '';
+    const pf = val('per_frame'),
+      fc = val('frame_count');
+    totalEl.textContent =
+      pf > 0 && fc > 0 ? `${t('soundtrack.total_word') || 'Total'} ≈ ${pf * fc}s` : '';
   };
   log.querySelectorAll('.form-seg-btn[data-form-msg]').forEach((btn) => {
     btn.onclick = (e) => {
@@ -1410,7 +1697,9 @@ function renderChatLog() {
     };
   });
   // Initial paint of any total readouts present.
-  log.querySelectorAll('[id^="form-total-"]').forEach((el) => updateFormTotal(Number(el.id.replace('form-total-', ''))));
+  log
+    .querySelectorAll('[id^="form-total-"]')
+    .forEach((el) => updateFormTotal(Number(el.id.replace('form-total-', ''))));
   log.querySelectorAll('button.form-submit[data-form-msg]').forEach((btn) => {
     btn.onclick = async () => {
       const msgIdx = Number(btn.dataset.formMsg);
@@ -1422,19 +1711,24 @@ function renderChatLog() {
       let missing = null;
       // Only grab inputs / textareas / selects — buttons share the data-form-key
       // attribute but their .value is empty, would clobber the real one.
-      card.querySelectorAll(
-        'input[data-form-key], textarea[data-form-key], select[data-form-key]',
-      ).forEach((el) => {
-        const key = el.dataset.formKey;
-        const val = (el.value || '').trim();
-        if (!val && card.querySelector(`label .req`) &&
-            card.querySelector(`[data-form-key="${CSS.escape(key)}"]`).closest('.form-field')
-              ?.querySelector('label .req')) {
-          // Required field that's empty
-          missing = key;
-        }
-        collected[key] = val;
-      });
+      card
+        .querySelectorAll('input[data-form-key], textarea[data-form-key], select[data-form-key]')
+        .forEach((el) => {
+          const key = el.dataset.formKey;
+          const val = (el.value || '').trim();
+          if (
+            !val &&
+            card.querySelector(`label .req`) &&
+            card
+              .querySelector(`[data-form-key="${CSS.escape(key)}"]`)
+              .closest('.form-field')
+              ?.querySelector('label .req')
+          ) {
+            // Required field that's empty
+            missing = key;
+          }
+          collected[key] = val;
+        });
       if (missing) {
         toast(`${t('text_pane.save_state.error')}: ${missing}`, 'warn');
         return;
@@ -1493,7 +1787,7 @@ function renderChatLog() {
           await navigator.clipboard.writeText(path);
           toast(t('export.copied'), 'success');
         } catch (e) {
-          toast(t('export.copy_failed', { message: (e?.message ?? e) }), 'error');
+          toast(t('export.copy_failed', { message: e?.message ?? e }), 'error');
         }
       }
     });
@@ -1527,7 +1821,8 @@ function renderMessage(m, idx) {
   }
   if (m.role === 'system') return `<div class="msg system">${esc(m.content)}</div>`;
   if (m.role === 'preview-event') return `<div class="msg preview-event">${esc(m.content)}</div>`;
-  if (m.role === 'thinking') return `<div class="msg thinking">${esc(m.content || t('chat.thinking'))}</div>`;
+  if (m.role === 'thinking')
+    return `<div class="msg thinking">${esc(m.content || t('chat.thinking'))}</div>`;
   if (m.role === 'export-done') {
     const path = m.content || '';
     const fname = path.split('/').pop() || 'output.mp4';
@@ -1553,7 +1848,11 @@ function renderMessage(m, idx) {
       if (nextUser) {
         const fm = /^\[hv-form:submit\]\n([\s\S]*)$/.exec(nextUser.content ?? '');
         if (fm && fm[1]) {
-          try { submitted = JSON.parse(fm[1]); } catch { submitted = null; }
+          try {
+            submitted = JSON.parse(fm[1]);
+          } catch {
+            submitted = null;
+          }
         }
       }
     }
@@ -1668,8 +1967,30 @@ function md(text) {
   }
   if (typeof window.DOMPurify !== 'undefined') {
     return window.DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote', 'hr', 'span'],
+      ALLOWED_TAGS: [
+        'p',
+        'br',
+        'strong',
+        'em',
+        'b',
+        'i',
+        'u',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'ul',
+        'ol',
+        'li',
+        'a',
+        'code',
+        'pre',
+        'blockquote',
+        'hr',
+        'span',
+      ],
       ALLOWED_ATTR: ['href', 'title', 'target', 'rel'],
     });
   }
@@ -1683,8 +2004,11 @@ function parseHvOptions(text) {
   if (!m) return { prose: text, options: null };
   const prose = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
   let parsed;
-  try { parsed = JSON.parse(m[1].trim()); }
-  catch { return { prose: text, options: null }; }
+  try {
+    parsed = JSON.parse(m[1].trim());
+  } catch {
+    return { prose: text, options: null };
+  }
   if (!parsed || !Array.isArray(parsed.options) || !parsed.question) {
     return { prose: text, options: null };
   }
@@ -1712,8 +2036,11 @@ function parseHvForm(text) {
   if (!m) return { prose: text, form: null };
   const prose = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
   let parsed;
-  try { parsed = JSON.parse(m[1].trim()); }
-  catch { return { prose: text, form: null }; }
+  try {
+    parsed = JSON.parse(m[1].trim());
+  } catch {
+    return { prose: text, form: null };
+  }
   if (!parsed || !Array.isArray(parsed.fields) || parsed.fields.length === 0) {
     return { prose: text, form: null };
   }
@@ -1732,8 +2059,11 @@ function parseHvConfirm(text) {
   if (!m) return { prose: text, confirm: null };
   const prose = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
   let parsed;
-  try { parsed = JSON.parse(m[1].trim()); }
-  catch { return { prose: text, confirm: null }; }
+  try {
+    parsed = JSON.parse(m[1].trim());
+  } catch {
+    return { prose: text, confirm: null };
+  }
   if (!parsed || !Array.isArray(parsed.summary)) {
     return { prose: text, confirm: null };
   }
@@ -1745,59 +2075,70 @@ function renderFormCard(form, submitted, msgIdx) {
   const title = form.title || 'Tell me a bit more…';
   const fields = form.fields || [];
   const allowAttachments = form.allow_attachments !== false;
-  const fieldsHtml = fields.map((f, i) => {
-    const key = f.key || `field_${i}`;
-    const label = f.label || key;
-    const ph = f.placeholder || '';
-    const required = f.required ? '<span class="req">*</span>' : '';
-    const def = (submitted && submitted[key] !== undefined ? submitted[key] : (f.default ?? ''));
-    const dis = submitted ? 'disabled' : '';
-    let control;
-    if (f.kind === 'textarea') {
-      control = `<textarea data-form-msg="${msgIdx}" data-form-key="${esc(key)}" rows="2" placeholder="${esc(ph)}" ${dis}>${esc(def)}</textarea>`;
-    } else if (f.kind === 'select') {
-      const opts = (f.options || []).map((o) => {
-        const v = typeof o === 'string' ? o : o.value;
-        const lbl = typeof o === 'string' ? o : (o.label || o.value);
-        const sel = String(v) === String(def) ? 'selected' : '';
-        return `<option value="${esc(v)}" ${sel}>${esc(lbl)}</option>`;
-      }).join('');
-      control = `<select data-form-msg="${msgIdx}" data-form-key="${esc(key)}" ${dis}>${opts}</select>`;
-    } else if (f.kind === 'buttons') {
-      // Segmented control: a hidden input carries the value, visible buttons
-      // toggle. Wired up in renderChatLog.
-      const optsHtml = (f.options || []).map((o) => {
-        const v = typeof o === 'string' ? o : o.value;
-        const lbl = typeof o === 'string' ? o : (o.label || o.value);
-        const sel = String(v) === String(def) ? 'selected' : '';
-        return `<button type="button" class="form-seg-btn ${sel}" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" data-val="${esc(v)}" ${dis}>${esc(lbl)}</button>`;
-      }).join('');
-      control = `<div class="form-seg" data-form-key="${esc(key)}">
+  const fieldsHtml = fields
+    .map((f, i) => {
+      const key = f.key || `field_${i}`;
+      const label = f.label || key;
+      const ph = f.placeholder || '';
+      const required = f.required ? '<span class="req">*</span>' : '';
+      const def = submitted && submitted[key] !== undefined ? submitted[key] : (f.default ?? '');
+      const dis = submitted ? 'disabled' : '';
+      let control;
+      if (f.kind === 'textarea') {
+        control = `<textarea data-form-msg="${msgIdx}" data-form-key="${esc(key)}" rows="2" placeholder="${esc(ph)}" ${dis}>${esc(def)}</textarea>`;
+      } else if (f.kind === 'select') {
+        const opts = (f.options || [])
+          .map((o) => {
+            const v = typeof o === 'string' ? o : o.value;
+            const lbl = typeof o === 'string' ? o : o.label || o.value;
+            const sel = String(v) === String(def) ? 'selected' : '';
+            return `<option value="${esc(v)}" ${sel}>${esc(lbl)}</option>`;
+          })
+          .join('');
+        control = `<select data-form-msg="${msgIdx}" data-form-key="${esc(key)}" ${dis}>${opts}</select>`;
+      } else if (f.kind === 'buttons') {
+        // Segmented control: a hidden input carries the value, visible buttons
+        // toggle. Wired up in renderChatLog.
+        const optsHtml = (f.options || [])
+          .map((o) => {
+            const v = typeof o === 'string' ? o : o.value;
+            const lbl = typeof o === 'string' ? o : o.label || o.value;
+            const sel = String(v) === String(def) ? 'selected' : '';
+            return `<button type="button" class="form-seg-btn ${sel}" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" data-val="${esc(v)}" ${dis}>${esc(lbl)}</button>`;
+          })
+          .join('');
+        control = `<div class="form-seg" data-form-key="${esc(key)}">
         <input type="hidden" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" value="${esc(def)}" />
         ${optsHtml}
       </div>`;
-    } else {
-      control = `<input type="text" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" placeholder="${esc(ph)}" value="${esc(def)}" ${dis} />`;
-    }
-    const hintHtml = f.hint ? `<span class="form-hint">${esc(f.hint)}</span>` : '';
-    return `<div class="form-field">
+      } else {
+        control = `<input type="text" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" placeholder="${esc(ph)}" value="${esc(def)}" ${dis} />`;
+      }
+      const hintHtml = f.hint ? `<span class="form-hint">${esc(f.hint)}</span>` : '';
+      return `<div class="form-field">
       <label>${esc(label)}${required}${hintHtml}</label>
       ${control}
     </div>`;
-  }).join('');
+    })
+    .join('');
   // Live total-duration readout when the form paces by per-frame × frames.
-  const hasPerFrame = fields.some((f) => f.key === 'per_frame') && fields.some((f) => f.key === 'frame_count');
-  const totalHtml = hasPerFrame && !submitted
-    ? `<div class="form-total" id="form-total-${msgIdx}"></div>`
-    : '';
-  const dropHtml = allowAttachments && !submitted ? `
+  const hasPerFrame =
+    fields.some((f) => f.key === 'per_frame') && fields.some((f) => f.key === 'frame_count');
+  const totalHtml =
+    hasPerFrame && !submitted ? `<div class="form-total" id="form-total-${msgIdx}"></div>` : '';
+  const dropHtml =
+    allowAttachments && !submitted
+      ? `
     <div class="form-attachments" data-form-msg="${msgIdx}">
       <div class="form-drop-hint">📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）</div>
       <div class="form-attachment-list" id="form-att-${msgIdx}"></div>
       <input type="file" id="form-file-${msgIdx}" multiple style="display:none" />
       <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">+ 添加文件</button>
-    </div>` : '';
-  const actionsHtml = submitted ? '' : `
+    </div>`
+      : '';
+  const actionsHtml = submitted
+    ? ''
+    : `
     <div class="form-actions">
       <button class="form-submit" data-form-msg="${msgIdx}">提交 ↵</button>
     </div>`;
@@ -1815,15 +2156,19 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
   const title = confirm.title || 'Looks right?';
   const summary = confirm.summary || [];
   const actions = confirm.actions || ['generate', 'edit'];
-  const summaryHtml = summary.map((s) => {
-    const label = s.label || s.key || '';
-    const value = s.value !== undefined ? String(s.value) : '';
-    return `<div class="confirm-row">
+  const summaryHtml = summary
+    .map((s) => {
+      const label = s.label || s.key || '';
+      const value = s.value !== undefined ? String(s.value) : '';
+      return `<div class="confirm-row">
       <div class="confirm-label">${esc(label)}</div>
       <div class="confirm-value">${esc(value) || '<span class="muted">—</span>'}</div>
     </div>`;
-  }).join('');
-  const actionsHtml = resolved ? '' : `
+    })
+    .join('');
+  const actionsHtml = resolved
+    ? ''
+    : `
     <div class="confirm-actions">
       ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">✓ 开始生成</button>` : ''}
       ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">✏️ 修改</button>` : ''}
@@ -1838,27 +2183,32 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
 
 function renderOptionCard(opts, picked, msgIdx) {
   const allowFreeform = opts.allow_freeform !== false;
-  const optsHtml = (opts.options || []).map((o, i) => {
-    const label = o.label ?? String(o);
-    const hint = o.hint ?? '';
-    const isPicked = picked === label;
-    const cls = 'opt' + (isPicked ? ' picked' : '');
-    // Once the user has picked anything on this card, ALL buttons lock —
-    // including the picked one, so the same option can't fire twice.
-    const disabled = picked ? 'disabled' : '';
-    return `<button class="${cls}" data-opt-msg="${msgIdx}" data-opt-i="${i}" ${disabled}>
+  const optsHtml = (opts.options || [])
+    .map((o, i) => {
+      const label = o.label ?? String(o);
+      const hint = o.hint ?? '';
+      const isPicked = picked === label;
+      const cls = 'opt' + (isPicked ? ' picked' : '');
+      // Once the user has picked anything on this card, ALL buttons lock —
+      // including the picked one, so the same option can't fire twice.
+      const disabled = picked ? 'disabled' : '';
+      return `<button class="${cls}" data-opt-msg="${msgIdx}" data-opt-i="${i}" ${disabled}>
       <span class="label">${esc(label)}</span>
       ${hint ? `<span class="hint">${esc(hint)}</span>` : ''}
     </button>`;
-  }).join('');
+    })
+    .join('');
   // Inline freeform input — saves a trip to the bottom composer when the
   // user just wants to type a custom answer to this card's question.
-  const freeformHtml = allowFreeform && !picked ? `
+  const freeformHtml =
+    allowFreeform && !picked
+      ? `
     <div class="freeform-input">
       <textarea data-freeform-msg="${msgIdx}" rows="1"
         placeholder="…or type your own answer"></textarea>
       <button class="freeform-send" data-freeform-msg="${msgIdx}" disabled>↵ Send</button>
-    </div>` : '';
+    </div>`
+      : '';
   return `<div class="opt-card">
     <div class="question">${esc(opts.question)}</div>
     <div class="opts">${optsHtml}</div>
@@ -1888,30 +2238,35 @@ function renderPreview() {
   if (sortedFrames.length > 0 && !state.activeFrameId) {
     state.activeFrameId = sortedFrames[0].graphNodeId;
   }
-  if (sortedFrames.length > 0 && state.activeFrameId
-      && !sortedFrames.find((f) => f.graphNodeId === state.activeFrameId)) {
+  if (
+    sortedFrames.length > 0 &&
+    state.activeFrameId &&
+    !sortedFrames.find((f) => f.graphNodeId === state.activeFrameId)
+  ) {
     state.activeFrameId = sortedFrames[0].graphNodeId;
   }
-  const iframeSrc = sortedFrames.length > 0 && state.activeFrameId
-    ? `/preview/${p.id}/frame/${encodeURIComponent(state.activeFrameId)}?t=${Date.now()}`
-    : `/preview/${p.id}?t=${Date.now()}`;
-  const stamp = sortedFrames.length > 0 && state.activeFrameId
-    ? state.activeFrameId
-    : (p.templateId || '');
+  const iframeSrc =
+    sortedFrames.length > 0 && state.activeFrameId
+      ? `/preview/${p.id}/frame/${encodeURIComponent(state.activeFrameId)}?t=${Date.now()}`
+      : `/preview/${p.id}?t=${Date.now()}`;
+  const stamp =
+    sortedFrames.length > 0 && state.activeFrameId ? state.activeFrameId : p.templateId || '';
   // Respect the project's chosen resolution so the preview box matches the real
   // export aspect (4:5 / 9:16 / 1:1), not a hardcoded 16:9. The iframe renders
   // at the design's native pixel size and is scaled to fit (scale set on resize).
   const res = p.preferences?.resolution ?? { width: 1920, height: 1080 };
-  const vw = res.width || 1920, vh = res.height || 1080;
+  const vw = res.width || 1920,
+    vh = res.height || 1080;
   // Constrain the preview frame along the *long* axis so the whole frame stays
   // contained in the (bounded-height) stage. The base CSS only limits width
   // (width:100%; max-width:1280px) which is right for landscape, but for a
   // portrait frame (vh>vw) that lets it grow ~2275px tall and overflow — you'd
   // only see the top slice. For portrait, limit height instead and let width
   // follow the aspect-ratio. Square stays width-bound.
-  const sizeStyle = vh > vw
-    ? 'width:auto;max-width:none;height:100%;max-height:100%'
-    : 'width:100%;max-width:1280px';
+  const sizeStyle =
+    vh > vw
+      ? 'width:auto;max-width:none;height:100%;max-height:100%'
+      : 'width:100%;max-width:1280px';
   // A native (enhanced) frame has no HTML — play its rendered preview MP4 and
   // hide the data-hv-text edit affordance (there's no HTML text to edit).
   const activeFrame = sortedFrames.find((f) => f.graphNodeId === state.activeFrameId);
@@ -1971,7 +2326,9 @@ function togglePreviewEdit() {
 // project preview).
 function attachTextEditOverlay(iframe) {
   let doc;
-  try { doc = iframe.contentDocument; } catch (err) {
+  try {
+    doc = iframe.contentDocument;
+  } catch (err) {
     console.warn('[hv-edit] iframe.contentDocument blocked:', err);
     return;
   }
@@ -2014,7 +2371,10 @@ function attachTextEditOverlay(iframe) {
     range.selectNodeContents(el);
     range.collapse(false);
     const sel = doc.getSelection();
-    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
   };
   const finishEdit = async (el) => {
     if (el.getAttribute('contenteditable') !== 'true') return;
@@ -2024,13 +2384,17 @@ function attachTextEditOverlay(iframe) {
     await commitInlineTextEdits(iframe);
   };
 
-  doc.addEventListener('click', (e) => {
-    const target = e.target.closest('[data-hv-text]');
-    if (!target) return;
-    e.preventDefault();
-    e.stopPropagation();
-    enableEdit(target);
-  }, true);
+  doc.addEventListener(
+    'click',
+    (e) => {
+      const target = e.target.closest('[data-hv-text]');
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      enableEdit(target);
+    },
+    true,
+  );
   doc.addEventListener('input', (e) => {
     if (e.target.closest && e.target.closest('[data-hv-text]')) {
       dirty = true;
@@ -2039,15 +2403,25 @@ function attachTextEditOverlay(iframe) {
   doc.addEventListener('keydown', (e) => {
     const target = e.target.closest && e.target.closest('[data-hv-text][contenteditable="true"]');
     if (!target) return;
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); target.blur(); }
-    if (e.key === 'Escape') { e.preventDefault(); target.blur(); }
-  });
-  doc.addEventListener('focusout', (e) => {
-    const t = e.target;
-    if (t && t.matches && t.matches('[data-hv-text][contenteditable="true"]')) {
-      finishEdit(t);
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      target.blur();
     }
-  }, true);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      target.blur();
+    }
+  });
+  doc.addEventListener(
+    'focusout',
+    (e) => {
+      const t = e.target;
+      if (t && t.matches && t.matches('[data-hv-text][contenteditable="true"]')) {
+        finishEdit(t);
+      }
+    },
+    true,
+  );
 }
 
 async function commitInlineTextEdits(iframe) {
@@ -2126,7 +2500,7 @@ function attachPreviewScaler() {
     // frame uses a <video> instead of an <iframe> — scale it the same way, else
     // the 1920×1080 MP4 overflows and the frame gets cropped.
     const inner = frame.querySelector('iframe, video');
-    const nativeW = inner ? (parseFloat(inner.style.width) || 1920) : 1920;
+    const nativeW = inner ? Number.parseFloat(inner.style.width) || 1920 : 1920;
     frame.style.setProperty('--preview-scale', (w / nativeW).toFixed(4));
   };
   apply();
@@ -2152,7 +2526,8 @@ function renderFramesStrip() {
   const strip = document.getElementById('frames-strip');
   if (!strip) return;
   const p = state.selected;
-  const frames = p && Array.isArray(p.frames) ? [...p.frames].sort((a, b) => a.order - b.order) : [];
+  const frames =
+    p && Array.isArray(p.frames) ? [...p.frames].sort((a, b) => a.order - b.order) : [];
   if (frames.length === 0) {
     strip.classList.remove('has-frames');
     strip.innerHTML = '';
@@ -2165,31 +2540,31 @@ function renderFramesStrip() {
   // Bust cache when frame content changes (re-renders point to a new
   // versioned URL via `?v=<timestamp>` derived from project.updatedAt).
   const ver = p.updatedAt ? new Date(p.updatedAt).getTime() : Date.now();
-  const tabs = frames.map((f) => {
-    const isActive = f.graphNodeId === state.activeFrameId;
-    const isFocus = f.graphNodeId === state.iterateFocusFrameId;
-    const cls = ['frame-tab', isActive && 'active', isFocus && 'focus']
-      .filter(Boolean).join(' ');
-    // A native (enhanced) frame has no HTML — play its rendered preview MP4.
-    const enhanced = f.engine === 'remotion';
-    const thumbInner = enhanced
-      ? `<video src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}.mp4?v=${ver}" autoplay muted loop playsinline tabindex="-1"></video>`
-      : `<iframe sandbox="allow-scripts" src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}?thumb=1&v=${ver}" tabindex="-1" loading="lazy"></iframe>`;
-    // The "⚡ Enhance" control shows only on data frames (kind==='data'). It's an
-    // overlay badge ON the thumbnail (top area) so it's obvious + always visible.
-    const isData = state.frameKinds[f.graphNodeId] === 'data';
-    const busy = state.enhancing && state.enhancing.nodeId === f.graphNodeId;
-    let enhanceCtl = '';
-    if (isData) {
-      if (busy) {
-        enhanceCtl = `<span class="frame-enhance busy" data-fid="${esc(f.graphNodeId)}">${t('frames.enhancing', { pct: state.enhancing.pct ?? 0 })}</span>`;
-      } else if (enhanced) {
-        enhanceCtl = `<span class="frame-enhance on" data-fid="${esc(f.graphNodeId)}" data-act="unenhance" title="${esc(t('frames.enhanced_revert'))}">${t('frames.enhanced_revert')}</span>`;
-      } else {
-        enhanceCtl = `<span class="frame-enhance" data-fid="${esc(f.graphNodeId)}" data-act="enhance" title="${esc(t('frames.enhance_hint'))}">${t('frames.enhance')}</span>`;
+  const tabs = frames
+    .map((f) => {
+      const isActive = f.graphNodeId === state.activeFrameId;
+      const isFocus = f.graphNodeId === state.iterateFocusFrameId;
+      const cls = ['frame-tab', isActive && 'active', isFocus && 'focus'].filter(Boolean).join(' ');
+      // A native (enhanced) frame has no HTML — play its rendered preview MP4.
+      const enhanced = f.engine === 'remotion';
+      const thumbInner = enhanced
+        ? `<video src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}.mp4?v=${ver}" autoplay muted loop playsinline tabindex="-1"></video>`
+        : `<iframe sandbox="allow-scripts" src="/preview/${p.id}/frame/${encodeURIComponent(f.graphNodeId)}?thumb=1&v=${ver}" tabindex="-1" loading="lazy"></iframe>`;
+      // The "⚡ Enhance" control shows only on data frames (kind==='data'). It's an
+      // overlay badge ON the thumbnail (top area) so it's obvious + always visible.
+      const isData = state.frameKinds[f.graphNodeId] === 'data';
+      const busy = state.enhancing && state.enhancing.nodeId === f.graphNodeId;
+      let enhanceCtl = '';
+      if (isData) {
+        if (busy) {
+          enhanceCtl = `<span class="frame-enhance busy" data-fid="${esc(f.graphNodeId)}">${t('frames.enhancing', { pct: state.enhancing.pct ?? 0 })}</span>`;
+        } else if (enhanced) {
+          enhanceCtl = `<span class="frame-enhance on" data-fid="${esc(f.graphNodeId)}" data-act="unenhance" title="${esc(t('frames.enhanced_revert'))}">${t('frames.enhanced_revert')}</span>`;
+        } else {
+          enhanceCtl = `<span class="frame-enhance" data-fid="${esc(f.graphNodeId)}" data-act="enhance" title="${esc(t('frames.enhance_hint'))}">${t('frames.enhance')}</span>`;
+        }
       }
-    }
-    return `<button class="${cls}${isData ? ' is-data' : ''}" data-fid="${esc(f.graphNodeId)}">
+      return `<button class="${cls}${isData ? ' is-data' : ''}" data-fid="${esc(f.graphNodeId)}">
       <div class="frame-thumb">
         ${thumbInner}
         ${enhanceCtl}
@@ -2200,7 +2575,8 @@ function renderFramesStrip() {
         <span class="fid">${esc(f.graphNodeId)}</span>
       </div>
     </button>`;
-  }).join('');
+    })
+    .join('');
   strip.innerHTML = `<span class="label">${t('frames.label')}</span>${tabs}
     <button class="frame-graph-btn" id="btn-show-graph">${t('frames.view_graph')}</button>`;
   // Single-click: switch which frame is shown in the centre preview.
@@ -2230,13 +2606,14 @@ function renderFramesStrip() {
   });
   // Per-frame enhance / revert toggle (data frames only). stopPropagation so
   // clicking it doesn't also fire the parent tab's frame-switch handler.
+  // Enhance opens a chart-type picker (5 native Remotion templates).
   strip.querySelectorAll('.frame-enhance').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       if (state.enhancing) return; // single in-flight; ignore double-clicks
       const fid = el.dataset.fid;
       if (el.dataset.act === 'unenhance') unenhanceFrameAction(fid);
-      else if (el.dataset.act === 'enhance') startEnhanceStream(fid);
+      else if (el.dataset.act === 'enhance') openEnhancePicker(fid, el);
     });
   });
   const gbtn = document.getElementById('btn-show-graph');
@@ -2264,19 +2641,26 @@ async function openGraphModal() {
   const close = document.getElementById('graph-close');
   const dl = document.getElementById('graph-download');
   if (close) close.onclick = () => modal.classList.remove('open');
-  if (dl) dl.onclick = () => {
-    if (!state.lastGraph) return;
-    const blob = new Blob([JSON.stringify(state.lastGraph, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `content-graph-${state.selected.id}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.classList.remove('open');
-  }, { once: true });
+  if (dl)
+    dl.onclick = () => {
+      if (!state.lastGraph) return;
+      const blob = new Blob([JSON.stringify(state.lastGraph, null, 2)], {
+        type: 'application/json',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `content-graph-${state.selected.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+  modal.addEventListener(
+    'click',
+    (e) => {
+      if (e.target === modal) modal.classList.remove('open');
+    },
+    { once: true },
+  );
 }
 
 // ============== text fields (data-hv-text editor) ==============
@@ -2344,13 +2728,15 @@ function renderTextFields() {
     return;
   }
   // Always render as textarea — agent decides text length, no hard cap.
-  wrap.innerHTML = state.textFields.map((f, i) => {
-    const labelKey = humanizeKey(f.key);
-    return `<div class="text-field">
+  wrap.innerHTML = state.textFields
+    .map((f, i) => {
+      const labelKey = humanizeKey(f.key);
+      return `<div class="text-field">
       <div class="key">${esc(labelKey)}<span class="badge">${esc(f.key)}</span></div>
       <textarea data-i="${i}" rows="1" placeholder="(empty)">${esc(f.current)}</textarea>
     </div>`;
-  }).join('');
+    })
+    .join('');
   wrap.querySelectorAll('textarea[data-i]').forEach((el) => {
     autoResize(el);
     el.addEventListener('input', (e) => {
@@ -2396,11 +2782,16 @@ async function commitTextEdits() {
   // Read the SAME source we'll write back to — the active frame's HTML
   // when there is one, otherwise the whole-project preview.
   const html = await fetchActiveFrameHtml();
-  if (!html) { setSaveState('error', 'error'); return; }
+  if (!html) {
+    setSaveState('error', 'error');
+    return;
+  }
   const doc = new DOMParser().parseFromString(html, 'text/html');
   for (const f of state.textFields) {
     const nodes = doc.querySelectorAll(`[data-hv-text="${cssEscape(f.key)}"]`);
-    nodes.forEach((n) => { n.textContent = f.current; });
+    nodes.forEach((n) => {
+      n.textContent = f.current;
+    });
     f.original = f.current;
   }
   // Serialize back: include doctype because DOMParser drops it
@@ -2479,7 +2870,7 @@ async function sendMessage() {
 
   // User message includes attachment summary + focus chip
   const attSummary = hasAttachments
-    ? `\n\n📎 ${state.pendingAttachments.length} attachment(s): ${state.pendingAttachments.map(a => a.name).join(', ')}`
+    ? `\n\n📎 ${state.pendingAttachments.length} attachment(s): ${state.pendingAttachments.map((a) => a.name).join(', ')}`
     : '';
   const focusSummary = focusFrame ? `\n\n🎯 focus: frame ${focusFrame}` : '';
   state.messages.push({
@@ -2520,7 +2911,11 @@ async function sendMessage() {
     }
     if (!res.ok || !res.body) {
       const err = await res.json().catch(() => ({}));
-      state.messages[thinkingIdx] = { role: 'system', content: '⚠️ ' + (err.error ?? 'agent failed'), ts: Date.now() };
+      state.messages[thinkingIdx] = {
+        role: 'system',
+        content: '⚠️ ' + (err.error ?? 'agent failed'),
+        ts: Date.now(),
+      };
       renderChatLog();
     } else {
       const reader = res.body.getReader();
@@ -2532,18 +2927,32 @@ async function sendMessage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (state.selectedId !== genProjectId) { try { await reader.cancel(); } catch {} break; }
+        if (state.selectedId !== genProjectId) {
+          try {
+            await reader.cancel();
+          } catch {}
+          break;
+        }
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split('\n\n');
         buf = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           let ev;
-          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          try {
+            ev = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
           if (ev.type === 'text') {
             if (assistantIdx === -1) {
               // Replace thinking with assistant message
-              state.messages[thinkingIdx] = { role: 'assistant', agent: state.selected.agentId ?? 'claude', content: '', ts: Date.now() };
+              state.messages[thinkingIdx] = {
+                role: 'assistant',
+                agent: state.selected.agentId ?? 'claude',
+                content: '',
+                ts: Date.now(),
+              };
               assistantIdx = thinkingIdx;
             }
             state.messages[assistantIdx].content += ev.chunk;
@@ -2562,7 +2971,12 @@ async function sendMessage() {
                 ? `🎞 storyboard reloaded (${frameCount} frames)`
                 : '🎞 preview reloaded';
             if (assistantIdx === -1) {
-              state.messages[thinkingIdx] = { role: 'assistant', agent: state.selected.agentId ?? 'claude', content: summary, ts: Date.now() };
+              state.messages[thinkingIdx] = {
+                role: 'assistant',
+                agent: state.selected.agentId ?? 'claude',
+                content: summary,
+                ts: Date.now(),
+              };
               assistantIdx = thinkingIdx;
             } else {
               state.messages[assistantIdx].content = summary;
@@ -2581,8 +2995,11 @@ async function sendMessage() {
               state.frameKinds = {};
               try {
                 const cg = await API.contentGraph(state.selected.id);
-                if (cg?.graph?.nodes) for (const n of cg.graph.nodes) state.frameKinds[n.id] = n.kind;
-              } catch { /* no graph — single-frame, fine */ }
+                if (cg?.graph?.nodes)
+                  for (const n of cg.graph.nodes) state.frameKinds[n.id] = n.kind;
+              } catch {
+                /* no graph — single-frame, fine */
+              }
             }
             renderPreview(); // also re-syncs soundtrack buttons via __hvSyncNarration
             await refreshTextFields();
@@ -2590,14 +3007,23 @@ async function sendMessage() {
             renderFooter();
           } else if (ev.type === 'warning') {
             if (assistantIdx === -1) {
-              state.messages[thinkingIdx] = { role: 'assistant', agent: state.selected.agentId ?? 'claude', content: '', ts: Date.now() };
+              state.messages[thinkingIdx] = {
+                role: 'assistant',
+                agent: state.selected.agentId ?? 'claude',
+                content: '',
+                ts: Date.now(),
+              };
               assistantIdx = thinkingIdx;
             }
             state.messages[assistantIdx].content += '\n\n⚠️ ' + ev.message;
             renderChatLog();
           } else if (ev.type === 'error') {
             if (assistantIdx === -1) {
-              state.messages[thinkingIdx] = { role: 'system', content: '⚠️ ' + ev.message, ts: Date.now() };
+              state.messages[thinkingIdx] = {
+                role: 'system',
+                content: '⚠️ ' + ev.message,
+                ts: Date.now(),
+              };
             } else {
               state.messages[assistantIdx].content += '\n\n⚠️ ' + ev.message;
             }
@@ -2610,7 +3036,11 @@ async function sendMessage() {
     // Only surface the error if we're still on the project that started this
     // send — otherwise it's just the user having navigated away.
     if (state.selectedId === genProjectId) {
-      state.messages[thinkingIdx] = { role: 'system', content: '⚠️ ' + (e.message ?? e), ts: Date.now() };
+      state.messages[thinkingIdx] = {
+        role: 'system',
+        content: '⚠️ ' + (e.message ?? e),
+        ts: Date.now(),
+      };
       renderChatLog();
     }
   }
@@ -2632,20 +3062,24 @@ function openGallery() {
   // dropped under templates/<id>/ so /template-asset/<id>/index.html serves
   // it). The 1920×1080 (or 1080×1920) source is transform-scaled to fit
   // the card via a CSS variable set per-card after layout.
-  grid.innerHTML = state.templates.map(t => {
-    const sel = state.selected?.templateId === t.id ? ' selected' : '';
-    const tags = (t.tags || []).slice(0, 4).map((tg) => `<span class="tag">${esc(tg)}</span>`).join('');
-    const portrait = isPortraitTemplate(t);
-    const entry = templateEntryPath(t);
-    // Poster-mode templates (entry only stitches sub-comps via
-    // data-composition-src) iframe-render blank until the HF player ships —
-    // show the shipped poster instead. Falls back to the iframe when the
-    // backend couldn't find a poster file (poster_url null).
-    const inner =
-      t.preview_mode === 'poster' && t.poster_url
-        ? `<img class="poster" src="${esc(t.poster_url)}" alt="${esc(t.name ?? t.id)}" loading="lazy" />`
-        : `<iframe sandbox="allow-scripts allow-same-origin" src="/template-asset/${esc(t.id)}/${esc(entry)}" loading="lazy"></iframe>`;
-    return `<div class="gallery-card${sel}" data-id="${t.id}">
+  grid.innerHTML = state.templates
+    .map((t) => {
+      const sel = state.selected?.templateId === t.id ? ' selected' : '';
+      const tags = (t.tags || [])
+        .slice(0, 4)
+        .map((tg) => `<span class="tag">${esc(tg)}</span>`)
+        .join('');
+      const portrait = isPortraitTemplate(t);
+      const entry = templateEntryPath(t);
+      // Poster-mode templates (entry only stitches sub-comps via
+      // data-composition-src) iframe-render blank until the HF player ships —
+      // show the shipped poster instead. Falls back to the iframe when the
+      // backend couldn't find a poster file (poster_url null).
+      const inner =
+        t.preview_mode === 'poster' && t.poster_url
+          ? `<img class="poster" src="${esc(t.poster_url)}" alt="${esc(t.name ?? t.id)}" loading="lazy" />`
+          : `<iframe sandbox="allow-scripts allow-same-origin" src="/template-asset/${esc(t.id)}/${esc(entry)}" loading="lazy"></iframe>`;
+      return `<div class="gallery-card${sel}" data-id="${t.id}">
       <div class="preview ${portrait ? 'portrait' : ''}" data-portrait="${portrait}">
         ${inner}
       </div>
@@ -2655,12 +3089,13 @@ function openGallery() {
         <div class="tags">${tags}</div>
       </div>
     </div>`;
-  }).join('');
+    })
+    .join('');
 
   // Click → open the fullscreen preview modal so the user can confirm
   // before applying. Replaces the old "click immediately replaces template"
   // behaviour, which never let the user actually see the candidate first.
-  grid.querySelectorAll('.gallery-card').forEach(card => {
+  grid.querySelectorAll('.gallery-card').forEach((card) => {
     card.onclick = () => {
       const tid = card.dataset.id;
       const tpl = state.templates.find((x) => x.id === tid);
@@ -2727,7 +3162,9 @@ function openTemplatePreviewModal(tpl) {
   const fps = tpl?.output?.fps?.default ?? '?';
   const aspect = (tpl?.output?.resolution?.supported_aspects ?? [])[0] ?? '16:9';
   document.getElementById('tpl-preview-meta').textContent = t('tpl_preview.fps_dur', {
-    fps, duration: dur, aspect,
+    fps,
+    duration: dur,
+    aspect,
   });
 
   renderTemplateSource(tpl);
@@ -2776,9 +3213,7 @@ function openTemplatePreviewModal(tpl) {
   // If the project already has this template applied, downgrade the primary
   // action to a no-op "in use" label so the user doesn't reapply needlessly.
   const isCurrent = state.selected?.templateId === tpl.id;
-  useBtn.textContent = isCurrent
-    ? t('settings.agent.in_use')
-    : t('tpl_preview.use');
+  useBtn.textContent = isCurrent ? t('settings.agent.in_use') : t('tpl_preview.use');
   useBtn.disabled = isCurrent;
 
   useBtn.onclick = async () => {
@@ -2827,15 +3262,21 @@ function renderTemplateSource(tpl) {
     const bits = [skill];
     if (via.author) bits.push(esc(via.author));
     if (via.license) bits.push(`<span class="lic">${esc(via.license)}</span>`);
-    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_skill'))}</span><span class="val">${bits.join(' · ')}</span></div>`);
+    rows.push(
+      `<div class="row"><span class="lbl">${esc(t('tpl_preview.source_skill'))}</span><span class="val">${bits.join(' · ')}</span></div>`,
+    );
   }
   const origin = p?.origin;
   if (origin?.name && origin.name.toLowerCase() !== 'none') {
-    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_origin'))}</span><span class="val">${esc(origin.name)}</span></div>`);
+    rows.push(
+      `<div class="row"><span class="lbl">${esc(t('tpl_preview.source_origin'))}</span><span class="val">${esc(origin.name)}</span></div>`,
+    );
   }
   // License row only stands alone when it wasn't already shown next to the skill.
   if (lic && !via?.license) {
-    rows.push(`<div class="row"><span class="lbl">${esc(t('tpl_preview.source_license'))}</span><span class="val"><span class="lic">${esc(lic)}</span></span></div>`);
+    rows.push(
+      `<div class="row"><span class="lbl">${esc(t('tpl_preview.source_license'))}</span><span class="val"><span class="lic">${esc(lic)}</span></span></div>`,
+    );
   }
   if (!rows.length) {
     box.hidden = true;
@@ -2857,7 +3298,10 @@ function closeTemplatePreviewModal() {
   const iframe = document.getElementById('tpl-preview-iframe');
   if (iframe) iframe.src = 'about:blank';
   const poster = document.getElementById('tpl-preview-poster');
-  if (poster) { poster.src = ''; poster.hidden = true; }
+  if (poster) {
+    poster.src = '';
+    poster.hidden = true;
+  }
   _tplPreviewCurrent = null;
 }
 
@@ -2877,18 +3321,21 @@ function wireModals() {
   document.getElementById('new-ok').onclick = async () => {
     const name = document.getElementById('new-name').value.trim();
     const intent = document.getElementById('new-intent').value.trim();
-    if (!name) { toast(t('modal.new.name_required'), 'error'); return; }
+    if (!name) {
+      toast(t('modal.new.name_required'), 'error');
+      return;
+    }
     const r = await API.createProject({ name, ...(intent && { intent }) });
     closeNewModal();
     await refreshProjects();
     await selectProject(r.project.id);
     toast(t('modal.new.created', { name }), 'success');
   };
-  document.getElementById('new-modal').addEventListener('click', e => {
+  document.getElementById('new-modal').addEventListener('click', (e) => {
     if (e.target.id === 'new-modal') closeNewModal();
   });
   document.getElementById('gallery-close').onclick = closeGallery;
-  document.getElementById('gallery-modal').addEventListener('click', e => {
+  document.getElementById('gallery-modal').addEventListener('click', (e) => {
     if (e.target.id === 'gallery-modal') closeGallery();
   });
   // Settings
@@ -2900,13 +3347,15 @@ function wireModals() {
     });
     settingsModal.querySelectorAll('.settings-nav-item').forEach((btn) => {
       btn.onclick = () => {
-        settingsModal.querySelectorAll('.settings-nav-item').forEach((b) => b.classList.remove('active'));
+        settingsModal
+          .querySelectorAll('.settings-nav-item')
+          .forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         renderSettingsPanel(btn.dataset.settingsTab);
       };
     });
   }
-  document.addEventListener('keydown', e => {
+  document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeNewModal();
       closeGallery();
@@ -2920,17 +3369,17 @@ function wireModals() {
 // /agent-icons/<id>.svg. Agents without a brand logo fall back to a glyph.
 const AGENT_LOGOS = {
   'anthropic-api': '/agent-icons/anthropic.svg',
-  'claude': '/agent-icons/claude.svg',
+  claude: '/agent-icons/claude.svg',
   'cursor-agent': '/agent-icons/cursor-agent.svg',
-  'codex': '/agent-icons/codex.svg',
-  'hermes': '/agent-icons/hermes.svg',
-  'amr': '/agent-icons/amr.svg',
-  'gemini': '/agent-icons/gemini.svg',
-  'grok': '/agent-icons/grok.svg',
-  'qwen': '/agent-icons/qwen.svg',
-  'opencode': '/agent-icons/opencode.svg',
-  'copilot': '/agent-icons/copilot.svg',
-  'aider': '/agent-icons/aider.png',
+  codex: '/agent-icons/codex.svg',
+  hermes: '/agent-icons/hermes.svg',
+  amr: '/agent-icons/amr.svg',
+  gemini: '/agent-icons/gemini.svg',
+  grok: '/agent-icons/grok.svg',
+  qwen: '/agent-icons/qwen.svg',
+  opencode: '/agent-icons/opencode.svg',
+  copilot: '/agent-icons/copilot.svg',
+  aider: '/agent-icons/aider.png',
 };
 const AGENT_ICON_FALLBACK = {
   'anthropic-api': '☁️',
@@ -2942,10 +3391,10 @@ function agentIconHtml(id) {
 }
 const AGENT_DESC = {
   'anthropic-api': 'Direct Messages API · streams reliably',
-  'claude': 'Claude Code (claude --print)',
+  claude: 'Claude Code (claude --print)',
   'cursor-agent': 'Cursor command line',
-  'codex': 'Codex CLI (codex exec)',
-  'hermes': 'Hermes ACP CLI',
+  codex: 'Codex CLI (codex exec)',
+  hermes: 'Hermes ACP CLI',
 };
 
 function openSettingsModal(tab = 'agent') {
@@ -3010,7 +3459,8 @@ async function renderSettingsAudio(panel) {
     try {
       const s = await fetch('/api/config/minimax').then((r) => r.json());
       if (s.configured) {
-        const src = s.source === 'env' ? t('settings.audio.source_env') : t('settings.audio.source_config');
+        const src =
+          s.source === 'env' ? t('settings.audio.source_env') : t('settings.audio.source_config');
         statusEl.innerHTML = `<span class="agent-status-dot ok"></span>${esc(t('settings.audio.configured', { key: s.maskedKey, source: src }))}`;
         if (s.baseUrl) baseInput.value = s.baseUrl;
       } else {
@@ -3029,13 +3479,18 @@ async function renderSettingsAudio(panel) {
   panel.querySelectorAll('#mm-region .st-preset').forEach((btn) => {
     btn.onclick = () => {
       baseInput.value = btn.dataset.url;
-      panel.querySelectorAll('#mm-region .st-preset').forEach((b) => b.classList.toggle('active', b === btn));
+      panel
+        .querySelectorAll('#mm-region .st-preset')
+        .forEach((b) => b.classList.toggle('active', b === btn));
     };
   });
 
   panel.querySelector('#mm-save').onclick = async () => {
     const apiKey = keyInput.value.trim();
-    if (!apiKey) { saveState.textContent = t('settings.audio.need_key'); return; }
+    if (!apiKey) {
+      saveState.textContent = t('settings.audio.need_key');
+      return;
+    }
     saveState.textContent = t('settings.audio.saving');
     try {
       const r = await fetch('/api/config/minimax', {
@@ -3048,7 +3503,7 @@ async function renderSettingsAudio(panel) {
       saveState.textContent = t('settings.audio.saved');
       await refresh();
     } catch (e) {
-      saveState.textContent = t('settings.audio.save_failed', { message: (e?.message ?? e) });
+      saveState.textContent = t('settings.audio.save_failed', { message: e?.message ?? e });
     }
   };
 
@@ -3068,8 +3523,8 @@ function renderSettingsAgent(panel) {
   const localAgents = agents.filter((a) => a.id !== 'anthropic-api');
   const httpAgents = agents.filter((a) => a.id === 'anthropic-api');
   const list = mode === 'byok' ? httpAgents : localAgents;
-  const currentId = state.selected?.agentId
-    || (agents.find((a) => a.available)?.id ?? 'anthropic-api');
+  const currentId =
+    state.selected?.agentId || (agents.find((a) => a.available)?.id ?? 'anthropic-api');
 
   panel.innerHTML = `
     <h3>${esc(t('settings.agent.title'))}</h3>
@@ -3080,7 +3535,9 @@ function renderSettingsAgent(panel) {
       <button data-mode="byok" class="${mode === 'byok' ? 'active' : ''}">${esc(t('settings.agent.mode.byok'))}</button>
     </div>
 
-    ${mode === 'byok' ? `
+    ${
+      mode === 'byok'
+        ? `
       <div class="panel-sub" style="margin-bottom:14px">
         ${esc(t('settings.agent.byok.intro'))}
         <ul style="margin:6px 0 0 18px;padding:0;font-family:var(--font-mono);font-size:11.5px">
@@ -3088,7 +3545,9 @@ function renderSettingsAgent(panel) {
           <li>${esc(t('settings.agent.byok.env_base'))}</li>
         </ul>
       </div>
-    ` : ''}
+    `
+        : ''
+    }
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase">
@@ -3100,12 +3559,17 @@ function renderSettingsAgent(panel) {
     </div>
 
     <div class="agent-list">
-      ${list.map((a) => {
-        const isCurrent = a.id === currentId && a.available;
-        const desc = AGENT_DESC[a.id] || (a.bin ?? '');
-        const ver = a.version ? esc(a.version) : (a.available ? '' : esc(t('settings.agent.unavailable')));
-        const icon = agentIconHtml(a.id);
-        return `<div class="agent-card ${isCurrent ? 'selected' : ''}" data-agent-id="${esc(a.id)}">
+      ${list
+        .map((a) => {
+          const isCurrent = a.id === currentId && a.available;
+          const desc = AGENT_DESC[a.id] || (a.bin ?? '');
+          const ver = a.version
+            ? esc(a.version)
+            : a.available
+              ? ''
+              : esc(t('settings.agent.unavailable'));
+          const icon = agentIconHtml(a.id);
+          return `<div class="agent-card ${isCurrent ? 'selected' : ''}" data-agent-id="${esc(a.id)}">
           <div class="agent-icon">${icon}</div>
           <div class="agent-meta">
             <div class="agent-name">
@@ -3116,15 +3580,20 @@ function renderSettingsAgent(panel) {
           </div>
           <div class="agent-actions">
             ${a.available ? `<button data-act="test">${esc(t('settings.agent.test'))}</button>` : ''}
-            ${a.available
-              ? (isCurrent
+            ${
+              a.available
+                ? isCurrent
                   ? `<span style="font-size:11px;color:var(--accent);font-family:var(--font-mono)">${esc(t('settings.agent.in_use'))}</span>`
-                  : `<button data-act="use" class="primary-action" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.agent.use'))}</button>`)
-              : (a.installUrl ? `<a href="${a.installUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-faint)">install ↗</a>` : '')}
+                  : `<button data-act="use" class="primary-action" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.agent.use'))}</button>`
+                : a.installUrl
+                  ? `<a href="${a.installUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-faint)">install ↗</a>`
+                  : ''
+            }
           </div>
           <div class="agent-test-result" data-test-result="${esc(a.id)}" style="display:none;grid-column:1 / -1"></div>
         </div>`;
-      }).join('')}
+        })
+        .join('')}
     </div>
   `;
 
@@ -3172,11 +3641,14 @@ function renderSettingsAgent(panel) {
           const r = await API.testAgent(aid);
           if (r.ok) {
             result.classList.add('ok');
-            result.textContent = t('settings.agent.test_ok', { ms: r.ms, bytes: r.bytes })
-              + (r.stdout_head ? ` — ${r.stdout_head.slice(0, 60).replace(/\n/g, ' ')}` : '');
+            result.textContent =
+              t('settings.agent.test_ok', { ms: r.ms, bytes: r.bytes }) +
+              (r.stdout_head ? ` — ${r.stdout_head.slice(0, 60).replace(/\n/g, ' ')}` : '');
           } else {
             result.classList.add('error');
-            result.textContent = t('settings.agent.test_fail', { message: r.error || `exit ${r.exit_code}` });
+            result.textContent = t('settings.agent.test_fail', {
+              message: r.error || `exit ${r.exit_code}`,
+            });
           }
         } catch (e) {
           result.classList.add('error');
@@ -3236,20 +3708,27 @@ function toast(msg, kind = '') {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  return String(s ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
 }
 
 window.addEventListener('error', (e) => {
   console.error('[hv-studio] uncaught:', e.error || e.message);
-  try { toast(`错误：${e.error?.message || e.message}`, 'error'); } catch {}
+  try {
+    toast(`错误：${e.error?.message || e.message}`, 'error');
+  } catch {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[hv-studio] unhandled rejection:', e.reason);
-  try { toast(`错误：${e.reason?.message || e.reason}`, 'error'); } catch {}
+  try {
+    toast(`错误：${e.reason?.message || e.reason}`, 'error');
+  } catch {}
 });
 init().catch((e) => {
   console.error('[hv-studio] init failed:', e);
-  try { toast(`init 失败：${e.message}`, 'error'); } catch {}
+  try {
+    toast(`init 失败：${e.message}`, 'error');
+  } catch {}
 });
-

@@ -1,15 +1,15 @@
+import { aider } from './defs/aider.js';
+import { amr } from './defs/amr.js';
 import { anthropicApi } from './defs/anthropic-api.js';
 import { claude } from './defs/claude.js';
-import { cursorAgent } from './defs/cursor-agent.js';
 import { codex } from './defs/codex.js';
-import { hermes } from './defs/hermes.js';
-import { amr } from './defs/amr.js';
+import { copilot } from './defs/copilot.js';
+import { cursorAgent } from './defs/cursor-agent.js';
 import { gemini } from './defs/gemini.js';
 import { grok } from './defs/grok.js';
-import { qwen } from './defs/qwen.js';
+import { hermes } from './defs/hermes.js';
 import { opencode } from './defs/opencode.js';
-import { copilot } from './defs/copilot.js';
-import { aider } from './defs/aider.js';
+import { qwen } from './defs/qwen.js';
 import { traeCli } from './defs/trae-cli.js';
 import type { AgentDef } from './types.js';
 

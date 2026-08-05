@@ -53,6 +53,22 @@ assets_attribution:
     author: "heygen-com / Hyperframes"
     url: "https://github.com/heygen-com/hyperframes/tree/main/registry/examples/nyt-graph"
 
+provenance:
+  origin:
+    name: "Hyperframes example registry"
+    kind: project
+    reference: "Official HeyGen Hyperframes example compositions (Apache-2.0)"
+  via_skill:
+    name: hyperframes
+    author: "heygen-com"
+    url: https://github.com/heygen-com/hyperframes
+    license: Apache-2.0
+    source_file: registry/examples/nyt-graph
+  transformation: >
+    Upstream Hyperframes registry example packaged as an html-video template with
+    metadata schema and agent skill docs. Core HTML/CSS animation follows the
+    upstream example; html-video variable and export layers added.
+
 author:
   name: "heygen-com / Hyperframes"
   url: "https://github.com/heygen-com/hyperframes"

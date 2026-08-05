@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
+import { constants, accessSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { AGENT_DEFS } from './registry.js';
 import type { AgentDef, DetectedAgent } from './types.js';

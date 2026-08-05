@@ -126,8 +126,16 @@ export const anthropicApi: AgentDef = {
           }
           if (!dataLine || dataLine === '[DONE]') continue;
           try {
-            const parsed = JSON.parse(dataLine) as { type?: string; delta?: { type?: string; text?: string }; error?: { message?: string } };
-            if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta' && parsed.delta.text) {
+            const parsed = JSON.parse(dataLine) as {
+              type?: string;
+              delta?: { type?: string; text?: string };
+              error?: { message?: string };
+            };
+            if (
+              parsed.type === 'content_block_delta' &&
+              parsed.delta?.type === 'text_delta' &&
+              parsed.delta.text
+            ) {
               onEvent({ type: 'text', chunk: parsed.delta.text });
             } else if (parsed.type === 'error' && parsed.error?.message) {
               onEvent({ type: 'error', message: parsed.error.message });

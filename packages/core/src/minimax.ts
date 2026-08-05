@@ -90,7 +90,9 @@ async function postAndDecode(
   // does nothing". Cap it; if the caller passed its own signal, respect that.
   const timeoutSignal = AbortSignal.timeout(MINIMAX_REQUEST_TIMEOUT_MS);
   const effectiveSignal = signal
-    ? (AbortSignal.any ? AbortSignal.any([signal, timeoutSignal]) : signal)
+    ? AbortSignal.any
+      ? AbortSignal.any([signal, timeoutSignal])
+      : signal
     : timeoutSignal;
   let resp: Response;
   try {
@@ -132,14 +134,18 @@ async function postAndDecode(
   try {
     data = JSON.parse(respText);
   } catch {
-    throw new HtmlVideoError('render-failed', `minimax ${label} non-JSON: ${truncate(respText, 200)}`);
+    throw new HtmlVideoError(
+      'render-failed',
+      `minimax ${label} non-JSON: ${truncate(respText, 200)}`,
+    );
   }
 
   // MiniMax wraps every response in base_resp; an HTTP 200 can still be a
   // logical failure (auth / params), surfaced via a non-zero status_code.
   if (data.base_resp && data.base_resp.status_code !== 0) {
     const code = data.base_resp.status_code;
-    const hint = code === 1004 || code === 1008 ? ' (auth / insufficient balance — check the API key)' : '';
+    const hint =
+      code === 1004 || code === 1008 ? ' (auth / insufficient balance — check the API key)' : '';
     throw new HtmlVideoError(
       'render-failed',
       `minimax ${label} api error ${code}: ${data.base_resp.status_msg || 'unknown'}${hint}`,

@@ -266,7 +266,7 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 - [x] AI 配乐（MiniMax 音乐 + 旁白），导出时混合
 - [x] 真实 MP4 渲染 —— Hyperframes 引擎经无头 Chromium + ffmpeg
 - [x] Agent 模型选择 —— Open Design (Vela) 后端，实时模型目录
-- [x] Remotion 适配器 —— 桥接 + 5 个原生数据模板；按帧增强（CLI + Studio）
+- [x] Remotion 适配器 —— 桥接 + 5 个原生图表 + KPI 脉冲；按帧增强（CLI + Studio）
 - [x] Agent skill —— 根目录 `SKILL.md` + 可安装 Claude Code / Cursor 副本（`scripts/install-agent-skill.sh`）
 - [ ] Motion Canvas / Revideo 适配器
 - [ ] 模板市场

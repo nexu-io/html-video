@@ -24,7 +24,8 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     if (opts.signal) {
       opts.signal.addEventListener('abort', () => ac.abort());
     }
-    const done = def.httpHandler(prompt, context, (ev) => onEvent?.(ev), ac.signal)
+    const done = def
+      .httpHandler(prompt, context, (ev) => onEvent?.(ev), ac.signal)
       .then(({ exitCode }) => {
         onEvent?.({ type: 'message_end', reason: exitCode === 0 ? 'ok' : 'error' });
         return { exitCode, signal: null as NodeJS.Signals | null };
@@ -109,10 +110,10 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
           const obj = JSON.parse(line);
           if (typeof obj === 'object' && obj && 'type' in obj) {
             // claude stream-json events have richer shape; treat unknown as text
-            onEvent?.({ type: 'text', chunk: JSON.stringify(obj) + '\n' });
+            onEvent?.({ type: 'text', chunk: `${JSON.stringify(obj)}\n` });
           }
         } catch {
-          onEvent?.({ type: 'text', chunk: line + '\n' });
+          onEvent?.({ type: 'text', chunk: `${line}\n` });
         }
       }
     }
@@ -169,4 +170,3 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
     done,
   };
 }
-

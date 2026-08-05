@@ -56,6 +56,22 @@ assets_attribution:
     author: "Nate Herk"
     url: "https://github.com/nateherkai/hyperframes-student-kit/tree/main/video-projects/linear-promo-30s"
 
+provenance:
+  origin:
+    name: "Hyperframes student-kit multi-scene promo pattern"
+    kind: project
+    reference: "Community tutorial kit for multi-scene product promos"
+  via_skill:
+    name: hyperframes-student-kit
+    author: "Nate Herk"
+    url: https://github.com/nateherkai/hyperframes-student-kit
+    license: MIT
+    source_file: video-projects/linear-promo-30s
+  transformation: >
+    Brand-specific Linear copy and assets replaced with generic placeholders, then
+    packaged as an html-video template with metadata schema and agent skill docs.
+    Multi-scene timing and SFX hooks preserved from the upstream student kit.
+
 author:
   name: "Nate Herk"
   url: "https://github.com/nateherkai/hyperframes-student-kit"

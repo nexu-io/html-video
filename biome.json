@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "files": {
-    "ignore": ["**/dist/**", "**/node_modules/**", "**/.html-video/**", "**/templates/*/source/**"]
+    "ignore": [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.html-video/**",
+      "**/templates/**",
+      "packages/studio-next/**",
+      "packages/project-studio/**"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -21,6 +28,31 @@
       }
     }
   },
+  "overrides": [
+    {
+      "include": ["packages/cli/src/bin.ts", "packages/cli/src/studio-server.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["packages/adapter-remotion/src/bridge/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useIframeTitle": "off"
+          },
+          "correctness": {
+            "useExhaustiveDependencies": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "single",

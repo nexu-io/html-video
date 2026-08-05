@@ -10,8 +10,9 @@
 //
 // Not compiled by the adapter's tsc; it's a static asset handed to Remotion's
 // bundle() (webpack understands the JSX).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useCurrentFrame, useVideoConfig, delayRender, continueRender } from 'remotion';
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { continueRender, delayRender, useCurrentFrame, useVideoConfig } from 'remotion';
 
 export type HtmlFrameDriverProps = {
   /** The HTML frame's full source, inlined and rendered via iframe srcdoc. */
@@ -107,14 +108,16 @@ export const HtmlFrameDriver: React.FC<HtmlFrameDriverProps> = ({ html, width, h
   // seek, then continueRender. A short rAF settle lets the seeked styles paint
   // before Remotion screenshots. The handle is keyed to tMs so a new frame can't
   // clear a stale one.
-  const [handle] = useState(() => delayRender(`HTML frame seek @0ms`));
+  const [handle] = useState(() => delayRender('HTML frame seek @0ms'));
   const firstClearedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     // For the very first frame we reuse the mount-time handle; subsequent frames
     // open their own so Remotion waits for each re-seek.
-    const h = firstClearedRef.current ? delayRender(`HTML frame seek @${Math.round(tMs)}ms`) : handle;
+    const h = firstClearedRef.current
+      ? delayRender(`HTML frame seek @${Math.round(tMs)}ms`)
+      : handle;
     let tries = 0;
     const finish = () => {
       if (cancelled) return;

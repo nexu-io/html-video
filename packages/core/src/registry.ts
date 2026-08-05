@@ -3,17 +3,12 @@
  * RFC-05: Storyboard removed; Project takes its place.
  */
 
-import { mkdir, readFile, readdir, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import type {
-  EngineAdapter,
-  EngineId,
-  Project,
-  TemplateMetadata,
-} from './types/index.js';
 import { HtmlVideoError } from './errors.js';
+import type { EngineAdapter, EngineId, Project, TemplateMetadata } from './types/index.js';
 
 // ---------------------------------------------------------------------------
 // EngineRegistry
@@ -85,6 +80,16 @@ export class TemplateRegistry {
 
   list(): TemplateMetadata[] {
     return [...this.templates.values()];
+  }
+
+  /**
+   * Native Remotion templates (engine=remotion + native.compositionId). Used by
+   * the studio enhance picker and `html-video list-native-templates`.
+   */
+  listNative(): TemplateMetadata[] {
+    return this.list()
+      .filter((t) => t.engine === 'remotion' && !!t.native?.compositionId)
+      .sort((a, b) => a.id.localeCompare(b.id));
   }
 
   search(opts: {

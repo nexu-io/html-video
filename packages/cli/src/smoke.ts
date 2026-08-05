@@ -3,14 +3,17 @@
  * Asserts: bootstrap → create project → add assets → set template → preview → render
  */
 
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
 import { bootstrap } from './context.js';
 
 const log = (msg: string) => process.stdout.write(`▸ ${msg}\n`);
 const ok = (msg: string) => process.stdout.write(`  ✓ ${msg}\n`);
+
+/** Set HV_SMOKE_FAST=1 to skip Playwright/ffmpeg MP4 export (CI default). */
+const FAST = process.env.HV_SMOKE_FAST === '1' || process.env.HV_SMOKE_FAST === 'true';
 
 async function main() {
   const projectRoot = await mkdtemp(join(tmpdir(), 'html-video-smoke-'));
@@ -31,8 +34,18 @@ async function main() {
   if (ctx.templates.list().length === 0) {
     await ctx.templates.scan(join(monorepoRoot, 'templates'));
   }
-  ok(`engines: ${ctx.engines.list().map((e) => e.id).join(', ')}`);
-  ok(`templates: ${ctx.templates.list().map((t) => t.id).join(', ')}`);
+  ok(
+    `engines: ${ctx.engines
+      .list()
+      .map((e) => e.id)
+      .join(', ')}`,
+  );
+  ok(
+    `templates: ${ctx.templates
+      .list()
+      .map((t) => t.id)
+      .join(', ')}`,
+  );
 
   // 1. Create a project
   log('project create');
@@ -65,7 +78,9 @@ async function main() {
   // 3. Pick a template
   log('set template = frame-data-chart-nyt');
   p = await ctx.orchestrator.setTemplate(project1.id, 'frame-data-chart-nyt');
-  ok(`templateId=${p.templateId} variables(after-defaults)=${JSON.stringify(p.variables).slice(0, 80)}…`);
+  ok(
+    `templateId=${p.templateId} variables(after-defaults)=${JSON.stringify(p.variables).slice(0, 80)}…`,
+  );
 
   // 4. Set variables (use the chart data we just added)
   log('set variables');
@@ -80,8 +95,10 @@ async function main() {
 
   // 5. Render preview HTML
   log('render preview html');
-  const { project: previewedProj, htmlPath } = await ctx.orchestrator.renderPreviewHtml(project1.id);
-  if (!existsSync(htmlPath)) throw new Error('Preview HTML missing: ' + htmlPath);
+  const { project: previewedProj, htmlPath } = await ctx.orchestrator.renderPreviewHtml(
+    project1.id,
+  );
+  if (!existsSync(htmlPath)) throw new Error(`Preview HTML missing: ${htmlPath}`);
   const content = await readFile(htmlPath, 'utf8');
   if (!content.includes('<html')) throw new Error('Preview HTML malformed');
   ok(`status=${previewedProj.status} html=${htmlPath}`);
@@ -100,16 +117,21 @@ async function main() {
     duration_sec: 8,
   });
 
-  // 8. Export MP4 (stub)
-  log('export MP4 (stub)');
-  const { project: rendered, outputPath } = await ctx.orchestrator.exportMp4({
-    projectId: project1.id,
-    onProgress: (pct, stage) => {
-      if (pct === 0 || pct === 100 || pct % 25 === 0) ok(`render ${stage} ${pct}%`);
-    },
-  });
-  if (!existsSync(outputPath)) throw new Error('MP4 output missing');
-  ok(`status=${rendered.status} mp4=${outputPath}`);
+  // 8. Export MP4 (requires Playwright Chromium + ffmpeg; skip in HV_SMOKE_FAST mode)
+  if (FAST) {
+    log('export MP4 (skipped — HV_SMOKE_FAST=1)');
+    ok('MP4 export skipped in fast smoke mode');
+  } else {
+    log('export MP4');
+    const { project: rendered, outputPath } = await ctx.orchestrator.exportMp4({
+      projectId: project1.id,
+      onProgress: (pct, stage) => {
+        if (pct === 0 || pct === 100 || pct % 25 === 0) ok(`render ${stage} ${pct}%`);
+      },
+    });
+    if (!existsSync(outputPath)) throw new Error('MP4 output missing');
+    ok(`status=${rendered.status} mp4=${outputPath}`);
+  }
 
   // 9. v0.8: ContentGraph + multi-frame self-test
   log('v0.8 multi-frame: write content-graph + 3 frames');
@@ -138,7 +160,9 @@ async function main() {
   for (const node of graph.nodes) {
     const html = `<!doctype html><html><head><title>${node.id}</title></head><body data-hv-text="${node.id}">${node.id}</body></html>`;
     const { frame } = await ctx.orchestrator.writeFrameHtml(project2.id, node.id, html);
-    ok(`frame written: ${frame.graphNodeId} order=${frame.order} dur=${frame.durationSec}s path=${frame.htmlPath.split('/').slice(-3).join('/')}`);
+    ok(
+      `frame written: ${frame.graphNodeId} order=${frame.order} dur=${frame.durationSec}s path=${frame.htmlPath.split('/').slice(-3).join('/')}`,
+    );
   }
 
   const finalProject = await ctx.orchestrator.load(project2.id);
@@ -168,6 +192,6 @@ function __dirname_polyfill(): string {
 
 main().catch((err) => {
   process.stderr.write(`\n❌ smoke test failed: ${err.message ?? err}\n`);
-  if (err.stack) process.stderr.write(err.stack + '\n');
+  if (err.stack) process.stderr.write(`${err.stack}\n`);
   process.exit(1);
 });

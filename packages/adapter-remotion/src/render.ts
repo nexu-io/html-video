@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 // Remotion adapter render() — RFC-08 §5.
 //
 // bundle() once (cached) → selectComposition() with per-call metadata overrides
@@ -6,12 +8,10 @@
 // inputProps.htmlSrc; the bridge keeps its CSS/GSAP animation in sync with
 // Remotion's frame clock (HtmlFrameDriver.tsx).
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import { mkdtemp, mkdir, copyFile, readFile, rename, rm, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { RenderInput, RenderContext, RenderOutput } from '@html-video/core';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { RenderContext, RenderInput, RenderOutput } from '@html-video/core';
 
 const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,12 +23,21 @@ type Renderer = {
     serveUrl: string;
     id: string;
     inputProps?: Record<string, unknown>;
-  }) => Promise<{ id: string; width: number; height: number; fps: number; durationInFrames: number }>;
+  }) => Promise<{
+    id: string;
+    width: number;
+    height: number;
+    fps: number;
+    durationInFrames: number;
+  }>;
   renderMedia: (opts: Record<string, unknown>) => Promise<unknown>;
 };
 
 class EngineError extends Error {
-  constructor(public code: string, message: string) {
+  constructor(
+    public code: string,
+    message: string,
+  ) {
     super(message);
     this.name = 'EngineError';
   }
@@ -72,7 +81,10 @@ function bridgeEntry(): string {
     join(here, '..', 'bridge', 'entry.ts'), // published package `bridge/`
   ];
   for (const c of candidates) if (existsSync(c)) return c;
-  throw new EngineError('render-failed', `bridge entry not found (looked in: ${candidates.join(', ')})`);
+  throw new EngineError(
+    'render-failed',
+    `bridge entry not found (looked in: ${candidates.join(', ')})`,
+  );
 }
 
 /**
@@ -92,19 +104,13 @@ function bridgeEntry(): string {
  * blocked. Inline <style> and same-document CSS are untouched.
  */
 export function neutralizeBlockingResources(html: string): string {
-  return html.replace(
-    /<link\b[^>]*\brel=(["']?)stylesheet\1[^>]*>/gi,
-    (tag) => {
-      // Only neutralize links to an external origin (http/https/protocol-relative).
-      if (!/\bhref=(["'])(?:https?:)?\/\//i.test(tag)) return tag;
-      if (/\bmedia=/i.test(tag)) return tag; // already has media handling — leave it
-      // Load async (media="print" doesn't block paint), then swap to "all" onload.
-      return tag.replace(
-        /\s*\/?>$/,
-        ` media="print" onload="this.media='all'">`,
-      );
-    },
-  );
+  return html.replace(/<link\b[^>]*\brel=(["']?)stylesheet\1[^>]*>/gi, (tag) => {
+    // Only neutralize links to an external origin (http/https/protocol-relative).
+    if (!/\bhref=(["'])(?:https?:)?\/\//i.test(tag)) return tag;
+    if (/\bmedia=/i.test(tag)) return tag; // already has media handling — leave it
+    // Load async (media="print" doesn't block paint), then swap to "all" onload.
+    return tag.replace(/\s*\/?>$/, ` media="print" onload="this.media='all'">`);
+  });
 }
 
 /**
@@ -124,7 +130,18 @@ async function renderComposition(args: {
   config: RenderInput['config'];
   ctx: RenderContext;
 }): Promise<void> {
-  const { renderer, serveUrl, compositionId, inputProps, width, height, fps, durationInFrames, config, ctx } = args;
+  const {
+    renderer,
+    serveUrl,
+    compositionId,
+    inputProps,
+    width,
+    height,
+    fps,
+    durationInFrames,
+    config,
+    ctx,
+  } = args;
 
   if (ctx.signal?.aborted) throw new EngineError('cancelled', 'Aborted');
 
@@ -157,7 +174,10 @@ async function renderComposition(args: {
     });
   } catch (err) {
     if (ctx.signal?.aborted) throw new EngineError('cancelled', 'Aborted');
-    throw new EngineError('render-failed', `Remotion renderMedia failed: ${err instanceof Error ? err.message : err}`);
+    throw new EngineError(
+      'render-failed',
+      `Remotion renderMedia failed: ${err instanceof Error ? err.message : err}`,
+    );
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
@@ -179,7 +199,8 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
 
   const { width, height } = input.config.resolution;
   const fps = input.config.fps || 30;
-  const requested = input.config.duration === 'auto' ? 5 : Math.max(0.5, Number(input.config.duration));
+  const requested =
+    input.config.duration === 'auto' ? 5 : Math.max(0.5, Number(input.config.duration));
   const durationInFrames = Math.max(1, Math.round(requested * fps));
 
   const outDir = dirname(input.config.outputPath);
@@ -199,8 +220,16 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     const { data, ...restVars } = input.variables ?? {};
     const inputProps: Record<string, unknown> = { data, width, height, ...restVars };
     await renderComposition({
-      renderer, serveUrl, compositionId, inputProps,
-      width, height, fps, durationInFrames, config: input.config, ctx,
+      renderer,
+      serveUrl,
+      compositionId,
+      inputProps,
+      width,
+      height,
+      fps,
+      durationInFrames,
+      config: input.config,
+      ctx,
     });
   } else {
     // --- Phase 1 bridge path: render the given HTML on the bridge composition. ---
@@ -211,8 +240,16 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     const rawHtml = await readFile(sourcePath, 'utf8');
     const html = neutralizeBlockingResources(rawHtml);
     await renderComposition({
-      renderer, serveUrl, compositionId: 'HtmlFrame', inputProps: { html, width, height },
-      width, height, fps, durationInFrames, config: input.config, ctx,
+      renderer,
+      serveUrl,
+      compositionId: 'HtmlFrame',
+      inputProps: { html, width, height },
+      width,
+      height,
+      fps,
+      durationInFrames,
+      config: input.config,
+      ctx,
     });
   }
 

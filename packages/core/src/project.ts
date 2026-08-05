@@ -8,7 +8,17 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { join, basename } from 'node:path';
+import { basename, join } from 'node:path';
+import {
+  type ContentGraph,
+  DEFAULT_FRAME_DURATION_SEC,
+  topoSort,
+  validate as validateGraph,
+} from '@html-video/content-graph';
+import type { AssetStore } from './asset-store.js';
+import { HtmlVideoError } from './errors.js';
+import { normalizeNativeData } from './native-data.js';
+import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
 import type {
   Asset,
   EngineId,
@@ -18,15 +28,6 @@ import type {
   TemplateMetadata,
   TemplateRef,
 } from './types/index.js';
-import {
-  type ContentGraph,
-  validate as validateGraph,
-  topoSort,
-  DEFAULT_FRAME_DURATION_SEC,
-} from '@html-video/content-graph';
-import { HtmlVideoError } from './errors.js';
-import type { AssetStore } from './asset-store.js';
-import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
 
 export interface CreateProjectInput {
   name: string;
@@ -80,7 +81,11 @@ export class ProjectOrchestrator {
 
   // ---------------- Asset ops ----------------
 
-  async addFileAsset(projectId: string, sourcePath: string, userCaption?: string): Promise<Project> {
+  async addFileAsset(
+    projectId: string,
+    sourcePath: string,
+    userCaption?: string,
+  ): Promise<Project> {
     await this.deps.projects.ensureDir(projectId);
     const project = await this.deps.projects.load(projectId);
     const asset = await this.deps.assets.addFileAsset(projectId, sourcePath, [], userCaption);
@@ -170,7 +175,11 @@ export class ProjectOrchestrator {
     return project;
   }
 
-  async setAgent(projectId: string, agentId: string | null, agentModel?: string | null): Promise<Project> {
+  async setAgent(
+    projectId: string,
+    agentId: string | null,
+    agentModel?: string | null,
+  ): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     project.agentId = agentId;
     // Only touch the model when explicitly provided; switching agent clears a
@@ -185,7 +194,10 @@ export class ProjectOrchestrator {
    * v0.3 chat-to-HTML: write raw HTML produced by an agent into the project's preview slot.
    * Single-frame fast-path. Clears any prior multi-frame graph state.
    */
-  async writePreviewHtmlRaw(projectId: string, html: string): Promise<{ project: Project; htmlPath: string }> {
+  async writePreviewHtmlRaw(
+    projectId: string,
+    html: string,
+  ): Promise<{ project: Project; htmlPath: string }> {
     const project = await this.deps.projects.load(projectId);
     const projectDir = await this.deps.projects.ensureDir(projectId);
     const { writeFile } = await import('node:fs/promises');
@@ -203,7 +215,7 @@ export class ProjectOrchestrator {
     // through writeFrameHtml instead.)
     if ((project.frames?.length ?? 0) === 0) {
       project.frames = [];
-      delete project.contentGraphPath;
+      project.contentGraphPath = undefined;
     }
     if (project.status === 'draft') project.status = 'previewed';
     await this.deps.projects.save(project);
@@ -399,7 +411,8 @@ export class ProjectOrchestrator {
             template: templateRef,
             // Native data templates read `data` from variables; bridge/hyperframes
             // ignore it. Frame's own data (when enhanced) overrides project vars.
-            variables: f.data !== undefined ? { ...project.variables, data: f.data } : project.variables,
+            variables:
+              f.data !== undefined ? { ...project.variables, data: f.data } : project.variables,
             config: {
               format: 'mp4',
               resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
@@ -415,7 +428,10 @@ export class ProjectOrchestrator {
             workDir: projectDir,
             ...(args.onProgress !== undefined && {
               onProgress: (pct, stage) =>
-                args.onProgress!((i + pct / 100) / ordered.length * 100, `frame ${i + 1}/${ordered.length}: ${stage}`),
+                args.onProgress?.(
+                  ((i + pct / 100) / ordered.length) * 100,
+                  `frame ${i + 1}/${ordered.length}: ${stage}`,
+                ),
             }),
             ...(args.signal !== undefined && { signal: args.signal }),
           },
@@ -547,7 +563,7 @@ export class ProjectOrchestrator {
         `Template "${nativeTemplateId}" is not a native Remotion template`,
       );
     }
-    const data = normalizeRollupData((node as { data?: unknown }).data);
+    const data = normalizeNativeData((node as { data?: unknown }).data, nativeTemplateId);
 
     const frame = (project.frames ?? []).find((f) => f.graphNodeId === graphNodeId);
     if (!frame) {
@@ -576,10 +592,10 @@ export class ProjectOrchestrator {
     if (!frame) {
       throw new HtmlVideoError('invalid-input', `Frame "${graphNodeId}" not found`);
     }
-    delete frame.engine;
-    delete frame.nativeTemplateId;
-    delete frame.data;
-    delete frame.previewMp4Path; // stop advertising a now-stale preview video
+    frame.engine = undefined;
+    frame.nativeTemplateId = undefined;
+    frame.data = undefined;
+    frame.previewMp4Path = undefined; // stop advertising a now-stale preview video
     await this.deps.projects.save(project);
     return { project, frame };
   }
@@ -613,11 +629,16 @@ export class ProjectOrchestrator {
     const { engine, templateRef } = this.resolveFrameTemplateRef(frame, projectEngine);
     const adapter = this.deps.engines.get(engine);
 
-    const previewPath = join(projectDir, 'frames', `${String(frame.order + 1).padStart(2, '0')}.preview.mp4`);
+    const previewPath = join(
+      projectDir,
+      'frames',
+      `${String(frame.order + 1).padStart(2, '0')}.preview.mp4`,
+    );
     await adapter.render(
       {
         template: templateRef,
-        variables: frame.data !== undefined ? { ...project.variables, data: frame.data } : project.variables,
+        variables:
+          frame.data !== undefined ? { ...project.variables, data: frame.data } : project.variables,
         config: {
           format: 'mp4',
           resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
@@ -692,48 +713,6 @@ export class ProjectOrchestrator {
 // ---------------------------------------------------------------------------
 
 /**
- * Coerce a content-graph DataNode's free-form `data` into the shape the native
- * frame-data-rollup template expects ({ title?, unit?, items: {label,value}[] }).
- * DataNode.data is `unknown`, so an enhanced frame could otherwise feed NaN bars
- * to the renderer. Accepts either the already-shaped object or a bare array of
- * {label,value}. Throws a clear error rather than rendering garbage.
- */
-function normalizeRollupData(raw: unknown): { title?: string; unit?: string; items: { label: string; value: number }[] } {
-  const asItems = (arr: unknown): { label: string; value: number }[] => {
-    if (!Array.isArray(arr)) {
-      throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame has no `items` array to animate; expected {items:[{label,value}]}',
-      );
-    }
-    const items = arr
-      .map((it) => {
-        const o = (it ?? {}) as Record<string, unknown>;
-        const label = String(o.label ?? o.name ?? '');
-        const value = Number(o.value ?? o.y ?? o.count);
-        return { label, value };
-      })
-      .filter((it) => it.label !== '' && Number.isFinite(it.value));
-    if (items.length === 0) {
-      throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame items had no usable {label, numeric value} pairs',
-      );
-    }
-    return items;
-  };
-
-  if (Array.isArray(raw)) return { items: asItems(raw) };
-  const o = (raw ?? {}) as Record<string, unknown>;
-  const out: { title?: string; unit?: string; items: { label: string; value: number }[] } = {
-    items: asItems(o.items),
-  };
-  if (typeof o.title === 'string') out.title = o.title;
-  if (typeof o.unit === 'string') out.unit = o.unit;
-  return out;
-}
-
-/**
  * Concatenate per-frame MP4 files into a single output with ffmpeg.
  *
  * Two strategies:
@@ -773,12 +752,18 @@ async function concatFramesWithFfmpeg(
     ffmpegArgs = [
       '-y',
       ...inputs,
-      '-filter_complex', filter,
-      '-map', '[v]',
-      '-c:v', 'libx264',
-      '-pix_fmt', 'yuv420p',
-      '-r', String(fps),
-      '-movflags', '+faststart',
+      '-filter_complex',
+      filter,
+      '-map',
+      '[v]',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-r',
+      String(fps),
+      '-movflags',
+      '+faststart',
       outputPath,
     ];
   } else {
@@ -856,8 +841,14 @@ async function muxAudioWithFfmpeg(args: {
   let musicIdx = -1;
   let narrIdx = -1;
   let next = 1;
-  if (hasMusic) { inputs.push('-i', args.musicPath!); musicIdx = next++; }
-  if (hasNarration) { inputs.push('-i', args.narrationPath!); narrIdx = next++; }
+  if (hasMusic) {
+    inputs.push('-i', args.musicPath!);
+    musicIdx = next++;
+  }
+  if (hasNarration) {
+    inputs.push('-i', args.narrationPath!);
+    narrIdx = next++;
+  }
 
   // Build a filter graph producing a single [aout] label.
   const filters: string[] = [];
@@ -878,7 +869,9 @@ async function muxAudioWithFfmpeg(args: {
     mixLabels.push('[vo]');
   }
   if (mixLabels.length === 2) {
-    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[aout]`);
+    filters.push(
+      `${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[aout]`,
+    );
   } else {
     // single source → relabel to [aout]
     filters.push(`${mixLabels[0]}anull[aout]`);
@@ -887,12 +880,18 @@ async function muxAudioWithFfmpeg(args: {
   const ffArgs = [
     '-y',
     ...inputs,
-    '-filter_complex', filters.join(';'),
-    '-map', '0:v',
-    '-map', '[aout]',
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-b:a', '192k',
+    '-filter_complex',
+    filters.join(';'),
+    '-map',
+    '0:v',
+    '-map',
+    '[aout]',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
     '-shortest',
     args.outputPath,
   ];
@@ -900,20 +899,30 @@ async function muxAudioWithFfmpeg(args: {
   await new Promise<void>((resolveFn, reject) => {
     const proc = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
     proc.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'ENOENT') {
-        reject(new HtmlVideoError(
-          'render-failed',
-          'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.',
-        ));
+        reject(
+          new HtmlVideoError(
+            'render-failed',
+            'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.',
+          ),
+        );
       } else {
         reject(err);
       }
     });
     proc.on('exit', (code: number | null) => {
       if (code === 0) resolveFn();
-      else reject(new HtmlVideoError('render-failed', `ffmpeg audio mux exited with code ${code}: ${stderr.slice(-2000)}`));
+      else
+        reject(
+          new HtmlVideoError(
+            'render-failed',
+            `ffmpeg audio mux exited with code ${code}: ${stderr.slice(-2000)}`,
+          ),
+        );
     });
   });
 }
@@ -926,7 +935,11 @@ async function muxAudioWithFfmpeg(args: {
  *  capped so it doesn't grow unbounded). */
 function recordExport(project: Project, outputPath: string): void {
   const list = (project.exports ?? []).filter((e) => e.path !== outputPath);
-  list.push({ path: outputPath, filename: basename(outputPath), createdAt: new Date().toISOString() });
+  list.push({
+    path: outputPath,
+    filename: basename(outputPath),
+    createdAt: new Date().toISOString(),
+  });
   // Keep the most recent 20.
   project.exports = list.slice(-20);
 }
@@ -951,4 +964,3 @@ function downgradeStatus(current: ProjectStatus, target: ProjectStatus): Project
   if (target === 'draft') return 'draft';
   return current;
 }
-

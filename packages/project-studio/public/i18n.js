@@ -45,12 +45,13 @@ const DICT = {
     'composer.placeholder.no_project': 'Pick a project first…',
     'composer.placeholder.detecting_agents': 'Describe the video while we check for agents…',
     'composer.placeholder.no_agent': 'Install Claude Code (claude CLI) to enable chat…',
-    'composer.placeholder.focus':
-      'Edit only this frame (click ✕ on the chip above to release)…',
+    'composer.placeholder.focus': 'Edit only this frame (click ✕ on the chip above to release)…',
     'composer.placeholder.no_template':
       'Describe a video, or paste an article link / GitHub repo to build one from it.',
-    'composer.placeholder.with_template': 'Describe the video — content, names, data… or paste an article link / GitHub repo.',
-    'composer.hint': 'Cmd / Ctrl + Enter · drag / paste files · drop a design.md / frame.md to lock brand + motion',
+    'composer.placeholder.with_template':
+      'Describe the video — content, names, data… or paste an article link / GitHub repo.',
+    'composer.hint':
+      'Cmd / Ctrl + Enter · drag / paste files · drop a design.md / frame.md to lock brand + motion',
     'composer.send': 'Send',
     'composer.attach': 'Attach file',
     'composer.focus_chip': 'Editing only frame {order} {fid}',
@@ -63,7 +64,8 @@ const DICT = {
     'chat.summary.confirm_generate': '✓ Generate',
     'chat.summary.confirm_edit': '✏️ Edit',
     'chat.thinking': 'agent thinking',
-    'chat.still_generating': '⏳ This project is still generating in the background — its result will appear here when done (reload preview to refresh).',
+    'chat.still_generating':
+      '⏳ This project is still generating in the background — its result will appear here when done (reload preview to refresh).',
     'chat.placeholder.gen_html': '📄 *generating HTML…*',
     'chat.placeholder.plan_graph': '🧭 *planning storyboard…*',
     'chat.empty_reply':
@@ -77,17 +79,24 @@ const DICT = {
     'preview.edit_text_title': 'Click any text in the preview to edit',
     'preview.edit_text_done_title': 'Finish editing',
     'preview.reload': '↻ Reload preview',
-    'preview.no_hv_text':
-      'This frame has no editable text (HTML missing data-hv-text).',
+    'preview.no_hv_text': 'This frame has no editable text (HTML missing data-hv-text).',
 
     'frames.label': 'Frames',
     'frames.view_graph': 'View graph',
     'frames.enhance': '⚡ Remotion',
-    'frames.enhance_hint': 'Render this data frame natively with Remotion (numbers roll, bars grow)',
+    'frames.enhance_hint':
+      'Pick a native Remotion chart for this data frame (bars, donut, line, …)',
     'frames.enhanced_revert': '⚡ Remotion ✓ (revert)',
     'frames.enhancing': '⚡ {pct}%…',
     'enhance.done': '⚡ Frame rendered with Remotion',
+    'enhance.done_with': '⚡ Frame rendered with Remotion · {template}',
     'enhance.failed': '⚡ Remotion failed: {message}',
+    'enhance.pick_title': 'Remotion chart',
+    'enhance.chart.rollup': 'Bars',
+    'enhance.chart.donut': 'Donut',
+    'enhance.chart.hbars': 'H-Bars',
+    'enhance.chart.line': 'Line',
+    'enhance.chart.radar': 'Radar',
 
     'text_pane.title': 'Frame text',
     'text_pane.no_project': 'No project.',
@@ -143,7 +152,8 @@ const DICT = {
     'soundtrack.drafting': 'Drafting…',
     'soundtrack.draft_need_frames': 'Generate the video first',
     'soundtrack.draft_failed': '⚠️ Draft failed: {message}',
-    'soundtrack.narration_placeholder': 'One line per frame — click ✨ to draft from the video (leave empty for none)',
+    'soundtrack.narration_placeholder':
+      'One line per frame — click ✨ to draft from the video (leave empty for none)',
     'soundtrack.voice_label': 'Voice',
     'soundtrack.voice_male_warm': 'Male · Warm',
     'soundtrack.voice_male_pro': 'Male · Professional',
@@ -217,7 +227,8 @@ const DICT = {
     'settings.audio.saved': '✓ Saved',
     'settings.audio.save_failed': 'Save failed: {message}',
     'settings.audio.need_key': 'Enter an API key first.',
-    'settings.audio.hint': 'Stored locally in .html-video/media-config.json. Pick the region that matches your key — an api.minimax.io (International) key will NOT work against api.minimaxi.com (China), and vice-versa. The old api.minimaxi.chat host is retired.',
+    'settings.audio.hint':
+      'Stored locally in .html-video/media-config.json. Pick the region that matches your key — an api.minimax.io (International) key will NOT work against api.minimaxi.com (China), and vice-versa. The old api.minimaxi.chat host is retired.',
 
     'settings.agent.title': 'Agent',
     'settings.agent.subtitle': 'Pick the runtime that turns your chat into HTML.',
@@ -237,7 +248,8 @@ const DICT = {
     'agent.signed_in': '✓ Signed in to AMR',
     'agent.sign_in_failed': 'Sign-in failed',
     'agent.recommended': 'Recommended · one login, many models',
-    'settings.agent.byok.intro': 'Use your own Anthropic / OpenRouter API key. Reads from environment:',
+    'settings.agent.byok.intro':
+      'Use your own Anthropic / OpenRouter API key. Reads from environment:',
     'settings.agent.byok.env_key': 'ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN',
     'settings.agent.byok.env_base': 'ANTHROPIC_BASE_URL (optional, defaults to api.anthropic.com)',
     'settings.agent.rescan': '↻ Rescan',
@@ -262,7 +274,8 @@ const DICT = {
 
     'tpl_preview.cancel': 'Cancel',
     'tpl_preview.use': 'Use this template',
-    'tpl_preview.replace_confirm': 'Replace current template with "{name}"? Existing preview content stays put — the agent can rebuild on next chat.',
+    'tpl_preview.replace_confirm':
+      'Replace current template with "{name}"? Existing preview content stays put — the agent can rebuild on next chat.',
     'tpl_preview.applied': 'Template: {name}',
     'tpl_preview.fps_dur': '{fps}fps · {duration}s · {aspect}',
     'tpl_preview.source_skill': 'Adapted from',
@@ -299,21 +312,23 @@ const DICT = {
     'composer.placeholder.no_agent': '装 claude CLI 后即可聊天…',
     'composer.placeholder.focus': '只修改这一帧的内容（点掉上方芯片可恢复整片）…',
     'composer.placeholder.no_template': '描述视频，或粘一个文章链接 / GitHub repo 据此生成。',
-    'composer.placeholder.with_template': '描述视频 — 内容、名字、数据…或粘文章链接 / GitHub repo。',
-    'composer.hint': 'Cmd / Ctrl + Enter · 拖拽 / 粘贴文件 · 拖入 design.md / frame.md 锁定品牌+动效',
+    'composer.placeholder.with_template':
+      '描述视频 — 内容、名字、数据…或粘文章链接 / GitHub repo。',
+    'composer.hint':
+      'Cmd / Ctrl + Enter · 拖拽 / 粘贴文件 · 拖入 design.md / frame.md 锁定品牌+动效',
     'composer.send': '发送',
     'composer.attach': '附加文件',
     'composer.focus_chip': '仅修改第 {order} 帧 {fid}',
     'composer.focus_clear': '清除',
 
     'chat.empty.title': '发条消息开始',
-    'chat.empty.body':
-      '告诉 agent 想做什么 — 单帧标题卡、多帧预告片、数据大字报 — 它会搭出 HTML。',
+    'chat.empty.body': '告诉 agent 想做什么 — 单帧标题卡、多帧预告片、数据大字报 — 它会搭出 HTML。',
     'chat.summary.form_submitted': '📋 提交了表单',
     'chat.summary.confirm_generate': '✓ 确认生成',
     'chat.summary.confirm_edit': '✏️ 改一下',
     'chat.thinking': 'agent 思考中',
-    'chat.still_generating': '⏳ 这个项目仍在后台生成中 —— 完成后结果会出现在这里（点重载预览可刷新）。',
+    'chat.still_generating':
+      '⏳ 这个项目仍在后台生成中 —— 完成后结果会出现在这里（点重载预览可刷新）。',
     'chat.placeholder.gen_html': '📄 *正在生成 HTML…*',
     'chat.placeholder.plan_graph': '🧭 *规划故事板…*',
     'chat.empty_reply':
@@ -332,16 +347,22 @@ const DICT = {
     'frames.label': '分镜',
     'frames.view_graph': '看图谱',
     'frames.enhance': '⚡ Remotion',
-    'frames.enhance_hint': '用原生 Remotion 渲染这个数据帧（数字滚动、柱子生长）',
+    'frames.enhance_hint': '为这个数据帧选择原生 Remotion 图表（柱状 / 圆环 / 折线…）',
     'frames.enhanced_revert': '⚡ Remotion ✓（还原）',
     'frames.enhancing': '⚡ {pct}%…',
     'enhance.done': '⚡ 该帧已用 Remotion 渲染',
+    'enhance.done_with': '⚡ 该帧已用 Remotion 渲染 · {template}',
     'enhance.failed': '⚡ Remotion 失败：{message}',
+    'enhance.pick_title': '选择 Remotion 图表',
+    'enhance.chart.rollup': '柱状',
+    'enhance.chart.donut': '圆环',
+    'enhance.chart.hbars': '横条',
+    'enhance.chart.line': '折线',
+    'enhance.chart.radar': '雷达',
 
     'text_pane.title': '帧文字',
     'text_pane.no_project': '无项目。',
-    'text_pane.empty_with_frames':
-      '当前帧没有可编辑文字。切到别的帧，或在画面里点 ✎ 编辑文字。',
+    'text_pane.empty_with_frames': '当前帧没有可编辑文字。切到别的帧，或在画面里点 ✎ 编辑文字。',
     'text_pane.empty_no_frames':
       '还没有可编辑的字段。发一条消息生成第一版 HTML，逐帧字段会出现在这里。',
     'text_pane.collapse': '收起面板',
@@ -466,7 +487,8 @@ const DICT = {
     'settings.audio.saved': '✓ 已保存',
     'settings.audio.save_failed': '保存失败：{message}',
     'settings.audio.need_key': '请先填写 API key。',
-    'settings.audio.hint': '保存在本地 .html-video/media-config.json。请按你的 key 选对区域——国际版 api.minimax.io 的 key 在国内版 api.minimaxi.com 上无法使用，反之亦然；旧的 api.minimaxi.chat 域名已停用。',
+    'settings.audio.hint':
+      '保存在本地 .html-video/media-config.json。请按你的 key 选对区域——国际版 api.minimax.io 的 key 在国内版 api.minimaxi.com 上无法使用，反之亦然；旧的 api.minimaxi.chat 域名已停用。',
 
     'settings.agent.title': 'Agent',
     'settings.agent.subtitle': '选一个运行时把你的对话翻成 HTML。',
@@ -511,7 +533,8 @@ const DICT = {
 
     'tpl_preview.cancel': '取消',
     'tpl_preview.use': '使用此模板',
-    'tpl_preview.replace_confirm': '把当前模板替换为 "{name}"？现有预览不会被覆盖，下一轮 chat 时 agent 会按新模板重写。',
+    'tpl_preview.replace_confirm':
+      '把当前模板替换为 "{name}"？现有预览不会被覆盖，下一轮 chat 时 agent 会按新模板重写。',
     'tpl_preview.applied': '已切换模板：{name}',
     'tpl_preview.fps_dur': '{fps}fps · {duration}秒 · {aspect}',
     'tpl_preview.source_skill': '改编自',
@@ -541,7 +564,9 @@ export function getLocale() {
 export function setLocale(loc) {
   if (!AVAILABLE_LOCALES.includes(loc)) return;
   _locale = loc;
-  try { localStorage.setItem(STORAGE_KEY, loc); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, loc);
+  } catch {}
   // Notify listeners (the studio app re-renders).
   document.dispatchEvent(new CustomEvent('hv-locale-change', { detail: { locale: loc } }));
 }
@@ -563,7 +588,10 @@ export function applyDomI18n(root) {
     el.innerHTML = t(el.dataset.i18nHtml);
   });
   r.querySelectorAll('[data-i18n-attr]').forEach((el) => {
-    const pairs = (el.dataset.i18nAttr || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const pairs = (el.dataset.i18nAttr || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     for (const pair of pairs) {
       const [attr, key] = pair.split(':').map((s) => s.trim());
       if (attr && key) el.setAttribute(attr, t(key));

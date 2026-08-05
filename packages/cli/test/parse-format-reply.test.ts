@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { parseFormatReply } from '../dist/studio-server.js';
 
 // Regression coverage for issue #2: a typed free-text format answer (when the

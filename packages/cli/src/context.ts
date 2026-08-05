@@ -3,8 +3,10 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import hfAdapter from '@html-video/adapter-hyperframes';
+import remotionAdapter, { remotionInstalled } from '@html-video/adapter-remotion';
 import {
   AssetStore,
   EngineRegistry,
@@ -12,8 +14,6 @@ import {
   ProjectStore,
   TemplateRegistry,
 } from '@html-video/core';
-import hfAdapter from '@html-video/adapter-hyperframes';
-import remotionAdapter, { remotionInstalled } from '@html-video/adapter-remotion';
 import { MediaConfigStore } from './media-config.js';
 
 export interface CliContext {
@@ -49,7 +49,7 @@ function findTemplatesDir(projectRoot: string): string {
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
-  return candidates[0]!;
+  return candidates[0] ?? join(projectRoot, 'templates');
 }
 
 export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext> {
@@ -80,5 +80,14 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
 
   const mediaConfig = new MediaConfigStore(projectRoot);
 
-  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
+  return {
+    projectRoot,
+    engines,
+    templates,
+    projects,
+    assets,
+    orchestrator,
+    templatesDir,
+    mediaConfig,
+  };
 }

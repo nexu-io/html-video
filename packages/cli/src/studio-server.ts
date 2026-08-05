@@ -3,17 +3,17 @@
  * Serves @html-video/project-studio static UI + project / template REST APIs.
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, copyFile, mkdir } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
-import { dirname, extname, join, resolve, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { existsSync, statSync } from 'node:fs';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
-import { extractUrls, fetchSource } from './fetch-source.js';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { AssetStore, generateMusic, generateTts } from '@html-video/core';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
+import type { CliContext } from './context.js';
+import { extractUrls, fetchSource } from './fetch-source.js';
 
 interface StudioHandle {
   url: string;
@@ -81,7 +81,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Get / update / delete single project
       const projMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
-      if (projMatch && projMatch[1]) {
+      if (projMatch?.[1]) {
         const id = projMatch[1];
         if (m === 'GET') {
           return json(res, 200, { project: await ctx.orchestrator.load(id) });
@@ -116,6 +116,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             //    built, v0.9) to show anything, so a live iframe is blank.
             //    Fall back to the shipped poster image instead.
             const { mode, posterUrl } = templatePreviewMode(t);
+            const isNative = t.engine === 'remotion' && !!t.native?.compositionId;
             return {
               id: t.id,
               name: t.name,
@@ -123,6 +124,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               engine: t.engine,
               source_entry: t.source_entry,
               category: t.category,
+              subcategory: t.subcategory,
               tags: t.tags,
               best_for: t.best_for,
               inputs_schema: t.inputs.schema,
@@ -133,17 +135,43 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               preview_mode: mode,
               poster_url: posterUrl,
               output: t.output,
+              native: isNative,
+              native_composition_id: t.native?.compositionId,
             };
           }),
         });
       }
 
+      // Native Remotion templates for the per-frame enhance picker / format card.
+      if (url.pathname === '/api/native-templates' && m === 'GET') {
+        const natives = ctx.templates.listNative();
+        return json(res, 200, {
+          templates: natives.map((t) => {
+            const { posterUrl } = templatePreviewMode(t);
+            return {
+              id: t.id,
+              name: t.name,
+              description: t.description,
+              composition_id: t.native?.compositionId,
+              category: t.category,
+              subcategory: t.subcategory,
+              tags: t.tags,
+              best_for: t.best_for,
+              poster_url: posterUrl,
+            };
+          }),
+          default_id: natives.some((t) => t.id === 'frame-data-rollup')
+            ? 'frame-data-rollup'
+            : (natives[0]?.id ?? null),
+        });
+      }
+
       // Add asset (multipart-style via JSON for v0.1: paths or inline content)
       const addAssetMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/assets$/);
-      if (addAssetMatch && addAssetMatch[1] && m === 'POST') {
+      if (addAssetMatch?.[1] && m === 'POST') {
         const id = addAssetMatch[1];
         const ct = req.headers['content-type'] ?? '';
-        let project;
+        let project: import('@html-video/core').Project | undefined;
         if (ct.startsWith('multipart/form-data')) {
           // Save uploaded file to /tmp then add
           const saved = await receiveMultipartFile(req, ct);
@@ -175,14 +203,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Remove asset
       const rmAssetMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/assets\/([^/]+)$/);
-      if (rmAssetMatch && rmAssetMatch[1] && rmAssetMatch[2] && m === 'DELETE') {
+      if (rmAssetMatch?.[1] && rmAssetMatch[2] && m === 'DELETE') {
         const project = await ctx.orchestrator.removeAsset(rmAssetMatch[1], rmAssetMatch[2]);
         return json(res, 200, { project });
       }
 
       // Set template
       const tplMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/template$/);
-      if (tplMatch && tplMatch[1] && m === 'PUT') {
+      if (tplMatch?.[1] && m === 'PUT') {
         const body = await readBody(req);
         const project = await ctx.orchestrator.setTemplate(tplMatch[1], body.template_id as string);
         // Auto-seed preview with the template's own example.html so the user sees
@@ -198,19 +226,19 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Set agent (runtime selection)
       const agentMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/agent$/);
-      if (agentMatch && agentMatch[1] && m === 'PUT') {
+      if (agentMatch?.[1] && m === 'PUT') {
         const body = await readBody(req);
         const project = await ctx.orchestrator.setAgent(
           agentMatch[1],
           (body.agent_id as string) || null,
-          body.agent_model === undefined ? undefined : ((body.agent_model as string) || null),
+          body.agent_model === undefined ? undefined : (body.agent_model as string) || null,
         );
         return json(res, 200, { project });
       }
 
       // Set variables (whole bag)
       const varsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/variables$/);
-      if (varsMatch && varsMatch[1] && m === 'PUT') {
+      if (varsMatch?.[1] && m === 'PUT') {
         const body = await readBody(req);
         const project = await ctx.orchestrator.setVariables(
           varsMatch[1],
@@ -221,7 +249,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Render preview HTML (legacy; v0.3+ uses chat-driven path)
       const prevMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/preview$/);
-      if (prevMatch && prevMatch[1] && m === 'POST') {
+      if (prevMatch?.[1] && m === 'POST') {
         const { project, htmlPath } = await ctx.orchestrator.renderPreviewHtml(prevMatch[1]);
         return json(res, 200, {
           project,
@@ -232,10 +260,12 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Get raw preview HTML (frontend reads to parse data-hv-text nodes)
       const rawGetMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/raw-html$/);
-      if (rawGetMatch && rawGetMatch[1] && m === 'GET') {
+      if (rawGetMatch?.[1] && m === 'GET') {
         const project = await ctx.orchestrator.load(rawGetMatch[1]);
         if (!project.lastPreviewHtmlPath || !existsSync(project.lastPreviewHtmlPath)) {
-          return json(res, 404, { error: 'No preview HTML yet — pick a template or send a chat first' });
+          return json(res, 404, {
+            error: 'No preview HTML yet — pick a template or send a chat first',
+          });
         }
         const html = await readFile(project.lastPreviewHtmlPath, 'utf8');
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
@@ -245,7 +275,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Write raw preview HTML (frontend posts back the modified HTML
       // after the user edits a data-hv-text field in the middle column)
-      if (rawGetMatch && rawGetMatch[1] && m === 'PUT') {
+      if (rawGetMatch?.[1] && m === 'PUT') {
         const project = await ctx.orchestrator.load(rawGetMatch[1]);
         const ct = req.headers['content-type'] ?? '';
         let html: string;
@@ -264,8 +294,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Frame-specific raw HTML — keeps frames[] intact (writePreviewHtmlRaw
       // resets the storyboard, which is wrong for multi-frame edits).
-      const frameRawMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/frames\/([^/]+)\/raw-html$/);
-      if (frameRawMatch && frameRawMatch[1] && frameRawMatch[2]) {
+      const frameRawMatch = url.pathname.match(
+        /^\/api\/projects\/([^/]+)\/frames\/([^/]+)\/raw-html$/,
+      );
+      if (frameRawMatch?.[1] && frameRawMatch[2]) {
         const projId = frameRawMatch[1];
         const nodeId = frameRawMatch[2];
         if (m === 'GET') {
@@ -301,16 +333,30 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // short single-frame preview MP4 so the studio can play the native
       // animation before a full export. Streams SSE progress like export.
       const enhMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/frames\/([^/]+)\/enhance$/);
-      if (enhMatch && enhMatch[1] && enhMatch[2] && m === 'POST') {
+      if (enhMatch?.[1] && enhMatch[2] && m === 'POST') {
         const projectId = enhMatch[1];
         const nodeId = enhMatch[2];
-        const body = await readBody(req).catch(() => ({} as Record<string, unknown>));
-        const nativeTemplateId = (body.nativeTemplateId as string) || 'frame-data-rollup';
+        const body = await readBody(req).catch(() => ({}) as Record<string, unknown>);
+        const requested = typeof body.nativeTemplateId === 'string' ? body.nativeTemplateId : '';
+        const natives = ctx.templates.listNative();
+        const nativeTemplateId =
+          (requested && natives.some((t) => t.id === requested) ? requested : null) ??
+          (natives.some((t) => t.id === 'frame-data-rollup')
+            ? 'frame-data-rollup'
+            : natives[0]?.id);
+        if (!nativeTemplateId) {
+          return json(res, 400, {
+            error: 'No native Remotion templates are installed',
+          });
+        }
         const wantsStream = (req.headers.accept ?? '').includes('text/event-stream');
         if (!wantsStream) {
           try {
             await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, nativeTemplateId);
-            const { project } = await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
+            const { project } = await ctx.orchestrator.renderFrameNativePreview({
+              projectId,
+              graphNodeId: nodeId,
+            });
             return json(res, 200, { ok: true, project, node_id: nodeId });
           } catch (err) {
             return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
@@ -322,8 +368,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           connection: 'keep-alive',
         });
         const sse = (obj: unknown) => {
-          try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); }
-          catch { /* client gone — work keeps running, result is persisted */ }
+          try {
+            if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* client gone — work keeps running, result is persisted */
+          }
         };
         const t0 = Date.now();
         try {
@@ -336,11 +385,15 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             onProgress: (pct, stage) => sse({ type: 'enhance_progress', pct, stage }),
           });
           const ms = Date.now() - t0;
-          process.stderr.write(`[studio:enhance] proj=${projectId} frame=${nodeId} done in ${ms}ms\n`);
+          process.stderr.write(
+            `[studio:enhance] proj=${projectId} frame=${nodeId} done in ${ms}ms\n`,
+          );
           sse({ type: 'enhance_done', project, node_id: nodeId, elapsed_ms: ms });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[studio:enhance] proj=${projectId} frame=${nodeId} failed: ${msg}\n`);
+          process.stderr.write(
+            `[studio:enhance] proj=${projectId} frame=${nodeId} failed: ${msg}\n`,
+          );
           sse({ type: 'enhance_failed', message: msg });
         }
         res.end();
@@ -349,8 +402,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Revert a frame's native enhancement back to its base hyperframes HTML.
       // Instant (no render) — the original HTML at frame.htmlPath is untouched.
-      const unenhMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/frames\/([^/]+)\/unenhance$/);
-      if (unenhMatch && unenhMatch[1] && unenhMatch[2] && m === 'POST') {
+      const unenhMatch = url.pathname.match(
+        /^\/api\/projects\/([^/]+)\/frames\/([^/]+)\/unenhance$/,
+      );
+      if (unenhMatch?.[1] && unenhMatch[2] && m === 'POST') {
         try {
           const { project } = await ctx.orchestrator.unenhanceFrame(unenhMatch[1], unenhMatch[2]);
           return json(res, 200, { ok: true, project, node_id: unenhMatch[2] });
@@ -362,7 +417,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // Export MP4 — streams progress via SSE so the user sees per-frame
       // recording status during a multi-minute multi-frame export.
       const expMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
-      if (expMatch && expMatch[1] && m === 'POST') {
+      if (expMatch?.[1] && m === 'POST') {
         const projectId = expMatch[1];
         // The studio uses the SSE branch by default. A plain POST (curl /
         // tests) gets the legacy blocking response.
@@ -382,8 +437,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           connection: 'keep-alive',
         });
         const sse = (obj: unknown) => {
-          try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); }
-          catch { /* client gone — generation keeps running, result is persisted */ }
+          try {
+            if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* client gone — generation keeps running, result is persisted */
+          }
         };
         const t0 = Date.now();
         try {
@@ -414,11 +472,17 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // project.soundtrack so exportMp4 mixes them in. Generation itself does
       // NOT need ffmpeg — only the export-time mux does.
       const genAudioMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/generate-audio$/);
-      if (genAudioMatch && genAudioMatch[1] && m === 'POST') {
+      if (genAudioMatch?.[1] && m === 'POST') {
         const projectId = genAudioMatch[1];
         const body = (await readBody(req)) as {
           music?: { prompt?: string; instrumental?: boolean; volumeDb?: number };
-          narration?: { text?: string; voiceId?: string; volumeDb?: number; languageBoost?: string; byFrame?: Record<string, string> };
+          narration?: {
+            text?: string;
+            voiceId?: string;
+            volumeDb?: number;
+            languageBoost?: string;
+            byFrame?: Record<string, string>;
+          };
           fadeInSec?: number;
           fadeOutSec?: number;
         };
@@ -428,8 +492,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           connection: 'keep-alive',
         });
         const sse = (obj: unknown) => {
-          try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); }
-          catch { /* client gone — generation keeps running, result is persisted */ }
+          try {
+            if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`);
+          } catch {
+            /* client gone — generation keeps running, result is persisted */
+          }
         };
         try {
           sse({ type: 'audio_started' });
@@ -449,49 +516,71 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const wantMusic = !!body.music?.prompt?.trim();
           const wantNarration = !!body.narration?.text?.trim();
           if (!wantMusic && !wantNarration) {
-            sse({ type: 'audio_failed', message: 'Nothing to generate — provide a music prompt and/or narration text.' });
+            sse({
+              type: 'audio_failed',
+              message: 'Nothing to generate — provide a music prompt and/or narration text.',
+            });
             res.end();
             return;
           }
 
           if (wantMusic) {
-            sse({ type: 'audio_progress', stage: 'music', message: 'generating background music…' });
+            const musicPrompt = body.music!.prompt!.trim();
+            sse({
+              type: 'audio_progress',
+              stage: 'music',
+              message: 'generating background music…',
+            });
             const music = await generateMusic({
-              prompt: body.music!.prompt!.trim(),
-              instrumental: body.music!.instrumental ?? true,
+              prompt: musicPrompt,
+              instrumental: body.music?.instrumental ?? true,
               creds,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               music.bytes,
               music.ext,
-              `background music · ${body.music!.prompt!.trim().slice(0, 60)}`,
+              `background music · ${musicPrompt.slice(0, 60)}`,
             );
             soundtrack.musicAssetId = asset.id;
-            soundtrack.musicPrompt = body.music!.prompt!.trim();
-            if (body.music!.volumeDb !== undefined) soundtrack.musicVolumeDb = body.music!.volumeDb;
-            sse({ type: 'audio_progress', stage: 'music', message: music.providerNote, asset_id: asset.id });
+            soundtrack.musicPrompt = musicPrompt;
+            if (body.music?.volumeDb !== undefined) soundtrack.musicVolumeDb = body.music?.volumeDb;
+            sse({
+              type: 'audio_progress',
+              stage: 'music',
+              message: music.providerNote,
+              asset_id: asset.id,
+            });
           }
 
           if (wantNarration) {
+            const narrationText = body.narration!.text!.trim();
             sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
             const nar = await generateTts({
-              text: body.narration!.text!.trim(),
-              ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
-              ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
+              text: narrationText,
+              ...(body.narration?.voiceId !== undefined && { voiceId: body.narration?.voiceId }),
+              ...(body.narration?.languageBoost !== undefined && {
+                languageBoost: body.narration?.languageBoost,
+              }),
               creds,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               nar.bytes,
               nar.ext,
-              `narration · ${body.narration!.text!.trim().slice(0, 60)}`,
+              `narration · ${body.narration?.text?.trim().slice(0, 60)}`,
             );
             soundtrack.narrationAssetId = asset.id;
-            soundtrack.narrationText = body.narration!.text!.trim();
-            if (body.narration!.byFrame) soundtrack.narrationByFrame = body.narration!.byFrame;
-            if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
-            sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
+            soundtrack.narrationText = body.narration?.text?.trim();
+            if (body.narration?.byFrame) soundtrack.narrationByFrame = body.narration?.byFrame;
+            if (body.narration?.volumeDb !== undefined)
+              soundtrack.narrationVolumeDb = body.narration?.volumeDb;
+            sse({
+              type: 'audio_progress',
+              stage: 'narration',
+              message: nar.providerNote,
+              asset_id: asset.id,
+            });
           }
 
           if (body.fadeInSec !== undefined) soundtrack.fadeInSec = body.fadeInSec;
@@ -517,7 +606,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // spoken voiceover IN THE SAME LANGUAGE as that text. Returns plain JSON
       // { narration } — the user edits it before generating audio.
       const draftNarrMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/draft-narration$/);
-      if (draftNarrMatch && draftNarrMatch[1] && m === 'POST') {
+      if (draftNarrMatch?.[1] && m === 'POST') {
         const projectId = draftNarrMatch[1];
         try {
           // body.frameId set → draft ONLY that frame (single-frame regenerate).
@@ -532,9 +621,13 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           if (!agentDef) return json(res, 400, { error: `agent "${body.agentId}" not registered` });
           const projectDir = await ctx.projects.ensureDir(projectId);
           // Only TextNode carries copy; fall back to label/id for entity/data.
-          const nodeText = (n: typeof graph.nodes[number]): string =>
+          const nodeText = (n: (typeof graph.nodes)[number]): string =>
             (n.kind === 'text' ? n.text : undefined) ?? n.label ?? n.id;
-          const allFrames = graph.nodes.map((n, i) => ({ id: n.id, idx: i, text: nodeText(n).replace(/\n/g, ' ').slice(0, 240) }));
+          const allFrames = graph.nodes.map((n, i) => ({
+            id: n.id,
+            idx: i,
+            text: nodeText(n).replace(/\n/g, ' ').slice(0, 240),
+          }));
           const frameLines = allFrames.map((f) => `${f.idx + 1}. ${f.text}`).join('\n');
 
           const narrationByFrame: Record<string, string> = {};
@@ -542,42 +635,56 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           if (body.frameId) {
             // ---- single frame: narrate just this one, with the rest as context ----
             const target = allFrames.find((f) => f.id === body.frameId);
-            if (!target) return json(res, 400, { error: `frame "${body.frameId}" not in content-graph` });
+            if (!target)
+              return json(res, 400, { error: `frame "${body.frameId}" not in content-graph` });
             const prompt = [
               `This is a ${allFrames.length}-frame video. Write the spoken NARRATION for FRAME ${target.idx + 1} ONLY.`,
-              ``,
-              `All frames (for context):`,
+              '',
+              'All frames (for context):',
               frameLines,
-              ``,
+              '',
               graph.synopsis ? `Synopsis: ${graph.synopsis}` : '',
-              ``,
+              '',
               `Write ONE short spoken sentence narrating frame ${target.idx + 1} ("${target.text}") specifically — distinct, not generic.`,
-              `Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.`,
-            ].filter((l) => l !== undefined).join('\n');
+              'Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.',
+            ]
+              .filter((l) => l !== undefined)
+              .join('\n');
             const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
-            const line = raw.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim()).find((l) => l.length > 0) ?? raw;
+            const line =
+              raw
+                .split('\n')
+                .map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim())
+                .find((l) => l.length > 0) ?? raw;
             narrationByFrame[target.id] = line;
           } else {
             // ---- global: one line per frame, in order ----
             const prompt = [
               `Write a spoken NARRATION script for this ${allFrames.length}-frame video — ONE line per frame, IN FRAME ORDER.`,
-              ``,
-              `Frames (in order):`,
+              '',
+              'Frames (in order):',
               frameLines,
-              ``,
+              '',
               graph.synopsis ? `Synopsis: ${graph.synopsis}` : '',
-              ``,
-              `Rules:`,
+              '',
+              'Rules:',
               `- Output EXACTLY ${allFrames.length} lines, one per frame, in the SAME order. Line 1 narrates frame 1, etc.`,
               `- Each line is ONE short spoken sentence about THAT specific frame's content — distinct per frame, not a generic restatement.`,
-              `- The lines should still flow as a continuous voiceover read top to bottom.`,
-              `- Same language as the frame text. Plain text only: one sentence per line, no numbering, bullets, blank lines, or markdown.`,
-            ].filter((l) => l !== undefined).join('\n');
+              '- The lines should still flow as a continuous voiceover read top to bottom.',
+              '- Same language as the frame text. Plain text only: one sentence per line, no numbering, bullets, blank lines, or markdown.',
+            ]
+              .filter((l) => l !== undefined)
+              .join('\n');
             const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
-            const lines = raw.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim()).filter((l) => l.length > 0);
+            const lines = raw
+              .split('\n')
+              .map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim())
+              .filter((l) => l.length > 0);
             // Map lines onto frames positionally; if the model under/over-produced,
             // pair as far as they line up and leave the rest blank.
-            allFrames.forEach((f, i) => { if (lines[i]) narrationByFrame[f.id] = lines[i]!; });
+            allFrames.forEach((f, i) => {
+              if (lines[i]) narrationByFrame[f.id] = lines[i]!;
+            });
           }
           return json(res, 200, { narrationByFrame });
         } catch (err) {
@@ -590,9 +697,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // Clear a project's soundtrack (keeps the asset files, just drops the
       // references so the next export has no audio).
       const clearAudioMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/soundtrack$/);
-      if (clearAudioMatch && clearAudioMatch[1] && m === 'DELETE') {
+      if (clearAudioMatch?.[1] && m === 'DELETE') {
         const project = await ctx.orchestrator.load(clearAudioMatch[1]);
-        delete project.soundtrack;
+        project.soundtrack = undefined;
         await ctx.projects.save(project);
         return json(res, 200, { project });
       }
@@ -601,7 +708,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // opens Finder with the file selected. Other platforms fall through
       // to a plain `open` which the OS handles best-effort.
       const revealMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/reveal$/);
-      if (revealMatch && revealMatch[1] && m === 'POST') {
+      if (revealMatch?.[1] && m === 'POST') {
         const project = await ctx.orchestrator.load(revealMatch[1]);
         const target = project.lastOutputMp4Path;
         if (!target || !existsSync(target)) {
@@ -642,7 +749,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // Agent models — currently AMR only. Lists the live `vela model list`
       // catalog so the UI can offer a model picker (deepseek/claude/gpt/…).
       const modelsMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/models$/);
-      if (modelsMatch && modelsMatch[1] && m === 'GET') {
+      if (modelsMatch?.[1] && m === 'GET') {
         const agentId = modelsMatch[1];
         if (agentId !== 'amr') return json(res, 200, { models: [] });
         const def = findAgent(agentId);
@@ -654,7 +761,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const models = await listAmrModels(bin);
           return json(res, 200, { models, default: def.defaultModel ?? null });
         } catch (err) {
-          return json(res, 200, { models: [], error: err instanceof Error ? err.message : String(err) });
+          return json(res, 200, {
+            models: [],
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
@@ -662,9 +772,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // the browser for OAuth; we wait for the process to exit (auth complete or
       // cancelled). The user signs in with their OWN Open Design account.
       const loginMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/login$/);
-      if (loginMatch && loginMatch[1] && m === 'POST') {
+      if (loginMatch?.[1] && m === 'POST') {
         const agentId = loginMatch[1];
-        if (agentId !== 'amr') return json(res, 400, { error: `agent "${agentId}" has no login flow` });
+        if (agentId !== 'amr')
+          return json(res, 400, { error: `agent "${agentId}" has no login flow` });
         const def = findAgent(agentId);
         if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
         const { resolveBin } = await import('@html-video/runtime');
@@ -676,17 +787,38 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             const child = spawn(bin, ['login'], { stdio: 'ignore' });
             // vela login opens the browser itself; it exits once auth completes
             // or is cancelled. Cap the wait so a never-finished login can't hang.
-            const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* */ } rejectCode(new Error('login timed out (5 min)')); }, 5 * 60_000);
-            child.on('error', (e: Error) => { clearTimeout(timer); rejectCode(e); });
-            child.on('exit', (c: number | null) => { clearTimeout(timer); resolveCode(c ?? -1); });
+            const timer = setTimeout(() => {
+              try {
+                child.kill('SIGTERM');
+              } catch {
+                /* */
+              }
+              rejectCode(new Error('login timed out (5 min)'));
+            }, 5 * 60_000);
+            child.on('error', (e: Error) => {
+              clearTimeout(timer);
+              rejectCode(e);
+            });
+            child.on('exit', (c: number | null) => {
+              clearTimeout(timer);
+              resolveCode(c ?? -1);
+            });
           });
-          if (code !== 0) return json(res, 400, { ok: false, error: `vela login exited with code ${code}` });
+          if (code !== 0)
+            return json(res, 400, { ok: false, error: `vela login exited with code ${code}` });
           // Re-detect (force) so the agent flips to available immediately.
           const agents = await detectAll({ force: true });
           const amr = agents.find((a) => a.id === 'amr');
-          return json(res, 200, { ok: !!amr?.available, available: !!amr?.available, ...(amr?.hint && { hint: amr.hint }) });
+          return json(res, 200, {
+            ok: !!amr?.available,
+            available: !!amr?.available,
+            ...(amr?.hint && { hint: amr.hint }),
+          });
         } catch (err) {
-          return json(res, 500, { ok: false, error: err instanceof Error ? err.message : String(err) });
+          return json(res, 500, {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
@@ -694,7 +826,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // reports timing + bytes. Used by the Settings modal so the user can
       // confirm a CLI is actually responding (not just on PATH).
       const testMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/test$/);
-      if (testMatch && testMatch[1] && m === 'POST') {
+      if (testMatch?.[1] && m === 'POST') {
         const agentId = testMatch[1];
         const def = findAgent(agentId);
         if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
@@ -724,7 +856,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Messages: GET history (lazy-loads from messages.json on first hit)
       const msgsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/messages$/);
-      if (msgsMatch && msgsMatch[1] && m === 'GET') {
+      if (msgsMatch?.[1] && m === 'GET') {
         const arr = await loadMessages(ctx, msgsMatch[1]);
         return json(res, 200, { messages: arr });
       }
@@ -733,7 +865,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // v0.5: accepts multipart (text + files) OR JSON. Files become real
       // project assets via AssetStore; their paths are passed to the agent
       // prompt as attachments.
-      if (msgsMatch && msgsMatch[1] && m === 'POST') {
+      if (msgsMatch?.[1] && m === 'POST') {
         const id = msgsMatch[1];
         const ct = req.headers['content-type'] ?? '';
         let userText = '';
@@ -764,7 +896,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
                   try {
                     const txt = await readFile(newAsset.path, 'utf8');
                     if (txt.length <= 20_000) att.inlineText = txt;
-                  } catch { /* fall back to path-only */ }
+                  } catch {
+                    /* fall back to path-only */
+                  }
                 }
                 attachments.push(att);
               }
@@ -798,7 +932,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             const asset = updated.assets[updated.assets.length - 1];
             if (asset?.path) {
               let host = sourceUrl;
-              try { host = new URL(sourceUrl).hostname; } catch { /* keep raw */ }
+              try {
+                host = new URL(sourceUrl).hostname;
+              } catch {
+                /* keep raw */
+              }
               attachments.push({
                 path: asset.path,
                 kind: 'text',
@@ -839,9 +977,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const agentModel = project.agentModel ?? undefined;
 
         // Append user message to history (with attachment summary)
-        const attachmentSummary = attachments.length > 0
-          ? `\n\n📎 ${attachments.length} attachment(s): ${attachments.map((a) => a.filename).join(', ')}`
-          : '';
+        const attachmentSummary =
+          attachments.length > 0
+            ? `\n\n📎 ${attachments.length} attachment(s): ${attachments.map((a) => a.filename).join(', ')}`
+            : '';
         const history = await loadMessages(ctx, id);
         history.push({
           role: 'user',
@@ -861,12 +1000,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const focusFrame = focusFrameId
           ? (project.frames ?? []).find((f) => f.graphNodeId === focusFrameId)
           : undefined;
-        const focusFrameHtml = focusFrame && existsSync(focusFrame.htmlPath)
-          ? await readFile(focusFrame.htmlPath, 'utf8')
-          : '';
+        const focusFrameHtml =
+          focusFrame && existsSync(focusFrame.htmlPath)
+            ? await readFile(focusFrame.htmlPath, 'utf8')
+            : '';
         const priorHtmlPath = join(projectDir, 'preview.html');
-        const priorHtml = focusFrameHtml
-          || (existsSync(priorHtmlPath) ? await readFile(priorHtmlPath, 'utf8') : '');
+        const priorHtml =
+          focusFrameHtml ||
+          (existsSync(priorHtmlPath) ? await readFile(priorHtmlPath, 'utf8') : '');
         let exampleHtml = '';
         if (tmpl) {
           const exampleHtmlPath = join(tmpl.__dir!, tmpl.source_entry);
@@ -882,12 +1023,18 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // uploaded docs) into this turn's attachments so they reach the prompt.
         const seenPaths = new Set(attachments.map((a) => a.path));
         for (const asset of project.assets) {
-          if ((asset.type === 'text' || asset.type === 'data') && asset.path && !seenPaths.has(asset.path)) {
+          if (
+            (asset.type === 'text' || asset.type === 'data') &&
+            asset.path &&
+            !seenPaths.has(asset.path)
+          ) {
             let inlineText: string | undefined;
             try {
               const txt = await readFile(asset.path, 'utf8');
               if (txt.length <= 20_000) inlineText = txt;
-            } catch { /* path-only fallback */ }
+            } catch {
+              /* path-only fallback */
+            }
             attachments.push({
               path: asset.path,
               kind: asset.type as Attachment['kind'],
@@ -928,7 +1075,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           }
           const fs = await import('node:fs/promises');
           await fs.writeFile(promptDumpPath, fullPrompt, 'utf8');
-        } catch {/* non-fatal */}
+        } catch {
+          /* non-fatal */
+        }
         process.stderr.write(
           `[studio:msg] proj=${id} phase=${phaseInfo.phase} prompt=${fullPrompt.length}B user=${JSON.stringify(userText.slice(0, 80))} attachments=${attachments.length}\n`,
         );
@@ -937,260 +1086,291 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // is still alive. Cleared in the finally below (covers all exit paths).
         GENERATING.add(id);
         try {
-
-        // SSE response
-        res.writeHead(200, {
-          'content-type': 'text/event-stream; charset=utf-8',
-          'cache-control': 'no-cache',
-          connection: 'keep-alive',
-        });
-
-        // Tolerant write: if the client navigated away (switched project) the
-        // socket is gone and res.write throws. Swallow it so generation keeps
-        // running to completion and still persists to messages.json — the user
-        // sees the finished result when they come back, instead of a killed task.
-        const sseWrite = (obj: unknown) => {
-          try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); }
-          catch { /* client disconnected — keep generating, result is persisted below */ }
-        };
-
-        let assistantText = '';
-        let textChunks = 0;
-        let summaryLine = '';
-
-        // ---- generate-phase: multi-frame path runs split (graph + per-frame) ----
-        // Empirically claude --print returns 1 byte ~50% of the time when asked
-        // to emit a graph and 4-6 full HTML pages in a single response. Each
-        // call individually is reliable, so we orchestrate them ourselves and
-        // stream progress events to the UI.
-        const isMultiGenerate =
-          phaseInfo.phase === 'generate' &&
-          Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
-
-        // Post-generation iteration: the card-driven sub-flow resolved to a
-        // concrete change. Re-use the existing storyboard rather than guessing.
-        //   restyle         → keep graph text, re-render every frame in the newly
-        //                      picked style.
-        //   iterate-content → re-plan the whole storyboard around new content.
-        //   iterate-format  → re-time and re-render with the new per-frame length.
-        const isMultiFrameProject =
-          (project.frames ?? []).length > 1 ||
-          Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
-        let rewriteInputs: PhaseInputs | undefined;
-        let restyleOnly = false;
-        if (phaseInfo.phase === 'restyle' && isMultiFrameProject) {
-          // Keep text, change visual style. pickedStyle is the user's new pick.
-          restyleOnly = true;
-          rewriteInputs = {
-            ...phaseInfo.inputs,
-            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
-            pickedStyle: phaseInfo.inputs.pickedStyle || userText.trim(),
-            contentTurns: collectContentTurns(history),
-          };
-        } else if (phaseInfo.phase === 'iterate-content' && isMultiFrameProject) {
-          // Re-plan around the user's new content instruction.
-          const turns = [...collectContentTurns(history), userText].filter((s) => !isControlPhrase(s));
-          rewriteInputs = {
-            ...phaseInfo.inputs,
-            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
-            pickedStyle: lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
-            contentTurns: turns,
-          };
-        } else if (phaseInfo.phase === 'iterate-format' && isMultiFrameProject) {
-          // New per-frame timing was submitted; keep content + style, re-render.
-          restyleOnly = true; // reuse the existing graph text; only timing/visual recompute
-          rewriteInputs = {
-            ...phaseInfo.inputs,
-            pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
-            pickedStyle: lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
-            contentTurns: collectContentTurns(history),
-          };
-        }
-
-        if (isMultiGenerate || rewriteInputs) {
-          if (rewriteInputs) {
-            const n = (project.frames ?? []).length || Number(phaseInfo.inputs.collected?.frame_count ?? '3');
-            const notice = restyleOnly
-              ? `🎨 沿用文案，按新风格重做全部 ${n} 帧…\n`
-              : `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
-            assistantText += notice;
-            sseWrite({ type: 'text', chunk: notice });
-          }
-          try {
-            const result = await runSplitMultiFrameGenerate({
-              ctx,
-              projectId: id,
-              projectDir,
-              agentDef,
-              agentModel,
-              tmpl,
-              priorHtml,
-              inputs: rewriteInputs ?? phaseInfo.inputs,
-              attachments,
-              openingTopic: resolveOpeningTopic(project, history),
-              restyleOnly,
-              onProgress: (msg) => {
-                assistantText += msg + '\n';
-                textChunks += 1;
-                sseWrite({ type: 'text', chunk: msg + '\n' });
-              },
-              onSse: sseWrite,
-            });
-            summaryLine = rewriteInputs
-              ? `✓ ${result.frameCount}-frame storyboard ${restyleOnly ? 'restyled' : 'regenerated'} (intent: ${result.intent})`
-              : `✓ ${result.frameCount}-frame storyboard generated (intent: ${result.intent})`;
-            sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: result.frameCount });
-            sseWrite({ type: 'message_end', reason: 'ok' });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            process.stderr.write(`[studio:msg] proj=${id} split-generate failed: ${msg}\n`);
-            sseWrite({ type: 'text', chunk: `\n⚠️ Split generate failed: ${msg}` });
-            sseWrite({ type: 'message_end', reason: 'error' });
-            assistantText = `⚠️ Split generate failed: ${msg}`;
-          }
-          process.stderr.write(
-            `[studio:msg] proj=${id} phase=split-generate done text=${assistantText.length}B\n`,
-          );
-        } else {
-          // ---- single-shot path (all other phases + single-frame generate) ----
-          const handle = spawnAgent({
-            def: agentDef,
-            prompt: fullPrompt,
-            context: { cwd: projectDir, ...(agentModel && { model: agentModel }) },
-            onEvent: (ev) => {
-              if (ev.type === 'text') {
-                assistantText += ev.chunk;
-                textChunks += 1;
-                sseWrite(ev);
-              } else if (ev.type === 'error' || ev.type === 'message_end') {
-                if (ev.type === 'error') {
-                  process.stderr.write(`[studio:msg] proj=${id} agent-error: ${ev.message}\n`);
-                }
-                sseWrite(ev);
-              }
-            },
+          // SSE response
+          res.writeHead(200, {
+            'content-type': 'text/event-stream; charset=utf-8',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
           });
-          const exitInfo = await handle.done;
-          const elapsedMs = Date.now() - t0;
-          process.stderr.write(
-            `[studio:msg] proj=${id} phase=${phaseInfo.phase} done in ${elapsedMs}ms exit=${exitInfo.exitCode} text=${assistantText.length}B chunks=${textChunks}\n`,
-          );
 
-          // Empty-reply retry: if the agent returned almost nothing AND we
-          // were on the iterate path with prior HTML, try a tighter prompt
-          // that only ships the user's request + a tiny instruction. This
-          // catches the 6-8KB-prompt empty-reply mode.
-          if (assistantText.trim().length < 32 && phaseInfo.phase === 'iterate' && priorHtml) {
-            sseWrite({ type: 'text', chunk: '\n↻ 第一次输出为空，重试中…\n' });
-            // Retry without inlining the prior HTML — same observation as
-            // the iterate prompt itself: claude --print silently no-ops
-            // when fed multi-KB of HTML to rewrite.
-            const sum = summariseHtmlForIterate(priorHtml);
-            const retryPrompt = [
-              `Output ONE complete \`\`\`html block — full self-contained 1920×1080 page. Nothing else.`,
-              ``,
-              `User request: ${userText.slice(0, 300)}`,
-              sum.headline ? `Headline: ${sum.headline}` : '',
-              sum.subheads.length ? `Subheads:\n${sum.subheads.slice(0, 4).map((s) => `  · ${s}`).join('\n')}` : '',
-              sum.bgColors.length ? `Palette: ${sum.bgColors.join(' / ')}` : '',
-              sum.fontFamilies.length ? `Fonts: ${sum.fontFamilies.join(', ')}` : '',
-              ``,
-              `Begin reply with \`\`\`html. Tag visible text with data-hv-text. No prose outside the block.`,
-            ].filter(Boolean).join('\n');
-            let retryText = '';
-            const retryHandle = spawnAgent({
+          // Tolerant write: if the client navigated away (switched project) the
+          // socket is gone and res.write throws. Swallow it so generation keeps
+          // running to completion and still persists to messages.json — the user
+          // sees the finished result when they come back, instead of a killed task.
+          const sseWrite = (obj: unknown) => {
+            try {
+              if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`);
+            } catch {
+              /* client disconnected — keep generating, result is persisted below */
+            }
+          };
+
+          let assistantText = '';
+          let textChunks = 0;
+          let summaryLine = '';
+
+          // ---- generate-phase: multi-frame path runs split (graph + per-frame) ----
+          // Empirically claude --print returns 1 byte ~50% of the time when asked
+          // to emit a graph and 4-6 full HTML pages in a single response. Each
+          // call individually is reliable, so we orchestrate them ourselves and
+          // stream progress events to the UI.
+          const isMultiGenerate =
+            phaseInfo.phase === 'generate' &&
+            Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
+
+          // Post-generation iteration: the card-driven sub-flow resolved to a
+          // concrete change. Re-use the existing storyboard rather than guessing.
+          //   restyle         → keep graph text, re-render every frame in the newly
+          //                      picked style.
+          //   iterate-content → re-plan the whole storyboard around new content.
+          //   iterate-format  → re-time and re-render with the new per-frame length.
+          const isMultiFrameProject =
+            (project.frames ?? []).length > 1 ||
+            Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
+          let rewriteInputs: PhaseInputs | undefined;
+          let restyleOnly = false;
+          if (phaseInfo.phase === 'restyle' && isMultiFrameProject) {
+            // Keep text, change visual style. pickedStyle is the user's new pick.
+            restyleOnly = true;
+            rewriteInputs = {
+              ...phaseInfo.inputs,
+              pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+              pickedStyle: phaseInfo.inputs.pickedStyle || userText.trim(),
+              contentTurns: collectContentTurns(history),
+            };
+          } else if (phaseInfo.phase === 'iterate-content' && isMultiFrameProject) {
+            // Re-plan around the user's new content instruction.
+            const turns = [...collectContentTurns(history), userText].filter(
+              (s) => !isControlPhrase(s),
+            );
+            rewriteInputs = {
+              ...phaseInfo.inputs,
+              pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+              pickedStyle:
+                lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
+              contentTurns: turns,
+            };
+          } else if (phaseInfo.phase === 'iterate-format' && isMultiFrameProject) {
+            // New per-frame timing was submitted; keep content + style, re-render.
+            restyleOnly = true; // reuse the existing graph text; only timing/visual recompute
+            rewriteInputs = {
+              ...phaseInfo.inputs,
+              pickedType: lastCardPickByPhase(history, 'type') ?? phaseInfo.inputs.pickedType,
+              pickedStyle:
+                lastCardPickByPhase(history, 'style') ?? phaseInfo.inputs.pickedStyle ?? '',
+              contentTurns: collectContentTurns(history),
+            };
+          }
+
+          if (isMultiGenerate || rewriteInputs) {
+            if (rewriteInputs) {
+              const n =
+                (project.frames ?? []).length ||
+                Number(phaseInfo.inputs.collected?.frame_count ?? '3');
+              const notice = restyleOnly
+                ? `🎨 沿用文案，按新风格重做全部 ${n} 帧…\n`
+                : `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
+              assistantText += notice;
+              sseWrite({ type: 'text', chunk: notice });
+            }
+            try {
+              const result = await runSplitMultiFrameGenerate({
+                ctx,
+                projectId: id,
+                projectDir,
+                agentDef,
+                agentModel,
+                tmpl,
+                priorHtml,
+                inputs: rewriteInputs ?? phaseInfo.inputs,
+                attachments,
+                openingTopic: resolveOpeningTopic(project, history),
+                restyleOnly,
+                onProgress: (msg) => {
+                  assistantText += `${msg}\n`;
+                  textChunks += 1;
+                  sseWrite({ type: 'text', chunk: `${msg}\n` });
+                },
+                onSse: sseWrite,
+              });
+              summaryLine = rewriteInputs
+                ? `✓ ${result.frameCount}-frame storyboard ${restyleOnly ? 'restyled' : 'regenerated'} (intent: ${result.intent})`
+                : `✓ ${result.frameCount}-frame storyboard generated (intent: ${result.intent})`;
+              sseWrite({
+                type: 'preview_ready',
+                preview_url: `/preview/${id}`,
+                frames: result.frameCount,
+              });
+              sseWrite({ type: 'message_end', reason: 'ok' });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              process.stderr.write(`[studio:msg] proj=${id} split-generate failed: ${msg}\n`);
+              sseWrite({ type: 'text', chunk: `\n⚠️ Split generate failed: ${msg}` });
+              sseWrite({ type: 'message_end', reason: 'error' });
+              assistantText = `⚠️ Split generate failed: ${msg}`;
+            }
+            process.stderr.write(
+              `[studio:msg] proj=${id} phase=split-generate done text=${assistantText.length}B\n`,
+            );
+          } else {
+            // ---- single-shot path (all other phases + single-frame generate) ----
+            const handle = spawnAgent({
               def: agentDef,
-              prompt: retryPrompt,
-              context: { cwd: projectDir },
+              prompt: fullPrompt,
+              context: { cwd: projectDir, ...(agentModel && { model: agentModel }) },
               onEvent: (ev) => {
                 if (ev.type === 'text') {
-                  retryText += ev.chunk;
+                  assistantText += ev.chunk;
                   textChunks += 1;
                   sseWrite(ev);
                 } else if (ev.type === 'error' || ev.type === 'message_end') {
+                  if (ev.type === 'error') {
+                    process.stderr.write(`[studio:msg] proj=${id} agent-error: ${ev.message}\n`);
+                  }
                   sseWrite(ev);
                 }
               },
             });
-            await retryHandle.done;
-            assistantText += retryText;
+            const exitInfo = await handle.done;
+            const elapsedMs = Date.now() - t0;
             process.stderr.write(
-              `[studio:msg] proj=${id} retry done text=${retryText.length}B\n`,
+              `[studio:msg] proj=${id} phase=${phaseInfo.phase} done in ${elapsedMs}ms exit=${exitInfo.exitCode} text=${assistantText.length}B chunks=${textChunks}\n`,
             );
-          }
 
-          // Single-frame iterate: result HTML goes back to the focused frame
-          // only — never overwrites the whole preview.html.
-          if (focusFrameId) {
-            const extracted = extractHtmlDocument(assistantText);
-            if (extracted) {
-              try {
-                await ctx.orchestrator.writeFrameHtml(id, focusFrameId, extracted);
-                sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, focused_frame: focusFrameId });
-                summaryLine = `✓ frame ${focusFrameId} updated`;
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                sseWrite({ type: 'text', chunk: `\n[frame ${focusFrameId} write failed: ${msg}]\n` });
-              }
+            // Empty-reply retry: if the agent returned almost nothing AND we
+            // were on the iterate path with prior HTML, try a tighter prompt
+            // that only ships the user's request + a tiny instruction. This
+            // catches the 6-8KB-prompt empty-reply mode.
+            if (assistantText.trim().length < 32 && phaseInfo.phase === 'iterate' && priorHtml) {
+              sseWrite({ type: 'text', chunk: '\n↻ 第一次输出为空，重试中…\n' });
+              // Retry without inlining the prior HTML — same observation as
+              // the iterate prompt itself: claude --print silently no-ops
+              // when fed multi-KB of HTML to rewrite.
+              const sum = summariseHtmlForIterate(priorHtml);
+              const retryPrompt = [
+                'Output ONE complete ```html block — full self-contained 1920×1080 page. Nothing else.',
+                '',
+                `User request: ${userText.slice(0, 300)}`,
+                sum.headline ? `Headline: ${sum.headline}` : '',
+                sum.subheads.length
+                  ? `Subheads:\n${sum.subheads
+                      .slice(0, 4)
+                      .map((s) => `  · ${s}`)
+                      .join('\n')}`
+                  : '',
+                sum.bgColors.length ? `Palette: ${sum.bgColors.join(' / ')}` : '',
+                sum.fontFamilies.length ? `Fonts: ${sum.fontFamilies.join(', ')}` : '',
+                '',
+                'Begin reply with ```html. Tag visible text with data-hv-text. No prose outside the block.',
+              ]
+                .filter(Boolean)
+                .join('\n');
+              let retryText = '';
+              const retryHandle = spawnAgent({
+                def: agentDef,
+                prompt: retryPrompt,
+                context: { cwd: projectDir },
+                onEvent: (ev) => {
+                  if (ev.type === 'text') {
+                    retryText += ev.chunk;
+                    textChunks += 1;
+                    sseWrite(ev);
+                  } else if (ev.type === 'error' || ev.type === 'message_end') {
+                    sseWrite(ev);
+                  }
+                },
+              });
+              await retryHandle.done;
+              assistantText += retryText;
+              process.stderr.write(
+                `[studio:msg] proj=${id} retry done text=${retryText.length}B\n`,
+              );
             }
-          } else {
-            // Multi-frame extraction on the off chance the agent did emit it
-            // (e.g. on a free-text iterate turn the user's text triggered it).
-            const multi = extractContentGraphAndFrames(assistantText);
-            if (multi && multi.frames.length > 0) {
-              await ctx.orchestrator.writeContentGraph(id, multi.graph);
-              for (const f of multi.frames) {
-                try {
-                  await ctx.orchestrator.writeFrameHtml(id, f.nodeId, f.html);
-                } catch (err) {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  sseWrite({ type: 'text', chunk: `\n[frame ${f.nodeId} skipped: ${msg}]\n` });
-                }
-              }
-              sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: multi.frames.length });
-              summaryLine = `✓ ${multi.frames.length}-frame storyboard generated (intent: ${multi.graph.intent})`;
-            } else {
+
+            // Single-frame iterate: result HTML goes back to the focused frame
+            // only — never overwrites the whole preview.html.
+            if (focusFrameId) {
               const extracted = extractHtmlDocument(assistantText);
               if (extracted) {
-                await ctx.orchestrator.writePreviewHtmlRaw(id, extracted);
-                sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}` });
-                summaryLine = '✓ updated the HTML preview';
+                try {
+                  await ctx.orchestrator.writeFrameHtml(id, focusFrameId, extracted);
+                  sseWrite({
+                    type: 'preview_ready',
+                    preview_url: `/preview/${id}`,
+                    focused_frame: focusFrameId,
+                  });
+                  summaryLine = `✓ frame ${focusFrameId} updated`;
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  sseWrite({
+                    type: 'text',
+                    chunk: `\n[frame ${focusFrameId} write failed: ${msg}]\n`,
+                  });
+                }
+              }
+            } else {
+              // Multi-frame extraction on the off chance the agent did emit it
+              // (e.g. on a free-text iterate turn the user's text triggered it).
+              const multi = extractContentGraphAndFrames(assistantText);
+              if (multi && multi.frames.length > 0) {
+                await ctx.orchestrator.writeContentGraph(id, multi.graph);
+                for (const f of multi.frames) {
+                  try {
+                    await ctx.orchestrator.writeFrameHtml(id, f.nodeId, f.html);
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    sseWrite({ type: 'text', chunk: `\n[frame ${f.nodeId} skipped: ${msg}]\n` });
+                  }
+                }
+                sseWrite({
+                  type: 'preview_ready',
+                  preview_url: `/preview/${id}`,
+                  frames: multi.frames.length,
+                });
+                summaryLine = `✓ ${multi.frames.length}-frame storyboard generated (intent: ${multi.graph.intent})`;
+              } else {
+                const extracted = extractHtmlDocument(assistantText);
+                if (extracted) {
+                  await ctx.orchestrator.writePreviewHtmlRaw(id, extracted);
+                  sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}` });
+                  summaryLine = '✓ updated the HTML preview';
+                }
               }
             }
           }
-        }
 
-        // Persist assistant message — strip the html / graph blocks when present (UI sees summary line)
-        let persistText = summaryLine
-          ? assistantText
-              .replace(/```html[#\w-]*[\s\S]*?```/gi, '')
-              .replace(/```json#content-graph[\s\S]*?```/i, '')
-              .replace(/```json[\s\S]*?```/i, (m) =>
-                /content-graph|"intent"\s*:|"nodes"\s*:/i.test(m) ? '' : m,
-              )
-              .trim() || summaryLine
-          : assistantText;
+          // Persist assistant message — strip the html / graph blocks when present (UI sees summary line)
+          let persistText = summaryLine
+            ? assistantText
+                .replace(/```html[#\w-]*[\s\S]*?```/gi, '')
+                .replace(/```json#content-graph[\s\S]*?```/i, '')
+                .replace(/```json[\s\S]*?```/i, (m) =>
+                  /content-graph|"intent"\s*:|"nodes"\s*:/i.test(m) ? '' : m,
+                )
+                .trim() || summaryLine
+            : assistantText;
 
-        // Empty agent reply (no HTML, no graph, no prose) usually means the
-        // prompt confused the model into doing nothing. Give the user something
-        // actionable instead of a blank speech bubble.
-        if (!persistText.trim()) {
-          const fallback = '⚠️ The agent returned an empty reply. Try rephrasing your request — e.g. tell it the brand / topic / 1-2 concrete details, or which kind of frame you want first.';
-          sseWrite({ type: 'text', chunk: fallback });
-          persistText = fallback;
-        }
-        history.push({
-          role: 'assistant',
-          agent: agentDef.id,
-          content: persistText,
-          ts: Date.now(),
-        });
-        MESSAGES.set(id, history);
-        await saveMessages(ctx, id, history);
-        // discard project0 reference to keep TS happy
-        void project0;
-        res.end();
-        return;
+          // Empty agent reply (no HTML, no graph, no prose) usually means the
+          // prompt confused the model into doing nothing. Give the user something
+          // actionable instead of a blank speech bubble.
+          if (!persistText.trim()) {
+            const fallback =
+              '⚠️ The agent returned an empty reply. Try rephrasing your request — e.g. tell it the brand / topic / 1-2 concrete details, or which kind of frame you want first.';
+            sseWrite({ type: 'text', chunk: fallback });
+            persistText = fallback;
+          }
+          history.push({
+            role: 'assistant',
+            agent: agentDef.id,
+            content: persistText,
+            ts: Date.now(),
+          });
+          MESSAGES.set(id, history);
+          await saveMessages(ctx, id, history);
+          // discard project0 reference to keep TS happy
+          void project0;
+          res.end();
+          return;
         } finally {
           GENERATING.delete(id);
         }
@@ -1200,7 +1380,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // client show "still generating…" instead of a blank where the live
       // progress lines used to be.
       const genStatusMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/generating$/);
-      if (genStatusMatch && genStatusMatch[1] && m === 'GET') {
+      if (genStatusMatch?.[1] && m === 'GET') {
         return json(res, 200, { generating: GENERATING.has(genStatusMatch[1]) });
       }
 
@@ -1208,7 +1388,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // GET content graph as JSON
       const cgMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/content-graph$/);
-      if (cgMatch && cgMatch[1] && m === 'GET') {
+      if (cgMatch?.[1] && m === 'GET') {
         const graph = await ctx.orchestrator.readContentGraph(cgMatch[1]);
         if (!graph) return json(res, 404, { error: 'No content graph for this project' });
         return json(res, 200, { graph });
@@ -1219,14 +1399,16 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       // (a frame with twice the words holds twice as long), so a generated
       // voiceover and the visuals stay in step. Min 2s per frame.
       const fitMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/fit-durations$/);
-      if (fitMatch && fitMatch[1] && m === 'POST') {
+      if (fitMatch?.[1] && m === 'POST') {
         const projectId = fitMatch[1];
         const graph = await ctx.orchestrator.readContentGraph(projectId);
         if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
           return json(res, 400, { error: 'No frames yet — generate the video first.' });
         }
-        const byFrame = ((await readBody(req)) as { narrationByFrame?: Record<string, string> }).narrationByFrame ?? {};
-        const lenOf = (id: string) => (byFrame[id]?.trim().length ?? 0);
+        const byFrame =
+          ((await readBody(req)) as { narrationByFrame?: Record<string, string> })
+            .narrationByFrame ?? {};
+        const lenOf = (id: string) => byFrame[id]?.trim().length ?? 0;
         const totalChars = graph.nodes.reduce((s, n) => s + lenOf(n.id), 0);
         if (totalChars === 0) {
           return json(res, 400, { error: 'No narration yet — draft narration first, then fit.' });
@@ -1240,7 +1422,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const neededForSpeech = Math.ceil(totalChars * SEC_PER_CHAR);
         const total = Math.max(currentTotal, neededForSpeech, MIN * graph.nodes.length);
         // Proportional by char share, then lift any frame below MIN.
-        let durs = graph.nodes.map((n) => ({ n, d: Math.max(MIN, Math.round((lenOf(n.id) / totalChars) * total)) }));
+        const durs = graph.nodes.map((n) => ({
+          n,
+          d: Math.max(MIN, Math.round((lenOf(n.id) / totalChars) * total)),
+        }));
         // Re-normalize so the rounded sum matches `total` (adjust the longest frame).
         const sum = durs.reduce((s, x) => s + x.d, 0);
         if (sum !== total && durs.length) {
@@ -1253,14 +1438,18 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // back to a single 5s template still instead of the multi-frame video).
         await ctx.orchestrator.writeContentGraph(projectId, graph, { preserveFrames: true });
         const durations = Object.fromEntries(graph.nodes.map((n) => [n.id, n.durationSec]));
-        return json(res, 200, { ok: true, durations, totalSec: graph.nodes.reduce((s, n) => s + (n.durationSec ?? 0), 0) });
+        return json(res, 200, {
+          ok: true,
+          durations,
+          totalSec: graph.nodes.reduce((s, n) => s + (n.durationSec ?? 0), 0),
+        });
       }
 
       // ============== File serving ==============
 
       // Project preview HTML (and any sibling files like assets/)
       const previewServeMatch = url.pathname.match(/^\/preview\/([^/]+)(\/.*)?$/);
-      if (previewServeMatch && previewServeMatch[1]) {
+      if (previewServeMatch?.[1]) {
         const projId = previewServeMatch[1];
         const sub = previewServeMatch[2] ?? '/preview.html';
         const project = await ctx.orchestrator.load(projId);
@@ -1268,7 +1457,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         // Phase C: serve an enhanced frame's preview MP4 (native Remotion frames
         // have no HTML). Match the `.mp4` suffix BEFORE the plain HTML frame route.
         const frameMp4Match = sub.match(/^\/frame\/([a-z0-9_-]+)\.mp4$/i);
-        if (frameMp4Match && frameMp4Match[1]) {
+        if (frameMp4Match?.[1]) {
           const frame = (project.frames ?? []).find((f) => f.graphNodeId === frameMp4Match[1]);
           if (frame?.previewMp4Path && existsSync(frame.previewMp4Path)) {
             return serveFile(frame.previewMp4Path, res);
@@ -1279,7 +1468,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
         // v0.8: serve a specific frame HTML by graph node id
         const frameMatch = sub.match(/^\/frame\/([a-z0-9_-]+)$/i);
-        if (frameMatch && frameMatch[1]) {
+        if (frameMatch?.[1]) {
           const nodeId = frameMatch[1];
           const frame = (project.frames ?? []).find((f) => f.graphNodeId === nodeId);
           if (frame && existsSync(frame.htmlPath)) {
@@ -1289,16 +1478,15 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return res.end('Frame not found');
         }
 
-        const baseDir = project.lastPreviewHtmlPath
-          ? dirname(project.lastPreviewHtmlPath)
-          : null;
+        const baseDir = project.lastPreviewHtmlPath ? dirname(project.lastPreviewHtmlPath) : null;
         if (!baseDir) {
           res.writeHead(404);
           return res.end('Preview not rendered yet');
         }
-        const filePath = sub === '/preview.html' || sub === '/'
-          ? project.lastPreviewHtmlPath!
-          : join(baseDir, sub);
+        const filePath =
+          sub === '/preview.html' || sub === '/'
+            ? project.lastPreviewHtmlPath!
+            : join(baseDir, sub);
         if (existsSync(filePath) && statSync(filePath).isFile()) {
           return serveFile(filePath, res);
         }
@@ -1320,7 +1508,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               const tmplResolved = resolve(tmplFile);
               const tmplRoot = resolve(tmpl.__dir);
               if (
-                tmplResolved.startsWith(tmplRoot + '/') &&
+                tmplResolved.startsWith(`${tmplRoot}/`) &&
                 existsSync(tmplResolved) &&
                 statSync(tmplResolved).isFile()
               ) {
@@ -1355,7 +1543,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
       // Template poster (e.g. /template-asset/<id>/preview.png)
       const tplAssetMatch = url.pathname.match(/^\/template-asset\/([^/]+)\/(.+)$/);
-      if (tplAssetMatch && tplAssetMatch[1] && tplAssetMatch[2]) {
+      if (tplAssetMatch?.[1] && tplAssetMatch[2]) {
         const t = ctx.templates.get(tplAssetMatch[1]);
         const rel = tplAssetMatch[2];
         const filePath = join(t.__dir!, rel);
@@ -1433,15 +1621,14 @@ function json(res: ServerResponse, code: number, body: unknown): void {
  * `posterUrl` is still surfaced (when the poster file exists) so the frontend
  * can fall back to a static poster if the live iframe ever fails to render.
  */
-function templatePreviewMode(
-  t: import('@html-video/core').TemplateMetadata,
-): { mode: 'iframe' | 'poster'; posterUrl: string | null } {
+function templatePreviewMode(t: import('@html-video/core').TemplateMetadata): {
+  mode: 'iframe' | 'poster';
+  posterUrl: string | null;
+} {
   const posterRel = t.preview?.poster;
   const posterPath = posterRel && t.__dir ? join(t.__dir, posterRel) : null;
   const posterUrl =
-    posterPath && existsSync(posterPath)
-      ? `/template-asset/${t.id}/${posterRel}`
-      : null;
+    posterPath && existsSync(posterPath) ? `/template-asset/${t.id}/${posterRel}` : null;
   return { mode: 'iframe', posterUrl };
 }
 
@@ -1475,9 +1662,9 @@ function injectCompositionPlayer(html: string): string {
   // <head> so those early assignments don't throw on an undefined object.
   const seed = '<script>window.__timelines = window.__timelines || {};</script>';
   if (/<head[^>]*>/i.test(out)) {
-    out = out.replace(/<head[^>]*>/i, (m) => m + '\n' + seed);
+    out = out.replace(/<head[^>]*>/i, (m) => `${m}\n${seed}`);
   } else {
-    out = seed + '\n' + out;
+    out = `${seed}\n${out}`;
   }
 
   const player = `
@@ -1538,7 +1725,7 @@ function injectCompositionPlayer(html: string): string {
 })();
 </script>`;
 
-  if (out.includes('</body>')) return out.replace('</body>', player + '\n</body>');
+  if (out.includes('</body>')) return out.replace('</body>', `${player}\n</body>`);
   return out + player;
 }
 
@@ -1609,10 +1796,18 @@ export function decodeUploadFilename(star: string | undefined, plain: string | u
     // UTF-8''%E4%B8%AD.md  or  UTF-8'zh-CN'%E6%95%B0%E6%8D%AE.json).
     const m = /^[\w-]*'[^']*'(.*)$/.exec(star.trim());
     const enc = m?.[1] ?? star.trim();
-    try { return decodeURIComponent(enc); } catch { return enc; }
+    try {
+      return decodeURIComponent(enc);
+    } catch {
+      return enc;
+    }
   }
   if (plain !== undefined) {
-    try { return Buffer.from(plain, 'latin1').toString('utf8'); } catch { return plain; }
+    try {
+      return Buffer.from(plain, 'latin1').toString('utf8');
+    } catch {
+      return plain;
+    }
   }
   return 'upload';
 }
@@ -1650,7 +1845,7 @@ async function receiveMultipart(
       const filename = decodeUploadFilename(fnStarMatch?.[1], fnMatch?.[1]);
       // Keep the tmp path ASCII-safe; the real (possibly CJK) name rides on the
       // returned part, not the on-disk temp file.
-      const ext = (filename.match(/\.[A-Za-z0-9]{1,8}$/)?.[0]) ?? '';
+      const ext = filename.match(/\.[A-Za-z0-9]{1,8}$/)?.[0] ?? '';
       const tmpPath = join(tmpdir(), `hv-upload-${randomUUID().slice(0, 8)}${ext}`);
       await mkdir(dirname(tmpPath), { recursive: true });
       await fs.writeFile(tmpPath, Buffer.from(bodyRaw, 'binary'));
@@ -1810,10 +2005,10 @@ type ConvPhase =
   | 'generate'
   | 'iterate'
   // Post-generation iteration sub-flow:
-  | 'edit-menu'        // ask what to change (style / content / duration)
-  | 'restyle'          // re-render every frame in a new style, text unchanged
-  | 'iterate-content'  // re-plan the storyboard around new content
-  | 'iterate-format';  // re-time / re-render with a new per-frame length
+  | 'edit-menu' // ask what to change (style / content / duration)
+  | 'restyle' // re-render every frame in a new style, text unchanged
+  | 'iterate-content' // re-plan the storyboard around new content
+  | 'iterate-format'; // re-time / re-render with a new per-frame length
 
 /** Did the user pick the "choose from design templates" style option? */
 function isFromTemplateStyle(style: string): boolean {
@@ -1824,7 +2019,7 @@ interface PhaseInputs {
   collected?: Record<string, string>; // last submitted hv-form values (format only)
   pickedType?: string;
   pickedStyle?: string;
-  contentTurns?: string[];            // free-text user messages between type-pick and style/format
+  contentTurns?: string[]; // free-text user messages between type-pick and style/format
 }
 
 /** A phase reached during post-generation iteration carries postGen=true so the
@@ -1845,7 +2040,11 @@ function detectPhase(
   // Explicit markers always win.
   if (trimmed.startsWith('[hv-form:submit]')) {
     const body = trimmed.slice('[hv-form:submit]'.length).trim();
-    try { inputs.collected = JSON.parse(body); } catch { /* ignore */ }
+    try {
+      inputs.collected = JSON.parse(body);
+    } catch {
+      /* ignore */
+    }
     return { phase: 'confirm', inputs };
   }
   if (trimmed === '[hv-confirm:generate]') {
@@ -1930,7 +2129,11 @@ function detectPhase(
       return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
     }
     // Direct shortcuts when the instruction is unambiguous about WHAT to change.
-    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(trimmed)) {
+    if (
+      /风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(
+        trimmed,
+      )
+    ) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'style', inputs, postGen: true };
     }
@@ -1938,9 +2141,15 @@ function detectPhase(
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'format', inputs, postGen: true };
     }
-    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(trimmed)) {
+    if (
+      /文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(
+        trimmed,
+      )
+    ) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
-      inputs.contentTurns = [...collectContentTurns(history), trimmed].filter((s) => !isControlPhrase(s));
+      inputs.contentTurns = [...collectContentTurns(history), trimmed].filter(
+        (s) => !isControlPhrase(s),
+      );
       return { phase: 'iterate-content', inputs, postGen: true };
     }
     // Default: ask via the edit-menu (never silently no-op).
@@ -1966,9 +2175,7 @@ function detectPhase(
     // straight to format (if a template is picked) or style.
     if (hasSourceMaterial) {
       inputs.contentTurns = collectContentTurns(history);
-      return hasTemplate
-        ? { phase: 'format', inputs }
-        : { phase: 'style', inputs };
+      return hasTemplate ? { phase: 'format', inputs } : { phase: 'style', inputs };
     }
     return { phase: 'content', inputs };
   }
@@ -2008,8 +2215,8 @@ function detectPhase(
   if (prev.kind === 'content-question') {
     // User is replying to content question. Could be (a) more content, or
     // (b) a "skip / I'm done" signal.
-    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed)
-      || trimmed.length <= 3;
+    const isSkip =
+      /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed) || trimmed.length <= 3;
     // "Free rein" answers — the user is handing the subject's details to the
     // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机"). These should advance the
     // flow (and pop the style card) just like a skip, instead of being treated
@@ -2018,16 +2225,16 @@ function detectPhase(
     // real sentence that merely contains "随便".
     const isFreeRein =
       trimmed.length <= 16 &&
-      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(trimmed);
+      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(
+        trimmed,
+      );
     // With source material attached there's nothing to collect — advance as
     // soon as the user says anything (the article already is the content).
     if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
       // Move forward: style if no template, else format.
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = [...collectContentTurns(history), trimmed];
-      return hasTemplate
-        ? { phase: 'format', inputs }
-        : { phase: 'style', inputs };
+      return hasTemplate ? { phase: 'format', inputs } : { phase: 'style', inputs };
     }
     // Continue chatting (still in content phase).
     inputs.pickedType = lastCardPickByPhase(history, 'type');
@@ -2059,17 +2266,19 @@ function lastAssistantCardWithMeta(history: ChatMessage[]): {
     // Try each card kind, JSON-parse the body, look for meta.phase.
     const cards: { kind: 'hv-options' | 'hv-form' | 'hv-confirm'; re: RegExp }[] = [
       { kind: 'hv-confirm', re: /```hv-confirm\s*\n([\s\S]*?)```/i },
-      { kind: 'hv-form',    re: /```hv-form\s*\n([\s\S]*?)```/i },
+      { kind: 'hv-form', re: /```hv-form\s*\n([\s\S]*?)```/i },
       { kind: 'hv-options', re: /```hv-options\s*\n([\s\S]*?)```/i },
     ];
     for (const { kind, re } of cards) {
       const match = re.exec(c);
-      if (match && match[1]) {
+      if (match?.[1]) {
         let metaPhase: string | null = null;
         try {
           const parsed = JSON.parse(match[1].trim());
           metaPhase = parsed?.meta?.phase ?? null;
-        } catch { /* unparseable card body — treat as untagged */ }
+        } catch {
+          /* unparseable card body — treat as untagged */
+        }
         return { kind, metaPhase };
       }
     }
@@ -2094,7 +2303,9 @@ function lastCardPickByPhase(history: ChatMessage[], phase: string): string | un
     try {
       const parsed = JSON.parse(m[1].trim());
       if (parsed?.meta?.phase === phase) return u.content.trim();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return undefined;
 }
@@ -2104,9 +2315,14 @@ function lastCardPickByPhase(history: ChatMessage[], phase: string): string | un
  *  "下一步", "开始生成") rather than supplying video content. Such turns must
  *  not be collected as content — otherwise they end up as on-screen text. */
 function isControlPhrase(t: string): boolean {
-  const s = t.trim().toLowerCase().replace(/[。.!！~\s]+$/u, '');
+  const s = t
+    .trim()
+    .toLowerCase()
+    .replace(/[。.!！~\s]+$/u, '');
   if (s.length > 12) return false; // real content is longer; keep it
-  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认)$/u.test(s);
+  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认)$/u.test(
+    s,
+  );
 }
 
 function collectContentTurns(history: ChatMessage[]): string[] {
@@ -2118,12 +2334,20 @@ function collectContentTurns(history: ChatMessage[]): string[] {
       const c = m.content;
       // Type pick assistant card opens content phase
       const typeMatch = /```hv-options\s*\n([\s\S]*?)```/i.exec(c);
-      if (typeMatch && typeMatch[1]) {
+      if (typeMatch?.[1]) {
         try {
           const parsed = JSON.parse(typeMatch[1].trim());
-          if (parsed?.meta?.phase === 'type') { inContent = true; continue; }
-          if (parsed?.meta?.phase === 'style') { inContent = false; continue; }
-        } catch { /* ignore */ }
+          if (parsed?.meta?.phase === 'type') {
+            inContent = true;
+            continue;
+          }
+          if (parsed?.meta?.phase === 'style') {
+            inContent = false;
+            continue;
+          }
+        } catch {
+          /* ignore */
+        }
       }
       if (/```hv-form\s*\n/i.test(c)) inContent = false;
       continue;
@@ -2176,7 +2400,9 @@ function resolveOpeningTopic(project: { intent?: string }, history: ChatMessage[
 
 // Legacy helper retained for backward calls — now delegates to detectPhase's
 // metadata-aware lookup.
-function lastAssistantCardKind(history: ChatMessage[]): 'hv-options' | 'hv-form' | 'hv-confirm' | null {
+function lastAssistantCardKind(
+  history: ChatMessage[],
+): 'hv-options' | 'hv-form' | 'hv-confirm' | null {
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i]!;
     if (m.role !== 'assistant') continue;
@@ -2197,8 +2423,12 @@ function lastFormSubmission(history: ChatMessage[]): Record<string, string> | un
     const m = history[i]!;
     if (m.role !== 'user') continue;
     const match = /^\[hv-form:submit\]\s*\n([\s\S]+)$/.exec(m.content.trim());
-    if (match && match[1]) {
-      try { return JSON.parse(match[1]); } catch { /* keep scanning */ }
+    if (match?.[1]) {
+      try {
+        return JSON.parse(match[1]);
+      } catch {
+        /* keep scanning */
+      }
     }
   }
   return undefined;
@@ -2213,7 +2443,9 @@ function hadGenerationYet(history: ChatMessage[]): boolean {
   return history.some(
     (m) =>
       m.role === 'assistant' &&
-      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(m.content),
+      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(
+        m.content,
+      ),
   );
 }
 
@@ -2232,13 +2464,20 @@ function lastAssistantAskedFormat(history: ChatMessage[]): boolean {
     // The real hv-form card.
     const form = /```hv-form\s*\n([\s\S]*?)```/i.exec(c);
     if (form?.[1]) {
-      try { return JSON.parse(form[1].trim())?.meta?.phase === 'format'; } catch { return true; }
+      try {
+        return JSON.parse(form[1].trim())?.meta?.phase === 'format';
+      } catch {
+        return true;
+      }
     }
     // Prose fallback: the turn talks about size/duration/frames without a card.
     // Require at least two of the three concepts so an unrelated mention of
     // "时长" elsewhere doesn't trigger it.
-    const hits = [/尺寸|横屏|竖屏|方形|aspect|比例/i, /时?长|秒|duration|\bs\b/i, /帧|frames?/i]
-      .filter((re) => re.test(c)).length;
+    const hits = [
+      /尺寸|横屏|竖屏|方形|aspect|比例/i,
+      /时?长|秒|duration|\bs\b/i,
+      /帧|frames?/i,
+    ].filter((re) => re.test(c)).length;
     return hits >= 2;
   }
   return false;
@@ -2268,7 +2507,8 @@ export function parseFormatReply(text: string): Record<string, string> | undefin
   const ratio = /\b(16\s*[:：]\s*9|9\s*[:：]\s*16|1\s*[:：]\s*1|4\s*[:：]\s*5)\b/.exec(t);
   const ratioNorm = ratio?.[1]?.replace(/\s/g, '').replace('：', ':');
   if (ratioNorm === '16:9' || /横屏|landscape|宽屏/i.test(t)) out.aspect = '16:9 横屏';
-  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical/i.test(t)) out.aspect = '9:16 手机竖屏';
+  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical/i.test(t))
+    out.aspect = '9:16 手机竖屏';
   else if (ratioNorm === '1:1' || /方形|square/i.test(t)) out.aspect = '1:1 方形';
   else if (ratioNorm === '4:5' || /小红书|xiaohongshu|rednote/i.test(t)) out.aspect = '4:5 小红书';
 
@@ -2283,7 +2523,10 @@ export function parseFormatReply(text: string): Record<string, string> | undefin
   else {
     // "16:9 横屏 / 5s / 10" — after stripping ratio+duration tokens, a bare
     // small integer left over is the frame count.
-    const parts = t.split(/[/、,，]+/).map((s) => s.trim()).filter(Boolean);
+    const parts = t
+      .split(/[/、,，]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (parts.length >= 2) {
       const last = parts[parts.length - 1]!;
       const bare = /^(\d{1,2})\s*帧?$/.exec(last);
@@ -2314,12 +2557,7 @@ function lastTypePick(history: ChatMessage[]): string | undefined {
  */
 function renderAttachment(a: Attachment): string[] {
   if (a.inlineText) {
-    return [
-      `- [${a.kind}] ${a.filename} — full content below:`,
-      '```',
-      a.inlineText,
-      '```',
-    ];
+    return [`- [${a.kind}] ${a.filename} — full content below:`, '```', a.inlineText, '```'];
   }
   return [`- [${a.kind}] ${a.filename} — ${a.path}`];
 }
@@ -2331,13 +2569,16 @@ function renderAttachment(a: Attachment): string[] {
  *  HeyGen-style frame.md (motion spec). */
 function isDesignSpec(a: Attachment): boolean {
   const name = (a.filename || '').toLowerCase();
-  if (/(^|\/)(design|frame)\.md$/.test(name) || /\bframe\.md\b|\bdesign\.md\b/.test(name)) return true;
+  if (/(^|\/)(design|frame)\.md$/.test(name) || /\bframe\.md\b|\bdesign\.md\b/.test(name))
+    return true;
   const txt = a.inlineText ?? '';
   if (!txt) return false;
   // Heading/section fingerprints shared by design.md & frame.md specs.
-  return /#\s*(design|frame)\s*[—\-]/i.test(txt)
-    || /(^|\n)##\s*(System|Theme|Tokens|Motion|Pacing|Composition)\b/i.test(txt)
-    || /\b(pacing|dwell)\b.*\b(scale|motion)\b/i.test(txt);
+  return (
+    /#\s*(design|frame)\s*[—\-]/i.test(txt) ||
+    /(^|\n)##\s*(System|Theme|Tokens|Motion|Pacing|Composition)\b/i.test(txt) ||
+    /\b(pacing|dwell)\b.*\b(scale|motion)\b/i.test(txt)
+  );
 }
 
 /** Split attachments into design/motion specs vs ordinary source material. */
@@ -2352,10 +2593,10 @@ function partitionAttachments(atts: Attachment[]): { specs: Attachment[]; conten
 function renderDesignSpecBlock(specs: Attachment[]): string[] {
   if (!specs.length) return [];
   const out: string[] = [
-    `DESIGN SYSTEM / MOTION SPEC (REQUIRED — obey this for every frame): the file(s)`,
+    'DESIGN SYSTEM / MOTION SPEC (REQUIRED — obey this for every frame): the file(s)',
     `below define the brand's visual + motion language. Honour their palette,`,
-    `typography, tokens, layout AND any motion direction (pacing, scale, dwell,`,
-    `motion) over your own defaults. This is HOW the video must look/move; the`,
+    'typography, tokens, layout AND any motion direction (pacing, scale, dwell,',
+    'motion) over your own defaults. This is HOW the video must look/move; the',
     `actual subject still comes from the user's content.`,
   ];
   for (const a of specs) {
@@ -2388,8 +2629,7 @@ function parseGraphJsonTolerant(raw: string): unknown {
   //    text; for each "<key>": "<value>" pair, re-escape any bare " in <value>.
   const repaired = noTrailing.replace(
     /("(?:synopsis|text)"\s*:\s*")([\s\S]*?)("\s*(?:,|\}|\]))/g,
-    (_m, pre: string, val: string, post: string) =>
-      pre + val.replace(/\\?"/g, '\\"') + post,
+    (_m, pre: string, val: string, post: string) => pre + val.replace(/\\?"/g, '\\"') + post,
   );
   return JSON.parse(repaired); // if this still throws, caller reports it
 }
@@ -2400,7 +2640,9 @@ function parseGraphJsonTolerant(raw: string): unknown {
  *  Inverting the test makes new/renamed multi-frame types default correctly. */
 function isMultiFrameType(pickedType: string): boolean {
   if (!pickedType) return false;
-  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still/i.test(pickedType);
+  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still/i.test(
+    pickedType,
+  );
   return !single;
 }
 
@@ -2414,32 +2656,50 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   // priorHtml (iterate-on-last-render) when no template is in play.
   const baseHtml = tmpl
     ? exampleHtml
-    : (priorHtml && priorHtml !== exampleHtml ? priorHtml : exampleHtml);
+    : priorHtml && priorHtml !== exampleHtml
+      ? priorHtml
+      : exampleHtml;
   const trimmed = userText.trim();
   // A fetched article / repo / uploaded doc carries inlined content — that IS
   // the topic, so we should not interrogate the user about what the video is
   // about. The source rides into every phase's prompt via `attachments`.
   const hasSourceMaterial = attachments.some((a) => !!a.inlineText);
-  const { phase, inputs } = detectPhase(history, userText, !!tmpl, hasSourceMaterial, args.focusFrameId ?? '');
+  const { phase, inputs } = detectPhase(
+    history,
+    userText,
+    !!tmpl,
+    hasSourceMaterial,
+    args.focusFrameId ?? '',
+  );
 
   // ---- edit-menu: post-generation "what do you want to change?" card ----
   if (phase === 'edit-menu') {
     const em: string[] = [];
-    em.push(`The user wants to change the already-generated video but hasn't said what. Reply with ONE short line in their language asking what to change, then ONE fenced \`\`\`hv-options block. Use this EXACT JSON — keep "meta" verbatim:`);
+    em.push(
+      `The user wants to change the already-generated video but hasn't said what. Reply with ONE short line in their language asking what to change, then ONE fenced \`\`\`hv-options block. Use this EXACT JSON — keep "meta" verbatim:`,
+    );
     em.push('```hv-options');
-    em.push(JSON.stringify({
-      meta: { phase: 'edit-menu' },
-      question: '想改哪方面？',
-      options: [
-        { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
-        { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
-        { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
-      ],
-      allow_freeform: true,
-    }, null, 2));
+    em.push(
+      JSON.stringify(
+        {
+          meta: { phase: 'edit-menu' },
+          question: '想改哪方面？',
+          options: [
+            { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
+            { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
+            { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
+          ],
+          allow_freeform: true,
+        },
+        null,
+        2,
+      ),
+    );
     em.push('```');
     em.push('');
-    em.push(`Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.`);
+    em.push(
+      'Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.',
+    );
     return em.join('\n');
   }
 
@@ -2450,21 +2710,29 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       `The user just opened a project and said "${trimmed}". You are an HTML-video creation assistant.`,
     );
     opener.push('');
-    opener.push(`Reply with TWO things, in this exact order:`);
+    opener.push('Reply with TWO things, in this exact order:');
     opener.push(`1. ONE friendly opening sentence in the user's language (≤ 25 chars).`);
-    opener.push(`2. A fenced \`\`\`hv-options block with the 4 content-type choices below. JSON shape EXACTLY as shown — do not change keys or omit "meta":`);
+    opener.push(
+      `2. A fenced \`\`\`hv-options block with the 4 content-type choices below. JSON shape EXACTLY as shown — do not change keys or omit "meta":`,
+    );
     opener.push('```hv-options');
-    opener.push(JSON.stringify({
-      meta: { phase: 'type' },
-      question: '想做哪种内容？',
-      options: [
-        { label: '单帧标题卡',   hint: 'logo / 封面 / 单画面 - 5-10s' },
-        { label: '多帧预告片',   hint: '产品 / 活动 teaser, 3-6 帧' },
-        { label: '数据大字报',   hint: '1-2 个核心数字, 社媒爆款风' },
-        { label: '概念解说短片', hint: '几帧讲清一个 idea / feature' },
-      ],
-      allow_freeform: true,
-    }, null, 2));
+    opener.push(
+      JSON.stringify(
+        {
+          meta: { phase: 'type' },
+          question: '想做哪种内容？',
+          options: [
+            { label: '单帧标题卡', hint: 'logo / 封面 / 单画面 - 5-10s' },
+            { label: '多帧预告片', hint: '产品 / 活动 teaser, 3-6 帧' },
+            { label: '数据大字报', hint: '1-2 个核心数字, 社媒爆款风' },
+            { label: '概念解说短片', hint: '几帧讲清一个 idea / feature' },
+          ],
+          allow_freeform: true,
+        },
+        null,
+        2,
+      ),
+    );
     opener.push('```');
     opener.push('');
     if (tmpl) {
@@ -2473,7 +2741,9 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       );
       opener.push('');
     }
-    opener.push(`Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.`);
+    opener.push(
+      'Do NOT write HTML this turn. Do NOT return an empty reply. The hv-options block is REQUIRED.',
+    );
     return opener.join('\n');
   }
 
@@ -2486,44 +2756,65 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     // Source material present → DON'T interrogate. The article/repo content is
     // the topic; acknowledge it and let the flow advance to style/format.
     if (hasSourceMaterial) {
-      p.push(`The user is making a ${pickedType ? `"${pickedType}"` : 'video'} based on the source material below — do NOT ask them what it's about, the content is already provided.`);
+      p.push(
+        `The user is making a ${pickedType ? `"${pickedType}"` : 'video'} based on the source material below — do NOT ask them what it's about, the content is already provided.`,
+      );
       p.push('');
       for (const a of attachments) p.push(...renderAttachment(a));
       p.push('');
-      p.push(`In the user's language, write ONE short line that names the actual topic/title you read from the source and states the video will be built from it (e.g. "好，我读完了《…》这篇文章 — 这就基于它生成。下一步选风格。"). Do NOT ask the user to retype or summarize anything. End with this hidden marker on its own line:`);
+      p.push(
+        `In the user's language, write ONE short line that names the actual topic/title you read from the source and states the video will be built from it (e.g. "好，我读完了《…》这篇文章 — 这就基于它生成。下一步选风格。"). Do NOT ask the user to retype or summarize anything. End with this hidden marker on its own line:`,
+      );
       p.push('<!-- hv-phase:content-question -->');
       p.push('');
-      p.push(`Plain text + the marker only. NO code blocks. NO questions. Do NOT return an empty reply.`);
+      p.push(
+        'Plain text + the marker only. NO code blocks. NO questions. Do NOT return an empty reply.',
+      );
       return p.join('\n');
     }
 
-    p.push(`The user is making a ${pickedType ? `"${pickedType}"` : 'video'}. Collect concrete content for it via natural conversation — DO NOT emit any code block, hv-options, hv-form, or hv-confirm. End your reply with this hidden marker on its own line so the server knows you're still in the content phase:`);
+    p.push(
+      `The user is making a ${pickedType ? `"${pickedType}"` : 'video'}. Collect concrete content for it via natural conversation — DO NOT emit any code block, hv-options, hv-form, or hv-confirm. End your reply with this hidden marker on its own line so the server knows you're still in the content phase:`,
+    );
     p.push('<!-- hv-phase:content-question -->');
     p.push('');
-    p.push(`Goal: surface what the video is ABOUT (topic, brand / project name, headline / tagline, key numbers or data points). The user can answer, partially answer, or say "随便发挥 / skip / 不知道" — accept whatever they give and move on.`);
+    p.push(
+      `Goal: surface what the video is ABOUT (topic, brand / project name, headline / tagline, key numbers or data points). The user can answer, partially answer, or say "随便发挥 / skip / 不知道" — accept whatever they give and move on.`,
+    );
     p.push('');
     // The user's opening request already names the subject (e.g. "做一个 Open
     // Design 推广视频"). Lock onto it: don't let a vague follow-up answer like
     // "随机/随便/anything" silently become a literal NEW topic — that's how a
     // "promote Open Design" request turned into a probability explainer.
     {
-      const openingTopic = history.find((m) => m.role === 'user')?.content?.trim().slice(0, 200);
+      const openingTopic = history
+        .find((m) => m.role === 'user')
+        ?.content?.trim()
+        .slice(0, 200);
       if (openingTopic) {
-        p.push(`The user's ORIGINAL opening request was: "${openingTopic}". Treat this as the LOCKED subject of the video unless the user clearly asks to change it.`);
-        p.push(`If the user's answer this turn CONTRADICTS or seems unrelated to that subject (e.g. they opened with a product/brand video but now answer with an off-topic word), do NOT silently switch topics. Ask ONE short clarifying question: keep the original subject (with the new word as a detail/example/angle), or genuinely change the subject? Treat vague answers like "随机 / 随便 / anything / 你定 / whatever" as "you decide the details, KEEP the original subject" — never as a literal new topic.`);
+        p.push(
+          `The user's ORIGINAL opening request was: "${openingTopic}". Treat this as the LOCKED subject of the video unless the user clearly asks to change it.`,
+        );
+        p.push(
+          `If the user's answer this turn CONTRADICTS or seems unrelated to that subject (e.g. they opened with a product/brand video but now answer with an off-topic word), do NOT silently switch topics. Ask ONE short clarifying question: keep the original subject (with the new word as a detail/example/angle), or genuinely change the subject? Treat vague answers like "随机 / 随便 / anything / 你定 / whatever" as "you decide the details, KEEP the original subject" — never as a literal new topic.`,
+        );
         p.push('');
       }
     }
     if (turns.length === 0) {
-      p.push(`This is the first content turn. Ask 1–3 short, sharp questions, in the user's language. Keep it under 60 words. Mention they can answer fully, partially, or just say "skip" / "随便".`);
+      p.push(
+        `This is the first content turn. Ask 1–3 short, sharp questions, in the user's language. Keep it under 60 words. Mention they can answer fully, partially, or just say "skip" / "随便".`,
+      );
     } else {
-      p.push(`The user has already shared:`);
+      p.push('The user has already shared:');
       for (const t of turns) p.push(`  - ${t.slice(0, 200)}`);
       p.push('');
-      p.push(`Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "好，我有思路了，下一步是风格" / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`);
+      p.push(
+        `Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "好，我有思路了，下一步是风格" / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`,
+      );
     }
     p.push('');
-    p.push(`Reply in plain text + the marker. NO code blocks. Do NOT return an empty reply.`);
+    p.push('Reply in plain text + the marker. NO code blocks. Do NOT return an empty reply.');
     return p.join('\n');
   }
 
@@ -2531,48 +2822,66 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   if (phase === 'style') {
     const pickedType = inputs.pickedType ?? '';
     const p: string[] = [];
-    p.push(`The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
+    p.push(
+      `The user has shared their content for a "${pickedType}". Now ask them about visual style with ONE hv-options card. JSON shape EXACTLY as shown — keep "meta" verbatim:`,
+    );
     p.push('```hv-options');
-    p.push(JSON.stringify({
-      meta: { phase: 'style' },
-      question: '视觉风格怎么定？',
-      options: [
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
-        { label: '从设计模板选',       hint: '上方挑一个现成模板' },
-      ],
-      allow_freeform: true,
-    }, null, 2));
+    p.push(
+      JSON.stringify(
+        {
+          meta: { phase: 'style' },
+          question: '视觉风格怎么定？',
+          options: [
+            { label: 'Cyberpunk glitch', hint: '霓虹 / 故障感 / 高对比' },
+            { label: 'Swiss minimalist', hint: '网格 / 无衬线 / 留白' },
+            { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
+            { label: 'Mono brutalist', hint: '黑白 / 块状 / 粗体' },
+            { label: '从设计模板选', hint: '上方挑一个现成模板' },
+          ],
+          allow_freeform: true,
+        },
+        null,
+        2,
+      ),
+    );
     p.push('```');
     p.push('');
-    p.push(`Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`);
+    p.push(
+      `Add ONE short sentence above the card in the user's language inviting them to pick or describe a vibe. Mention they can also upload a reference image via the 📎 button.`,
+    );
     p.push('');
-    p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
+    p.push('Do NOT write HTML this turn. Do NOT return an empty reply.');
     return p.join('\n');
   }
 
   // ---- need-template: user chose "from design template" but hasn't picked one
   if (phase === 'need-template') {
     const p: string[] = [];
-    p.push(`The user chose "从设计模板选" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar 模板 / Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead. JSON shape EXACTLY — keep "meta" verbatim:`);
+    p.push(
+      `The user chose "从设计模板选" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar 模板 / Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead. JSON shape EXACTLY — keep "meta" verbatim:`,
+    );
     p.push('```hv-options');
-    p.push(JSON.stringify({
-      meta: { phase: 'need-template' },
-      question: '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
-      options: [
-        { label: '我已选好模板，继续', hint: '用顶部选中的模板生成' },
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
-      ],
-      allow_freeform: true,
-    }, null, 2));
+    p.push(
+      JSON.stringify(
+        {
+          meta: { phase: 'need-template' },
+          question: '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
+          options: [
+            { label: '我已选好模板，继续', hint: '用顶部选中的模板生成' },
+            { label: 'Cyberpunk glitch', hint: '霓虹 / 故障感 / 高对比' },
+            { label: 'Swiss minimalist', hint: '网格 / 无衬线 / 留白' },
+            { label: 'Warm-grain magazine', hint: '纸感 / 衬线 / 暖色' },
+            { label: 'Mono brutalist', hint: '黑白 / 块状 / 粗体' },
+          ],
+          allow_freeform: true,
+        },
+        null,
+        2,
+      ),
+    );
     p.push('```');
     p.push('');
-    p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
+    p.push('Do NOT write HTML this turn. Do NOT return an empty reply.');
     return p.join('\n');
   }
 
@@ -2581,83 +2890,124 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const isEdit = phase === 'format-edit';
     const pre = inputs.collected ?? {};
     const pickedType = isEdit
-      ? lastCardPickByPhase(history, 'type') ?? ''
+      ? (lastCardPickByPhase(history, 'type') ?? '')
       : (inputs.pickedType ?? '');
     const isMulti = !!pickedType && isMultiFrameType(pickedType);
     const defaults = {
-      aspect:      pre.aspect      ?? '16:9 横屏',
-      duration:    pre.duration    ?? (isMulti ? '15' : '5'),
+      aspect: pre.aspect ?? '16:9 横屏',
+      duration: pre.duration ?? (isMulti ? '15' : '5'),
       frame_count: pre.frame_count ?? (isMulti ? '4' : '1'),
       // Per-frame pacing default 4s — comfortable, avoids the "rushed" feel a
       // short total ÷ many frames produces. Total is derived from this × frames.
-      per_frame:   pre.per_frame   ?? '4',
+      per_frame: pre.per_frame ?? '4',
     };
     const p: string[] = [];
     if (isEdit) {
-      p.push(`The user wants to revise the format. Re-emit the SAME hv-form card with each \`default\` set to their last answer so they only need to change what they want.`);
+      p.push(
+        'The user wants to revise the format. Re-emit the SAME hv-form card with each `default` set to their last answer so they only need to change what they want.',
+      );
     } else {
-      p.push(`Now ask about format with ONE hv-form card — three segmented controls, no text inputs. JSON shape EXACTLY as shown — keep "meta" verbatim:`);
+      p.push(
+        `Now ask about format with ONE hv-form card — three segmented controls, no text inputs. JSON shape EXACTLY as shown — keep "meta" verbatim:`,
+      );
     }
     // The card is the ONLY acceptable way to ask this. Asking in prose makes
     // the user type a free-form answer with no submit marker, which the flow
     // then fails to recognise and re-asks (issue #2).
-    p.push(`IMPORTANT: emit the hv-form card below — do NOT ask for size / duration / frames in plain prose, and do NOT list example answers for the user to type.`);
+    p.push(
+      'IMPORTANT: emit the hv-form card below — do NOT ask for size / duration / frames in plain prose, and do NOT list example answers for the user to type.',
+    );
     p.push('```hv-form');
-    p.push(JSON.stringify({
-      meta: { phase: 'format' },
-      title: isEdit ? '改一下格式' : (isMulti ? '最后一步：尺寸 / 每帧时长 / 帧数' : '最后一步：选个尺寸 / 时长'),
-      fields: [
+    p.push(
+      JSON.stringify(
         {
-          key: 'aspect', label: '画面尺寸', kind: 'buttons', required: true,
-          default: defaults.aspect,
-          options: [
-            { value: '16:9 横屏',     label: '16:9 横屏' },
-            { value: '9:16 手机竖屏', label: '9:16 竖屏' },
-            { value: '1:1 方形',      label: '1:1 方形' },
-            { value: '4:5 小红书',    label: '4:5 小红书' },
+          meta: { phase: 'format' },
+          title: isEdit
+            ? '改一下格式'
+            : isMulti
+              ? '最后一步：尺寸 / 每帧时长 / 帧数'
+              : '最后一步：选个尺寸 / 时长',
+          fields: [
+            {
+              key: 'aspect',
+              label: '画面尺寸',
+              kind: 'buttons',
+              required: true,
+              default: defaults.aspect,
+              options: [
+                { value: '16:9 横屏', label: '16:9 横屏' },
+                { value: '9:16 手机竖屏', label: '9:16 竖屏' },
+                { value: '1:1 方形', label: '1:1 方形' },
+                { value: '4:5 小红书', label: '4:5 小红书' },
+              ],
+            },
+            // Multi-frame: pace by PER-FRAME duration (total = per_frame × frames,
+            // shown live). Single-frame: just a total duration.
+            ...(isMulti
+              ? [
+                  {
+                    key: 'per_frame',
+                    label: '每帧时长 (秒)',
+                    kind: 'buttons',
+                    required: true,
+                    default: defaults.per_frame,
+                    hint: '总时长 = 每帧时长 × 帧数',
+                    options: ['2', '3', '4', '5', '6', '8'].map((v) => ({
+                      value: v,
+                      label: `${v}s`,
+                    })),
+                  },
+                  {
+                    key: 'frame_count',
+                    label: '帧数',
+                    kind: 'buttons',
+                    required: true,
+                    default: defaults.frame_count,
+                    options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({
+                      value: v,
+                      label: v,
+                    })),
+                  },
+                  // Opt-in: render data frames natively with Remotion. Value is
+                  // either '关' or a native template id — Remotion is a user-chosen
+                  // enhancement, the AI never flips it (RFC-09).
+                  {
+                    key: 'remotion_enhance',
+                    label: '⚡ 数据帧用 Remotion',
+                    kind: 'buttons',
+                    required: false,
+                    default: '关',
+                    hint: '数据帧用原生 Remotion 渲染；其余帧仍走 Hyperframes。选图表类型。',
+                    options: [
+                      { value: '关', label: '关' },
+                      { value: 'frame-data-rollup', label: '开 · 柱状' },
+                      { value: 'frame-data-donut', label: '开 · 圆环' },
+                      { value: 'frame-data-hbars', label: '开 · 横条' },
+                      { value: 'frame-data-line', label: '开 · 折线' },
+                      { value: 'frame-data-radar', label: '开 · 雷达' },
+                    ],
+                  },
+                ]
+              : [
+                  {
+                    key: 'duration',
+                    label: '时长 (秒)',
+                    kind: 'buttons',
+                    required: true,
+                    default: defaults.duration,
+                    options: ['3', '5', '10', '15'].map((v) => ({ value: v, label: `${v}s` })),
+                  },
+                ]),
           ],
+          allow_attachments: false,
         },
-        // Multi-frame: pace by PER-FRAME duration (total = per_frame × frames,
-        // shown live). Single-frame: just a total duration.
-        ...(isMulti
-          ? [
-              {
-                key: 'per_frame', label: '每帧时长 (秒)', kind: 'buttons', required: true,
-                default: defaults.per_frame,
-                hint: '总时长 = 每帧时长 × 帧数',
-                options: ['2', '3', '4', '5', '6', '8'].map((v) => ({ value: v, label: `${v}s` })),
-              },
-              {
-                key: 'frame_count', label: '帧数', kind: 'buttons', required: true,
-                default: defaults.frame_count,
-                options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({ value: v, label: v })),
-              },
-              // Opt-in: render data frames natively with Remotion (numbers roll,
-              // bars grow) instead of static hyperframes HTML. Default OFF —
-              // Remotion is a user-chosen enhancement, the AI never flips it.
-              {
-                key: 'remotion_enhance', label: '⚡ 数据帧用 Remotion', kind: 'buttons', required: false,
-                default: '关',
-                hint: '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
-                options: [
-                  { value: '关', label: '关' },
-                  { value: '开', label: '开 · Remotion' },
-                ],
-              },
-            ]
-          : [
-              {
-                key: 'duration', label: '时长 (秒)', kind: 'buttons', required: true,
-                default: defaults.duration,
-                options: ['3', '5', '10', '15'].map((v) => ({ value: v, label: `${v}s` })),
-              },
-            ]),
-      ],
-      allow_attachments: false,
-    }, null, 2));
+        null,
+        2,
+      ),
+    );
     p.push('```');
     p.push('');
-    p.push(`Do NOT write HTML this turn. Do NOT return an empty reply.`);
+    p.push('Do NOT write HTML this turn. Do NOT return an empty reply.');
     return p.join('\n');
   }
 
@@ -2675,11 +3025,15 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     if (pickedStyle) summaryRows.push({ label: '风格', value: pickedStyle });
     if (tmpl) summaryRows.push({ label: '模板', value: tmpl.name });
     const labelMap: Record<string, string> = {
-      aspect: '尺寸', duration: '时长', frame_count: '帧数', per_frame: '每帧时长',
+      aspect: '尺寸',
+      duration: '时长',
+      frame_count: '帧数',
+      per_frame: '每帧时长',
     };
     // When pacing by per-frame, show per-frame + frames + derived total.
     const pf = Number(collected.per_frame ?? '') || 0;
-    const keys = pf > 0 ? ['aspect', 'per_frame', 'frame_count'] : ['aspect', 'duration', 'frame_count'];
+    const keys =
+      pf > 0 ? ['aspect', 'per_frame', 'frame_count'] : ['aspect', 'duration', 'frame_count'];
     for (const k of keys) {
       const v = collected[k];
       if (v) summaryRows.push({ label: labelMap[k] ?? k, value: k === 'per_frame' ? `${v}s` : v });
@@ -2693,15 +3047,23 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     }
 
     const p: string[] = [];
-    p.push(`The user has chosen the format. Emit ONE \`\`\`hv-confirm block (no other code blocks) summarising what you've got, in the user's language. Use this exact JSON — keep "meta":`);
+    p.push(
+      `The user has chosen the format. Emit ONE \`\`\`hv-confirm block (no other code blocks) summarising what you've got, in the user's language. Use this exact JSON — keep "meta":`,
+    );
     p.push('');
     p.push('```hv-confirm');
-    p.push(JSON.stringify({
-      meta: { phase: 'confirm' },
-      title: '按这些信息生成？',
-      summary: summaryRows,
-      actions: ['generate', 'edit'],
-    }, null, 2));
+    p.push(
+      JSON.stringify(
+        {
+          meta: { phase: 'confirm' },
+          title: '按这些信息生成？',
+          summary: summaryRows,
+          actions: ['generate', 'edit'],
+        },
+        null,
+        2,
+      ),
+    );
     p.push('```');
     p.push('');
     // Soft gate: if the subject is too thin to make a meaningful video, nudge
@@ -2713,10 +3075,14 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       (contentBlob.replace(/\s/g, '').length < 8 ||
         /^(随机|随便|anything|random|whatever|都行|你定|skip|不知道)$/i.test(contentBlob));
     if (topicThin) {
-      p.push(`NOTE: the collected content ("${contentBlob || '(empty)'}") is very thin / vague. BEFORE the hv-confirm block, add ONE short friendly sentence in the user's language gently flagging that the topic is sparse and inviting them to add a concrete subject / brand / key number for a stronger video — but STILL emit the hv-confirm block exactly as above so they can generate anyway if they want.`);
+      p.push(
+        `NOTE: the collected content ("${contentBlob || '(empty)'}") is very thin / vague. BEFORE the hv-confirm block, add ONE short friendly sentence in the user's language gently flagging that the topic is sparse and inviting them to add a concrete subject / brand / key number for a stronger video — but STILL emit the hv-confirm block exactly as above so they can generate anyway if they want.`,
+      );
       p.push('');
     }
-    p.push(`Do NOT write HTML this turn. Do NOT return an empty reply. The hv-confirm block is REQUIRED.`);
+    p.push(
+      'Do NOT write HTML this turn. Do NOT return an empty reply. The hv-confirm block is REQUIRED.',
+    );
     return p.join('\n');
   }
 
@@ -2726,11 +3092,12 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const pickedType = inputs.pickedType ?? '';
     const pickedStyle = inputs.pickedStyle ?? '';
     const contentTurns = inputs.contentTurns ?? [];
-    const aspect = ((collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9'); // strip "16:9 横屏" → "16:9"
+    const aspect = (collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9'; // strip "16:9 横屏" → "16:9"
     const [w, h] = aspect.includes(':') ? aspect.split(':').map(Number) : [16, 9];
-    const isMulti = isMultiFrameType(pickedType)
-      || Number(collected.frame_count ?? '1') > 1
-      || Number(collected.per_frame ?? '0') > 0;
+    const isMulti =
+      isMultiFrameType(pickedType) ||
+      Number(collected.frame_count ?? '1') > 1 ||
+      Number(collected.per_frame ?? '0') > 0;
 
     // Pick a concrete pixel resolution that respects the aspect choice.
     let resolution = '1920×1080';
@@ -2738,28 +3105,39 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     else if (aspect === '1:1') resolution = '1080×1080';
     else if (aspect === '4:5') resolution = '1080×1350';
 
-    const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
-      ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
-      : pickedStyle;
+    const styleLabel =
+      pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
+        ? tmpl
+          ? `(use the selected template "${tmpl.name}" — ${tmpl.description})`
+          : '(let the model choose)'
+        : pickedStyle;
 
     const p: string[] = [];
-    p.push(`Generate the HTML video file(s) the user just confirmed.`);
+    p.push('Generate the HTML video file(s) the user just confirmed.');
     p.push('');
     // Lock the subject to the user's opening request. The content turns below
     // can be as thin as "随机" — without this the video drifts onto that literal
     // word (a "promote Open Design" request became a randomness explainer).
     if (openingTopic) {
-      p.push(`VIDEO SUBJECT (LOCKED): the user opened with "${openingTopic}". The video MUST be about THIS subject.`);
-      p.push(`If a content line below is a vague placeholder like "随机 / 随便 / anything / 你定 / whatever", it means "YOU choose the concrete details (selling points, framing, copy) — but the SUBJECT stays "${openingTopic}"". NEVER treat "随机" as the literal topic; do NOT make a video about randomness.`);
+      p.push(
+        `VIDEO SUBJECT (LOCKED): the user opened with "${openingTopic}". The video MUST be about THIS subject.`,
+      );
+      p.push(
+        `If a content line below is a vague placeholder like "随机 / 随便 / anything / 你定 / whatever", it means "YOU choose the concrete details (selling points, framing, copy) — but the SUBJECT stays "${openingTopic}"". NEVER treat "随机" as the literal topic; do NOT make a video about randomness.`,
+      );
       p.push('');
     }
-    p.push(`Inputs (use these LITERALLY — do NOT make up brand names or facts beyond what is stated):`);
+    p.push(
+      'Inputs (use these LITERALLY — do NOT make up brand names or facts beyond what is stated):',
+    );
     p.push(`- 类型 / type: ${pickedType || '(未指定)'}`);
     if (contentTurns.length > 0) {
-      p.push(`- 内容 / content (what the user told us in the chat):`);
+      p.push('- 内容 / content (what the user told us in the chat):');
       for (const t of contentTurns) p.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
     } else {
-      p.push(`- 内容 / content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)`);
+      p.push(
+        '- 内容 / content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)',
+      );
     }
     if (styleLabel) p.push(`- 风格 / style: ${styleLabel}`);
     p.push(`- 画面尺寸: ${aspect} (${resolution})`);
@@ -2771,13 +3149,17 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       // A design.md / frame.md is a style+motion spec to OBEY, surfaced first.
       p.push(...renderDesignSpecBlock(specs));
       if (content.length > 0 || specs.length === 0) {
-        p.push(`Attachments:`);
-        for (const a of (content.length ? content : attachments)) p.push(...renderAttachment(a));
-        p.push(`Use binary attachments (images, data files) as actual assets where appropriate (logo, screenshot, data file). The inlined text/article/repo content above is the SOURCE MATERIAL — base the video's actual content (facts, names, numbers, narrative) on it, don't just decorate with it.`);
+        p.push('Attachments:');
+        for (const a of content.length ? content : attachments) p.push(...renderAttachment(a));
+        p.push(
+          `Use binary attachments (images, data files) as actual assets where appropriate (logo, screenshot, data file). The inlined text/article/repo content above is the SOURCE MATERIAL — base the video's actual content (facts, names, numbers, narrative) on it, don't just decorate with it.`,
+        );
         p.push('');
       }
     }
-    p.push(`Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a stable key (brand_name, headline, item_1, cta…). No prose outside code blocks.`);
+    p.push(
+      `Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a stable key (brand_name, headline, item_1, cta…). No prose outside code blocks.`,
+    );
     p.push('');
     // Frame-count safety: claude --print can truncate / stall on very large
     // multi-frame batches. Cap at 10 (high frame counts get progressively
@@ -2790,43 +3172,65 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     // source-material rules, change runSplitMultiFrameGenerate — that's the
     // path users actually hit. Keep the two in sync.
     if (isMulti) {
-      p.push(`Output (multi-frame storyboard) — emit IN THIS EXACT ORDER and SHAPE:`);
-      p.push(`1. ONE \`\`\`json#content-graph block.`);
-      p.push(`2. ONE \`\`\`html#<nodeId> block per node.`);
+      p.push('Output (multi-frame storyboard) — emit IN THIS EXACT ORDER and SHAPE:');
+      p.push('1. ONE ```json#content-graph block.');
+      p.push('2. ONE ```html#<nodeId> block per node.');
       p.push('');
-      p.push(`Aim for ${requestedFrames} frames. Each frame should be self-contained, full-bleed ${resolution}, with its own opening animation. Nothing between blocks.`);
+      p.push(
+        `Aim for ${requestedFrames} frames. Each frame should be self-contained, full-bleed ${resolution}, with its own opening animation. Nothing between blocks.`,
+      );
       p.push('');
       if (attachments.length > 0) {
         // The agent has, in practice, been handed the full article yet fallen
         // back to generic "first-principles / see-the-essence" filler. Force it
         // to ground every node in the source material's actual specifics.
-        p.push(`GROUNDING (REQUIRED — the source material above is the script, not decoration):`);
-        p.push(`- EVERY node's "text" MUST quote or paraphrase a SPECIFIC fact, name, number, product, or claim from the source material. Pull the real proper nouns (product names, companies, metrics, version numbers) verbatim.`);
-        p.push(`- The "synopsis" MUST name the article's actual subject — not "AI/technology trends" or any vague category.`);
-        p.push(`- BANNED: generic motivational filler with no tie to the source ("看清本质", "第一性原理", "复杂表象之下", "you really understand…", "the logic behind…"). If a line would fit ANY article, it is wrong — replace it with something that could ONLY come from THIS source.`);
-        p.push(`- A reader who knows the article must recognize each frame as being about it; a reader who doesn't must learn its specific points.`);
+        p.push('GROUNDING (REQUIRED — the source material above is the script, not decoration):');
+        p.push(
+          `- EVERY node's "text" MUST quote or paraphrase a SPECIFIC fact, name, number, product, or claim from the source material. Pull the real proper nouns (product names, companies, metrics, version numbers) verbatim.`,
+        );
+        p.push(
+          `- The "synopsis" MUST name the article's actual subject — not "AI/technology trends" or any vague category.`,
+        );
+        p.push(
+          `- BANNED: generic motivational filler with no tie to the source ("看清本质", "第一性原理", "复杂表象之下", "you really understand…", "the logic behind…"). If a line would fit ANY article, it is wrong — replace it with something that could ONLY come from THIS source.`,
+        );
+        p.push(
+          `- A reader who knows the article must recognize each frame as being about it; a reader who doesn't must learn its specific points.`,
+        );
         p.push('');
       }
       // Skeleton for multi-frame — empirically claude --print returns 1 byte
       // without an example, ~10KB with one. Show the exact shape, even with
       // placeholder content; the model fills it in.
-      p.push(`Skeleton (replace placeholders with the inputs above; expand styling per the chosen type / style):`);
+      p.push(
+        'Skeleton (replace placeholders with the inputs above; expand styling per the chosen type / style):',
+      );
       p.push('```json#content-graph');
-      p.push(JSON.stringify({
-        schemaVersion: 1,
-        intent: 'explainer',
-        synopsis: '<one-line description>',
-        nodes: Array.from({ length: requestedFrames }, (_, i) => ({
-          id: `frame_${i + 1}`,
-          kind: i === 0 ? 'text' : i === requestedFrames - 1 ? 'entity' : (i % 2 ? 'data' : 'text'),
-          durationSec: Math.max(2, Math.floor(Number(collected.duration ?? '15') / requestedFrames)),
-        })),
-        edges: Array.from({ length: requestedFrames - 1 }, (_, i) => ({
-          from: `frame_${i + 1}`,
-          to: `frame_${i + 2}`,
-          kind: 'sequence',
-        })),
-      }, null, 2));
+      p.push(
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            intent: 'explainer',
+            synopsis: '<one-line description>',
+            nodes: Array.from({ length: requestedFrames }, (_, i) => ({
+              id: `frame_${i + 1}`,
+              kind:
+                i === 0 ? 'text' : i === requestedFrames - 1 ? 'entity' : i % 2 ? 'data' : 'text',
+              durationSec: Math.max(
+                2,
+                Math.floor(Number(collected.duration ?? '15') / requestedFrames),
+              ),
+            })),
+            edges: Array.from({ length: requestedFrames - 1 }, (_, i) => ({
+              from: `frame_${i + 1}`,
+              to: `frame_${i + 2}`,
+              kind: 'sequence',
+            })),
+          },
+          null,
+          2,
+        ),
+      );
       p.push('```');
       p.push('');
       p.push('```html#frame_1');
@@ -2841,28 +3245,38 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
 </body></html>`);
       p.push('```');
       p.push('');
-      p.push(`(continue with the same shape for the remaining frames — \`\`\`html#frame_2 … \`\`\`html#frame_${requestedFrames})`);
+      p.push(
+        `(continue with the same shape for the remaining frames — \`\`\`html#frame_2 … \`\`\`html#frame_${requestedFrames})`,
+      );
       if (baseHtml && baseHtml.length > 0) {
         p.push('');
-        p.push(tmpl
-          ? `Template HTML — this is the REQUIRED visual style. Reuse its palette, layout, typography, and animation approach; change only the text/data to fit the source material. Do NOT switch to a different look (no dark "cosmic particle" default, etc.):`
-          : `Prior preview HTML to draw style from:`);
+        p.push(
+          tmpl
+            ? `Template HTML — this is the REQUIRED visual style. Reuse its palette, layout, typography, and animation approach; change only the text/data to fit the source material. Do NOT switch to a different look (no dark "cosmic particle" default, etc.):`
+            : 'Prior preview HTML to draw style from:',
+        );
         p.push('```html');
         p.push(baseHtml.slice(0, 3000));
         p.push('```');
       }
     } else {
-      p.push(`Output (single-frame): begin your reply with \`\`\`html and end with \`\`\`. Nothing outside the block.`);
+      p.push(
+        'Output (single-frame): begin your reply with ```html and end with ```. Nothing outside the block.',
+      );
       p.push('');
       if (baseHtml && baseHtml.length > 0) {
-        p.push(tmpl
-          ? `Template HTML — this is the REQUIRED visual style. Reuse its palette, layout, typography, and animation approach; change only the text/data to fit the source material. Do NOT switch to a different look:`
-          : `Prior preview HTML (iterate on its visual style if it fits, or replace if a different vibe is better):`);
+        p.push(
+          tmpl
+            ? 'Template HTML — this is the REQUIRED visual style. Reuse its palette, layout, typography, and animation approach; change only the text/data to fit the source material. Do NOT switch to a different look:'
+            : 'Prior preview HTML (iterate on its visual style if it fits, or replace if a different vibe is better):',
+        );
         p.push('```html');
         p.push(baseHtml.slice(0, 4000));
         p.push('```');
       } else {
-        p.push(`Skeleton to extend (replace placeholder with the inputs above; expand styling per the chosen type / style):`);
+        p.push(
+          'Skeleton to extend (replace placeholder with the inputs above; expand styling per the chosen type / style):',
+        );
         p.push('```html');
         p.push(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
@@ -2878,12 +3292,17 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1.2s ease forwards;opacity:0
     }
     p.push('');
     if (tmpl) {
-      p.push(`Template visual signature (REQUIRED): ${tmpl.name} — ${tmpl.description}. Match this look — it is the whole reason the template was chosen. Only a single explicit user style note may override it; "based on this article" is NOT such an override.`);
+      p.push(
+        `Template visual signature (REQUIRED): ${tmpl.name} — ${tmpl.description}. Match this look — it is the whole reason the template was chosen. Only a single explicit user style note may override it; "based on this article" is NOT such an override.`,
+      );
       p.push('');
     }
-    p.push(`Do NOT return an empty reply. Do NOT emit any of \`\`\`hv-options / \`\`\`hv-form / \`\`\`hv-confirm — those are over.`);
+    p.push(
+      'Do NOT return an empty reply. Do NOT emit any of ```hv-options / ```hv-form / ```hv-confirm — those are over.',
+    );
     // discard variable since some lints complain
-    void w; void h;
+    void w;
+    void h;
     return p.join('\n');
   }
 
@@ -2895,16 +3314,20 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1.2s ease forwards;opacity:0
   // skeleton trick used by generate-phase.
   const it: string[] = [];
   if (args.focusFrameId) {
-    it.push(`The user has pinned frame "${args.focusFrameId}" and wants to revise ONLY that frame. Apply their request below — write a fresh complete HTML page that delivers the same content, in roughly the same visual style, but with the requested change.`);
+    it.push(
+      `The user has pinned frame "${args.focusFrameId}" and wants to revise ONLY that frame. Apply their request below — write a fresh complete HTML page that delivers the same content, in roughly the same visual style, but with the requested change.`,
+    );
   } else {
-    it.push(`The user is iterating on an existing HTML video. Apply their request below — write a fresh complete HTML page that delivers the same content, in roughly the same visual style, but with the requested change.`);
+    it.push(
+      'The user is iterating on an existing HTML video. Apply their request below — write a fresh complete HTML page that delivers the same content, in roughly the same visual style, but with the requested change.',
+    );
   }
   it.push('');
-  it.push(`# User request`);
+  it.push('# User request');
   it.push(userText);
   it.push('');
   if (attachments.length > 0) {
-    it.push(`# Attachments`);
+    it.push('# Attachments');
     for (const a of attachments) it.push(...renderAttachment(a));
     it.push('');
   }
@@ -2916,15 +3339,19 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1.2s ease forwards;opacity:0
     const summary = summariseHtmlForIterate(baseHtml);
     it.push(`# Current frame — what's there now`);
     if (summary.headline) it.push(`Headline: ${summary.headline}`);
-    if (summary.subheads.length) it.push(`Sub-text:\n${summary.subheads.map((s) => `  · ${s}`).join('\n')}`);
-    if (summary.dataPoints.length) it.push(`Data points:\n${summary.dataPoints.map((s) => `  · ${s}`).join('\n')}`);
+    if (summary.subheads.length)
+      it.push(`Sub-text:\n${summary.subheads.map((s) => `  · ${s}`).join('\n')}`);
+    if (summary.dataPoints.length)
+      it.push(`Data points:\n${summary.dataPoints.map((s) => `  · ${s}`).join('\n')}`);
     if (summary.bgColors.length) it.push(`Palette: ${summary.bgColors.join(' / ')}`);
     if (summary.fontFamilies.length) it.push(`Fonts: ${summary.fontFamilies.join(', ')}`);
     it.push('');
   }
-  it.push(`Output: ONE complete HTML document. Begin your reply with \`\`\`html and end with \`\`\`. Inline all CSS / JS. Full-bleed 1920×1080. Tag visible text with data-hv-text (preserve existing keys when meaningful). No prose outside the block. Do NOT return an empty reply.`);
+  it.push(
+    'Output: ONE complete HTML document. Begin your reply with ```html and end with ```. Inline all CSS / JS. Full-bleed 1920×1080. Tag visible text with data-hv-text (preserve existing keys when meaningful). No prose outside the block. Do NOT return an empty reply.',
+  );
   it.push('');
-  it.push(`Skeleton to extend (replace with the real content + visual style):`);
+  it.push('Skeleton to extend (replace with the real content + visual style):');
   it.push('```html');
   it.push(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
@@ -2964,7 +3391,10 @@ function summariseHtmlForIterate(html: string): {
   // Body / stage background colour (rough)
   const bgColors = Array.from(
     html.matchAll(/background[^:]*:\s*(#[0-9a-f]{3,8}|rgb[a]?\([^)]+\)|hsla?\([^)]+\))/gi),
-  ).slice(0, 3).map((x) => x[1]!).filter(Boolean);
+  )
+    .slice(0, 3)
+    .map((x) => x[1]!)
+    .filter(Boolean);
   // Font families (first occurrence in css)
   const fontFamilies = Array.from(
     new Set(
@@ -2989,7 +3419,7 @@ function summariseHtmlForIterate(html: string): {
 function extractHtmlDocument(text: string): string | null {
   // Plain ```html``` block (no node-id tag — single-frame fast path)
   const fence = /```html\s*\n([\s\S]*?)```/i.exec(text);
-  if (fence && fence[1]) {
+  if (fence?.[1]) {
     const html = fence[1].trim();
     if (/<\/html>/i.test(html)) return html;
   }
@@ -3016,15 +3446,18 @@ function extractHtmlDocument(text: string): string | null {
  * Returns null when no content-graph block is found (caller falls back to
  * single-frame extraction).
  */
-function extractContentGraphAndFrames(
-  text: string,
-): { graph: import('@html-video/content-graph').ContentGraph; frames: { nodeId: string; html: string }[] } | null {
+function extractContentGraphAndFrames(text: string): {
+  graph: import('@html-video/content-graph').ContentGraph;
+  frames: { nodeId: string; html: string }[];
+} | null {
   // Find a fenced JSON block tagged as content-graph.
   const graphMatch = /```json#content-graph\s*\n([\s\S]*?)```/i.exec(text);
   if (!graphMatch || !graphMatch[1]) return null;
   let graph: import('@html-video/content-graph').ContentGraph;
   try {
-    graph = parseGraphJsonTolerant(graphMatch[1].trim()) as import('@html-video/content-graph').ContentGraph;
+    graph = parseGraphJsonTolerant(graphMatch[1].trim()) as import(
+      '@html-video/content-graph',
+    ).ContentGraph;
   } catch {
     return null;
   }
@@ -3043,6 +3476,24 @@ function extractContentGraphAndFrames(
   }
 
   return { graph, frames };
+}
+
+/**
+ * Parse the format-card `remotion_enhance` value into a native template id.
+ * Accepts: '关' → null; legacy '开…' → default rollup; or a known native id.
+ */
+function resolveRemotionEnhanceChoice(choice: string, ctx: CliContext): string | null {
+  if (!choice || choice === '关' || choice === 'off' || choice === 'Off') return null;
+  const natives = ctx.templates.listNative();
+  if (natives.length === 0) return null;
+  if (natives.some((t) => t.id === choice)) return choice;
+  // Legacy format-card value was "开" / "开 · Remotion"
+  if (choice.startsWith('开') || /^on\b/i.test(choice)) {
+    return natives.some((t) => t.id === 'frame-data-rollup')
+      ? 'frame-data-rollup'
+      : (natives[0]?.id ?? null);
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -3091,7 +3542,21 @@ interface SplitGenerateArgs {
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
-  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, restyleOnly, onProgress, onSse } = args;
+  const {
+    ctx,
+    projectId,
+    projectDir,
+    agentDef,
+    agentModel,
+    tmpl,
+    priorHtml,
+    inputs,
+    attachments,
+    openingTopic,
+    restyleOnly,
+    onProgress,
+    onSse,
+  } = args;
   const collected = inputs.collected ?? {};
   const pickedType = inputs.pickedType ?? '';
   const pickedStyle = inputs.pickedStyle ?? '';
@@ -3107,24 +3572,31 @@ async function runSplitMultiFrameGenerate(
       const { readFileSync } = await import('node:fs');
       const p = join(tmpl.__dir, tmpl.source_entry);
       if (existsSync(p)) templateHtml = readFileSync(p, 'utf8');
-    } catch { /* fall back to description-only */ }
+    } catch {
+      /* fall back to description-only */
+    }
   }
-  const aspect = ((collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9');
+  const aspect = (collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9';
   const frameCountReq = Math.max(2, Math.min(10, Number(collected.frame_count ?? '4') || 4));
-  // Opt-in (format card): render data frames natively with Remotion. When on,
-  // the planner must give every data node structured items, and after each
-  // data frame's HTML is written we enhance it in place (best-effort).
-  const enhanceData = (collected.remotion_enhance ?? '').startsWith('开');
+  // Opt-in (format card): render data frames natively with Remotion. Value is
+  // '关' / legacy '开…' / or a native template id. When on, the planner must
+  // give every data node structured items, and after each data frame's HTML is
+  // written we enhance it in place (best-effort).
+  const remotionChoice = (collected.remotion_enhance ?? '关').trim();
+  const enhanceNativeTemplateId = resolveRemotionEnhanceChoice(remotionChoice, ctx);
+  const enhanceData = !!enhanceNativeTemplateId;
   // Prefer per-frame pacing (total = per_frame × frames) — set by the format
   // card so a short total ÷ many frames can't produce a rushed clip. Fall back
   // to total ÷ frames for older projects that only stored `duration`.
   const perFrameInput = Number(collected.per_frame ?? '') || 0;
-  const perFrameDurationSec = perFrameInput > 0
-    ? Math.max(2, perFrameInput)
-    : Math.max(2, Math.floor((Number(collected.duration ?? '15') || 15) / frameCountReq));
-  const totalDurationSec = perFrameInput > 0
-    ? perFrameDurationSec * frameCountReq
-    : (Number(collected.duration ?? '15') || 15);
+  const perFrameDurationSec =
+    perFrameInput > 0
+      ? Math.max(2, perFrameInput)
+      : Math.max(2, Math.floor((Number(collected.duration ?? '15') || 15) / frameCountReq));
+  const totalDurationSec =
+    perFrameInput > 0
+      ? perFrameDurationSec * frameCountReq
+      : Number(collected.duration ?? '15') || 15;
   let resolution = '1920×1080';
   if (aspect === '9:16') resolution = '1080×1920';
   else if (aspect === '1:1') resolution = '1080×1080';
@@ -3141,9 +3613,12 @@ async function runSplitMultiFrameGenerate(
     }
   }
 
-  const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
-    ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
-    : pickedStyle;
+  const styleLabel =
+    pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
+      ? tmpl
+        ? `(use the selected template "${tmpl.name}" — ${tmpl.description})`
+        : '(let the model choose)'
+      : pickedStyle;
 
   // ---- Step 1: obtain the content graph ----
   let graph: import('@html-video/content-graph').ContentGraph;
@@ -3158,105 +3633,141 @@ async function runSplitMultiFrameGenerate(
     onProgress(`✓ 沿用现有文案：${graph.nodes.length} 帧`);
     onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   } else {
-  onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
-  const graphPromptParts: string[] = [];
-  graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
-  graphPromptParts.push('');
-  graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
-  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
-  // Lock the storyboard to the user's opening subject (unless a SOURCE MATERIAL
-  // block below supersedes it). This is the path the user actually hits, and
-  // where "随机" turned into a randomness explainer instead of the Open Design
-  // promo they asked for.
-  if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
-    graphPromptParts.push(`- 主题 / subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
-  }
-  if (contentTurns.length > 0) {
-    graphPromptParts.push(`- 内容 / content:`);
-    for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
-  }
-  // Inline the fetched article / repo / uploaded text — THIS is the subject of
-  // the video. Without it the planner only sees the type word and invents a
-  // video "about 概念解说" instead of about the user's actual source.
-  const { specs: designSpecs, content: contentAtts } = partitionAttachments(attachments);
-  if (designSpecs.length > 0) graphPromptParts.push('', ...renderDesignSpecBlock(designSpecs));
-  const sourceTexts = contentAtts.filter((a) => !!a.inlineText);
-  if (sourceTexts.length > 0) {
+    onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
+    const graphPromptParts: string[] = [];
+    graphPromptParts.push(
+      `Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`,
+    );
     graphPromptParts.push('');
-    graphPromptParts.push(`SOURCE MATERIAL — the video MUST be about THIS content (real facts, names, numbers from it). This is the subject, not the type:`);
-    for (const a of sourceTexts) {
-      graphPromptParts.push(`--- ${a.filename} ---`);
-      graphPromptParts.push((a.inlineText ?? '').slice(0, 6000));
+    graphPromptParts.push(
+      'Inputs (use literally — do NOT invent brand names or facts beyond these):',
+    );
+    graphPromptParts.push(
+      `- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`,
+    );
+    // Lock the storyboard to the user's opening subject (unless a SOURCE MATERIAL
+    // block below supersedes it). This is the path the user actually hits, and
+    // where "随机" turned into a randomness explainer instead of the Open Design
+    // promo they asked for.
+    if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
+      graphPromptParts.push(
+        `- 主题 / subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`,
+      );
     }
-  }
-  if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
-  graphPromptParts.push(`- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
-  graphPromptParts.push('');
-  if (sourceTexts.length > 0) {
-    graphPromptParts.push(`GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`);
-    graphPromptParts.push('');
-  }
-  graphPromptParts.push(`Schema (keep all keys; one node per frame; nodes[].id should be a short readable slug like "intro" / "stat_users" / "outro"):`);
-  graphPromptParts.push('```json#content-graph');
-  graphPromptParts.push(JSON.stringify({
-    schemaVersion: 1,
-    intent: 'explainer',
-    synopsis: '<one-line description of the video>',
-    nodes: Array.from({ length: frameCountReq }, (_, i) => {
-      const kind = i === 0 ? 'text' : i === frameCountReq - 1 ? 'entity' : 'data';
-      const node: Record<string, unknown> = {
-        id: `frame_${i + 1}`,
-        kind,
-        durationSec: perFrameDurationSec,
-        text: '<headline / subtitle for this frame>',
-      };
-      // Every data node carries structured items so it can be rendered natively
-      // with Remotion (numbers roll, bars grow) — whether the user opted in now
-      // or enhances the frame later from the strip. A data frame without numbers
-      // is just a text frame.
-      if (kind === 'data') {
-        node.data = {
-          title: '<short chart title>',
-          unit: '<optional unit, e.g. K / % / ★>',
-          items: [
-            { label: '<label>', value: 0 },
-            { label: '<label>', value: 0 },
-          ],
-        };
+    if (contentTurns.length > 0) {
+      graphPromptParts.push('- 内容 / content:');
+      for (const t of contentTurns)
+        graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
+    }
+    // Inline the fetched article / repo / uploaded text — THIS is the subject of
+    // the video. Without it the planner only sees the type word and invents a
+    // video "about 概念解说" instead of about the user's actual source.
+    const { specs: designSpecs, content: contentAtts } = partitionAttachments(attachments);
+    if (designSpecs.length > 0) graphPromptParts.push('', ...renderDesignSpecBlock(designSpecs));
+    const sourceTexts = contentAtts.filter((a) => !!a.inlineText);
+    if (sourceTexts.length > 0) {
+      graphPromptParts.push('');
+      graphPromptParts.push(
+        'SOURCE MATERIAL — the video MUST be about THIS content (real facts, names, numbers from it). This is the subject, not the type:',
+      );
+      for (const a of sourceTexts) {
+        graphPromptParts.push(`--- ${a.filename} ---`);
+        graphPromptParts.push((a.inlineText ?? '').slice(0, 6000));
       }
-      return node;
-    }),
-    edges: Array.from({ length: frameCountReq - 1 }, (_, i) => ({
-      from: `frame_${i + 1}`,
-      to: `frame_${i + 2}`,
-      kind: 'sequence',
-    })),
-  }, null, 2));
-  graphPromptParts.push('```');
-  graphPromptParts.push('');
-  graphPromptParts.push(`Replace the placeholder text in each node with concrete content from the inputs. Adjust intent to match (single-frame|explainer|data-viz|promo|comparison|other). Keep node ids unique. Do NOT return an empty reply. Do NOT emit any HTML this turn.`);
-  graphPromptParts.push(`DATA FRAMES: every \`kind:"data"\` node MUST carry a \`data\` object \`{ title?, unit?, items: [{ label, value }] }\` with at least 2 items and numeric \`value\`s drawn from the inputs/source — real figures, not placeholders (they can be animated with rolling counters / growing bars). The node's \`text\` still holds the headline. If a frame genuinely has no quantitative data, make it a \`text\` node instead of \`data\`.`);
-  graphPromptParts.push(`DATA FRAME QUALITY: (1) Items in ONE data frame must be COMPARABLE — the same unit and a similar order of magnitude. Do NOT mix wildly different scales in one chart (e.g. 61,000 GitHub stars next to 142 plugins) — one giant bar makes the rest invisible. If figures have different units or scales, split them across separate data frames, or pick the 2-4 that genuinely compare. (2) \`unit\` is OPTIONAL and only for a real shared unit (e.g. "%", "K", "★", "ms"). If the numbers are plain counts with no meaningful unit, OMIT \`unit\` entirely — never use filler like "count" / "个" / "次".`);
-  graphPromptParts.push(`STRICT JSON: the block must be valid JSON. Inside string values do NOT use straight double-quotes ("…") — if you need to quote a term or title, use 「」 or 《》 or single quotes. No trailing commas. No comments.`);
+    }
+    if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
+    graphPromptParts.push(
+      `- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`,
+    );
+    graphPromptParts.push('');
+    if (sourceTexts.length > 0) {
+      graphPromptParts.push(
+        `GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`,
+      );
+      graphPromptParts.push('');
+    }
+    graphPromptParts.push(
+      `Schema (keep all keys; one node per frame; nodes[].id should be a short readable slug like "intro" / "stat_users" / "outro"):`,
+    );
+    graphPromptParts.push('```json#content-graph');
+    graphPromptParts.push(
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          intent: 'explainer',
+          synopsis: '<one-line description of the video>',
+          nodes: Array.from({ length: frameCountReq }, (_, i) => {
+            const kind = i === 0 ? 'text' : i === frameCountReq - 1 ? 'entity' : 'data';
+            const node: Record<string, unknown> = {
+              id: `frame_${i + 1}`,
+              kind,
+              durationSec: perFrameDurationSec,
+              text: '<headline / subtitle for this frame>',
+            };
+            // Every data node carries structured items so it can be rendered natively
+            // with Remotion (numbers roll, bars grow) — whether the user opted in now
+            // or enhances the frame later from the strip. A data frame without numbers
+            // is just a text frame.
+            if (kind === 'data') {
+              node.data = {
+                title: '<short chart title>',
+                unit: '<optional unit, e.g. K / % / ★>',
+                items: [
+                  { label: '<label>', value: 0 },
+                  { label: '<label>', value: 0 },
+                ],
+              };
+            }
+            return node;
+          }),
+          edges: Array.from({ length: frameCountReq - 1 }, (_, i) => ({
+            from: `frame_${i + 1}`,
+            to: `frame_${i + 2}`,
+            kind: 'sequence',
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    graphPromptParts.push('```');
+    graphPromptParts.push('');
+    graphPromptParts.push(
+      'Replace the placeholder text in each node with concrete content from the inputs. Adjust intent to match (single-frame|explainer|data-viz|promo|comparison|other). Keep node ids unique. Do NOT return an empty reply. Do NOT emit any HTML this turn.',
+    );
+    graphPromptParts.push(
+      `DATA FRAMES: every \`kind:"data"\` node MUST carry a \`data\` object \`{ title?, unit?, items: [{ label, value }] }\` with at least 2 items and numeric \`value\`s drawn from the inputs/source — real figures, not placeholders (they can be animated with rolling counters / growing bars). The node's \`text\` still holds the headline. If a frame genuinely has no quantitative data, make it a \`text\` node instead of \`data\`.`,
+    );
+    graphPromptParts.push(
+      `DATA FRAME QUALITY: (1) Items in ONE data frame must be COMPARABLE — the same unit and a similar order of magnitude. Do NOT mix wildly different scales in one chart (e.g. 61,000 GitHub stars next to 142 plugins) — one giant bar makes the rest invisible. If figures have different units or scales, split them across separate data frames, or pick the 2-4 that genuinely compare. (2) \`unit\` is OPTIONAL and only for a real shared unit (e.g. "%", "K", "★", "ms"). If the numbers are plain counts with no meaningful unit, OMIT \`unit\` entirely — never use filler like "count" / "个" / "次".`,
+    );
+    graphPromptParts.push(
+      `STRICT JSON: the block must be valid JSON. Inside string values do NOT use straight double-quotes ("…") — if you need to quote a term or title, use 「」 or 《》 or single quotes. No trailing commas. No comments.`,
+    );
 
-  const graphPrompt = graphPromptParts.join('\n');
-  const graphText = await callAgentSimple(agentDef, graphPrompt, projectDir, agentModel);
-  const graphMatch = /```json#content-graph\s*\n([\s\S]*?)```/i.exec(graphText)
-    ?? /```json\s*\n([\s\S]*?)```/i.exec(graphText);
-  if (!graphMatch || !graphMatch[1]) {
-    throw new Error(`agent did not return a content-graph (got ${graphText.length} bytes, head: ${graphText.slice(0, 80)})`);
-  }
-  try {
-    graph = parseGraphJsonTolerant(graphMatch[1].trim()) as import('@html-video/content-graph').ContentGraph;
-  } catch (e) {
-    throw new Error(`graph JSON failed to parse: ${e instanceof Error ? e.message : e}`);
-  }
-  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
-    throw new Error('graph has no nodes');
-  }
-  await ctx.orchestrator.writeContentGraph(projectId, graph);
-  onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
-  onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
+    const graphPrompt = graphPromptParts.join('\n');
+    const graphText = await callAgentSimple(agentDef, graphPrompt, projectDir, agentModel);
+    const graphMatch =
+      /```json#content-graph\s*\n([\s\S]*?)```/i.exec(graphText) ??
+      /```json\s*\n([\s\S]*?)```/i.exec(graphText);
+    if (!graphMatch || !graphMatch[1]) {
+      throw new Error(
+        `agent did not return a content-graph (got ${graphText.length} bytes, head: ${graphText.slice(0, 80)})`,
+      );
+    }
+    try {
+      graph = parseGraphJsonTolerant(graphMatch[1].trim()) as import(
+        '@html-video/content-graph',
+      ).ContentGraph;
+    } catch (e) {
+      throw new Error(`graph JSON failed to parse: ${e instanceof Error ? e.message : e}`);
+    }
+    if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+      throw new Error('graph has no nodes');
+    }
+    await ctx.orchestrator.writeContentGraph(projectId, graph);
+    onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
+    onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   }
 
   // ---- Step 2: one call per node, output a single ```html block ----
@@ -3268,15 +3779,21 @@ async function runSplitMultiFrameGenerate(
 
     const frameContext = describeNode(node);
     const fp: string[] = [];
-    fp.push(`Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`);
+    fp.push(
+      `Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`,
+    );
     fp.push('');
     fp.push(`Frame ${i + 1} of ${graph.nodes.length}: ${frameContext}`);
     if (restyleOnly) {
       // Keep the exact words; only the visual style changes.
-      fp.push(`RESTYLE: keep this frame's TEXT EXACTLY as given above — same headline, subtitle, numbers, wording. Do NOT rewrite, translate, or reword anything. Change ONLY the visual style (layout, colour, typography, motion) to: ${styleLabel || pickedStyle || '(the new style)'}.`);
+      fp.push(
+        `RESTYLE: keep this frame's TEXT EXACTLY as given above — same headline, subtitle, numbers, wording. Do NOT rewrite, translate, or reword anything. Change ONLY the visual style (layout, colour, typography, motion) to: ${styleLabel || pickedStyle || '(the new style)'}.`,
+      );
     }
     if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
-      fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`);
+      fp.push(
+        `Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`,
+      );
     }
     fp.push(`Duration: ${node.durationSec ?? perFrameDurationSec}s`);
     fp.push(`Type: ${pickedType}`);
@@ -3284,7 +3801,7 @@ async function runSplitMultiFrameGenerate(
     fp.push(`Resolution: ${aspect} (${resolution})`);
     fp.push('');
     if (contentTurns.length > 0) {
-      fp.push(`Source material from the user (use literally; do NOT invent facts):`);
+      fp.push('Source material from the user (use literally; do NOT invent facts):');
       for (const t of contentTurns) fp.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
       fp.push('');
     }
@@ -3295,22 +3812,30 @@ async function runSplitMultiFrameGenerate(
     if (frameSpecs.length > 0) fp.push(...renderDesignSpecBlock(frameSpecs));
     const frameSourceTexts = frameContentAtts.filter((a) => !!a.inlineText);
     if (frameSourceTexts.length > 0) {
-      fp.push(`SOURCE MATERIAL (the video's real subject — use its actual facts/names/numbers, never generic filler about the content type):`);
+      fp.push(
+        `SOURCE MATERIAL (the video's real subject — use its actual facts/names/numbers, never generic filler about the content type):`,
+      );
       for (const a of frameSourceTexts) fp.push((a.inlineText ?? '').slice(0, 3000));
       fp.push('');
     }
-    fp.push(`Output: begin with \`\`\`html and end with \`\`\`. Inline CSS + JS, full-bleed ${resolution}, opens with an animation timeline. Tag visible text with data-hv-text. CDN imports (Tailwind, GSAP) fine. No prose outside the block.`);
+    fp.push(
+      `Output: begin with \`\`\`html and end with \`\`\`. Inline CSS + JS, full-bleed ${resolution}, opens with an animation timeline. Tag visible text with data-hv-text. CDN imports (Tailwind, GSAP) fine. No prose outside the block.`,
+    );
     fp.push('');
     if (templateHtml) {
       // A template is selected → its HTML is the REQUIRED look for every frame.
-      fp.push(`Template HTML — this is the REQUIRED visual style for THIS frame. Reuse its exact palette, background, typography, layout structure and animation approach; only swap in this frame's text/data. Do NOT invent a different theme (no generic dark background unless the template itself is dark):`);
+      fp.push(
+        `Template HTML — this is the REQUIRED visual style for THIS frame. Reuse its exact palette, background, typography, layout structure and animation approach; only swap in this frame's text/data. Do NOT invent a different theme (no generic dark background unless the template itself is dark):`,
+      );
       fp.push('```html');
       fp.push(templateHtml.slice(0, 4000));
       fp.push('```');
       fp.push('');
-      fp.push(`Keep all ${graph.nodes.length} frames visually consistent with this template so they read as one video.`);
+      fp.push(
+        `Keep all ${graph.nodes.length} frames visually consistent with this template so they read as one video.`,
+      );
     } else {
-      fp.push(`Skeleton to extend (replace placeholder, expand styling per type / style):`);
+      fp.push('Skeleton to extend (replace placeholder, expand styling per type / style):');
       fp.push('```html');
       fp.push(`<!doctype html>
 <html><head><meta charset="utf-8"><style>
@@ -3324,7 +3849,9 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
       fp.push('```');
       if (priorHtml && priorHtml.length > 0) {
         fp.push('');
-        fp.push(`Visual style reference (mine for palette / typography / motion vocabulary, do not copy literally):`);
+        fp.push(
+          'Visual style reference (mine for palette / typography / motion vocabulary, do not copy literally):',
+        );
         fp.push('```html');
         fp.push(priorHtml.slice(0, 2400));
         fp.push('```');
@@ -3332,24 +3859,28 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     }
     if (i === 0 && attachments.length > 0) {
       fp.push('');
-      fp.push(`User attachments (binary = assets; inlined text = source material to base content on):`);
+      fp.push(
+        'User attachments (binary = assets; inlined text = source material to base content on):',
+      );
       for (const a of attachments) fp.push(...renderAttachment(a));
     }
     fp.push('');
-    fp.push(`Do NOT return an empty reply. Output the full HTML.`);
+    fp.push('Do NOT return an empty reply. Output the full HTML.');
 
     const framePrompt = fp.join('\n');
     let frameText = await callAgentSimple(agentDef, framePrompt, projectDir, agentModel);
-    let extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
-      ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
+    let extracted =
+      /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim() ??
+      /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
 
     // One retry on empty: shorter prompt, just the skeleton call.
     if (!extracted) {
       onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
       const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
       frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
-      extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
-        ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
+      extracted =
+        /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim() ??
+        /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
     }
     if (!extracted) {
       throw new Error(`frame "${nodeId}" generation returned empty (${frameText.length}B)`);
@@ -3359,24 +3890,34 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     // FrameRecord, so enhanceFrameNative can set engine/nativeTemplateId/data in
     // place. Best-effort: if the data node lacks usable {label,value} items it
     // throws — we keep the hyperframes HTML and warn rather than fail the run.
-    // 'frame-data-rollup' is the only native template today (TODO: picker).
-    if (enhanceData && node.kind === 'data') {
+    if (enhanceData && enhanceNativeTemplateId && node.kind === 'data') {
       try {
         // Two steps, same as the manual enhance endpoint: (1) set the frame's
         // engine/data, (2) actually RENDER the preview MP4. Without step 2 the
         // frame is flagged remotion but has no previewMp4Path, so the studio
         // tries to play a <video> that 404s → black thumbnail + preview.
-        await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion 动效 (数字滚动 / 柱子生长)…`);
+        await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, enhanceNativeTemplateId);
+        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion (${enhanceNativeTemplateId})…`);
         await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
-        onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
+        onSse({
+          type: 'frame_enhanced',
+          node_id: nodeId,
+          order: i,
+          native_template_id: enhanceNativeTemplateId,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
+        process.stderr.write(
+          `[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`,
+        );
         onProgress(`  ⚠️ 第 ${i + 1} 帧无法用 Remotion 增强（回落静态 HTML）：${msg}`);
         // Revert the engine flag so the frame falls back to its hyperframes HTML
         // (the <iframe> path) instead of showing a broken <video>.
-        try { await ctx.orchestrator.unenhanceFrame(projectId, nodeId); } catch { /* ignore */ }
+        try {
+          await ctx.orchestrator.unenhanceFrame(projectId, nodeId);
+        } catch {
+          /* ignore */
+        }
       }
     }
     onProgress(`  ✓ 第 ${i + 1}/${graph.nodes.length} 帧完成 (${nodeId})`);
@@ -3390,7 +3931,8 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
 function describeNode(node: import('@html-video/content-graph').Node): string {
   const bits: string[] = [];
   if (node.label) bits.push(node.label);
-  if ((node as { text?: string }).text) bits.push(`text: ${(node as { text: string }).text.slice(0, 200)}`);
+  if ((node as { text?: string }).text)
+    bits.push(`text: ${(node as { text: string }).text.slice(0, 200)}`);
   if (node.kind === 'data' && (node as { data?: unknown }).data !== undefined) {
     bits.push(`data: ${JSON.stringify((node as { data: unknown }).data).slice(0, 200)}`);
   }

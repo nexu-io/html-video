@@ -12,14 +12,11 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\" \"test/**/*.test.mjs\""
+    "test": "pnpm run build && node --test --experimental-strip-types \"test/**/*.test.ts\" \"test/**/*.test.mjs\""
   },
   "devDependencies": {
     "typescript": "^5.7.2"

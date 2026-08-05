@@ -1,9 +1,9 @@
+import assert from 'node:assert/strict';
 // Unit tests for neutralizeBlockingResources — the render-blocking-stylesheet
 // guard that fixed the all-black Remotion render (external Google Fonts <link>
 // kept the srcdoc iframe from painting in headless chromium). See
 // notes/2026-06-06-remotion-adapter-verify.md.
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
 import { neutralizeBlockingResources } from '../dist/render.js';
 
 test('async-loads an external Google Fonts stylesheet link', () => {
@@ -33,7 +33,7 @@ test('leaves relative / same-document stylesheet links untouched', () => {
 });
 
 test('leaves inline <style> untouched', () => {
-  const html = `<style>@import url(https://fonts.googleapis.com/x);body{color:red}</style>`;
+  const html = '<style>@import url(https://fonts.googleapis.com/x);body{color:red}</style>';
   assert.equal(neutralizeBlockingResources(html), html);
 });
 
@@ -52,6 +52,6 @@ test('neutralizes every external stylesheet in a multi-link head', () => {
 });
 
 test('is a no-op for HTML with no stylesheet links', () => {
-  const html = `<!doctype html><html><body><h1>hi</h1></body></html>`;
+  const html = '<!doctype html><html><body><h1>hi</h1></body></html>';
   assert.equal(neutralizeBlockingResources(html), html);
 });

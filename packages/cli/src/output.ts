@@ -12,7 +12,11 @@ export function setJsonMode(on: boolean) {
 
 export function ok(payload: unknown): void {
   if (JSON_MODE) {
-    process.stdout.write(`${JSON.stringify({ status: 'ok', ...(payload as object) })}\n`);
+    const body =
+      payload != null && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : { data: payload };
+    process.stdout.write(`${JSON.stringify({ ...body, status: 'ok' })}\n`);
   } else {
     process.stdout.write(`${pretty(payload)}\n`);
   }
@@ -29,9 +33,7 @@ export function fail(code: string, message: string, ctx: Record<string, unknown>
 
 export function progress(stage: string, pct: number, extra: Record<string, unknown> = {}): void {
   if (JSON_MODE) {
-    process.stdout.write(
-      `${JSON.stringify({ type: 'progress', stage, pct, ...extra })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify({ type: 'progress', stage, pct, ...extra })}\n`);
   } else {
     process.stdout.write(`  ${stage}: ${pct}%\n`);
   }

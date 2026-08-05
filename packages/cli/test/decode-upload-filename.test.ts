@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { decodeUploadFilename } from '../dist/studio-server.js';
 
 // Regression coverage for issue #9 (CJK attachment filename mojibake).
@@ -28,12 +28,12 @@ test('plain ASCII filename is unchanged (round-trip is a no-op)', () => {
 });
 
 test('RFC 5987 filename* wins and is percent-decoded', () => {
-  const star = "UTF-8''" + encodeURIComponent('中文文件.md');
+  const star = `UTF-8''${encodeURIComponent('中文文件.md')}`;
   assert.equal(decodeUploadFilename(star, 'fallback.md'), '中文文件.md');
 });
 
 test('RFC 5987 with language tag prefix', () => {
-  const star = "UTF-8'zh-CN'" + encodeURIComponent('数据.json');
+  const star = `UTF-8'zh-CN'${encodeURIComponent('数据.json')}`;
   assert.equal(decodeUploadFilename(star, undefined), '数据.json');
 });
 

@@ -14,17 +14,22 @@
     "pnpm": ">=9"
   },
   "packageManager": "pnpm@9.15.0",
-  "workspaces": [
-    "packages/*",
-    "templates/*"
-  ],
+  "workspaces": ["packages/*", "templates/*"],
   "scripts": {
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "build": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r build",
+    "typecheck": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r typecheck",
+    "test": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r test",
+    "presmoke": "pnpm --filter @html-video/cli build",
     "smoke": "pnpm --filter @html-video/cli smoke",
     "format": "biome format --write .",
-    "lint": "biome lint ."
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write .",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && HV_SMOKE_FAST=1 pnpm smoke",
+    "check:full": "pnpm typecheck && pnpm lint && pnpm validate-templates && pnpm test && pnpm smoke",
+    "verify": "pnpm build && pnpm check && pnpm validate-templates",
+    "validate-templates": "pnpm --filter @html-video/cli validate-templates",
+    "clean": "find packages -type d -name dist -prune -exec rm -rf {} + 2>/dev/null || true",
+    "doctor": "node packages/cli/dist/bin.js doctor"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

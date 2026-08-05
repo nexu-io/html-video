@@ -12,9 +12,9 @@
  * `.html-video/` runtime dir, never the repo.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveMinimaxCredentials, type MinimaxCredentials } from '@html-video/core';
+import { type MinimaxCredentials, resolveMinimaxCredentials } from '@html-video/core';
 
 interface MediaConfig {
   minimax?: { apiKey?: string; baseUrl?: string };
@@ -45,10 +45,20 @@ export class MediaConfigStore {
 
   /** What the Settings UI shows: whether a key is set + masked key + base URL.
    *  Never returns the raw key. Reports the source (config file vs env). */
-  getMinimaxStatus(): { configured: boolean; source: 'config' | 'env' | 'none'; maskedKey: string; baseUrl: string } {
+  getMinimaxStatus(): {
+    configured: boolean;
+    source: 'config' | 'env' | 'none';
+    maskedKey: string;
+    baseUrl: string;
+  } {
     const cfg = this.read().minimax;
     if (cfg?.apiKey) {
-      return { configured: true, source: 'config', maskedKey: mask(cfg.apiKey), baseUrl: cfg.baseUrl ?? '' };
+      return {
+        configured: true,
+        source: 'config',
+        maskedKey: mask(cfg.apiKey),
+        baseUrl: cfg.baseUrl ?? '',
+      };
     }
     const env = resolveMinimaxCredentials();
     if (env) {
@@ -69,7 +79,7 @@ export class MediaConfigStore {
   /** Forget the stored MiniMax key (env fallback, if any, still applies). */
   clearMinimax(): void {
     const cfg = this.read();
-    delete cfg.minimax;
+    cfg.minimax = undefined;
     this.write(cfg);
   }
 

@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { spawnAgent } from '../dist/index.js';
 import type { AgentDef } from '../dist/index.js';
 

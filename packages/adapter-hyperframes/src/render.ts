@@ -13,18 +13,13 @@
  * our generated HTML is plain inline-CSS+JS, chromium runs it as-is.
  */
 
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { existsSync, readdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type {
-  HtmlSceneOutput,
-  RenderContext,
-  RenderInput,
-  RenderOutput,
-} from '@html-video/core';
+import type { HtmlSceneOutput, RenderContext, RenderInput, RenderOutput } from '@html-video/core';
 import { HtmlVideoError } from '@html-video/core';
 
 const ADAPTER_VERSION = '0.2.0-playwright';
@@ -181,7 +176,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
             const linkDone = links.map((link) => {
               // An already-loaded sheet exposes cssRules without throwing.
               try {
-                if (link.sheet && link.sheet.cssRules) return Promise.resolve();
+                if (link.sheet?.cssRules) return Promise.resolve();
               } catch {
                 /* not ready yet — fall through to event wait */
               }
@@ -199,6 +194,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
                 // 2. Force every registered face to actually download. Under
                 // `display: swap` the browser otherwise defers the fetch.
                 const loads: Promise<unknown>[] = [];
+                // biome-ignore lint/complexity/noForEach: FontFaceSet is not typed as iterable in TS DOM lib
                 fonts.forEach((face) => {
                   try {
                     loads.push(face.load().catch(() => undefined));
@@ -233,22 +229,40 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     try {
       const animMs = await page.evaluate(() => {
         let maxMs = 0;
-        Array.from(document.querySelectorAll('*')).forEach((el) => {
+        for (const el of Array.from(document.querySelectorAll('*'))) {
           const s = getComputedStyle(el);
           const durs = (s.animationDuration || '').split(',');
           const dels = (s.animationDelay || '').split(',');
           const iters = (s.animationIterationCount || '').split(',');
-          durs.forEach((d, i) => {
-            if ((iters[i] || '').trim() === 'infinite') return; // ignore looping bg anims
-            maxMs = Math.max(maxMs, ((parseFloat(d) || 0) + (parseFloat(dels[i] || '0') || 0)) * 1000);
-          });
-        });
+          for (let i = 0; i < durs.length; i++) {
+            const d = durs[i] ?? '';
+            if ((iters[i] || '').trim() === 'infinite') continue; // ignore looping bg anims
+            maxMs = Math.max(
+              maxMs,
+              ((Number.parseFloat(d) || 0) + (Number.parseFloat(dels[i] || '0') || 0)) * 1000,
+            );
+          }
+        }
         // GSAP: do NOT use globalTimeline.totalDuration() — an infinitely
         // repeating tween (repeat:-1, e.g. a blinking cursor) makes it ~1e10s.
         // Walk the children and take the longest FINITE (non-repeat:-1) tween.
-        const g = (window as unknown as {
-          gsap?: { globalTimeline?: { getChildren?: (b?: boolean, t?: boolean, tl?: boolean) => Array<{ totalDuration?: () => number; repeat?: () => number; vars?: { repeat?: number } }> } };
-        }).gsap;
+        const g = (
+          window as unknown as {
+            gsap?: {
+              globalTimeline?: {
+                getChildren?: (
+                  b?: boolean,
+                  t?: boolean,
+                  tl?: boolean,
+                ) => Array<{
+                  totalDuration?: () => number;
+                  repeat?: () => number;
+                  vars?: { repeat?: number };
+                }>;
+              };
+            };
+          }
+        ).gsap;
         let gsapMs = 0;
         const children = g?.globalTimeline?.getChildren?.(true, true, true) ?? [];
         for (const c of children) {
@@ -270,7 +284,9 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
         ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s for animation`);
         totalDuration = needed;
       }
-    } catch { /* probe failed — fall back to the requested duration */ }
+    } catch {
+      /* probe failed — fall back to the requested duration */
+    }
 
     // Multi-composition templates register their master timeline paused so the
     // probe above can read its real (finite) duration. Now that the recording
@@ -350,20 +366,28 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     '-y',
     // -ss before -i = fast input seek, drops the frozen lead-in entirely.
     ...(seekSec > 0 ? ['-ss', seekSec.toFixed(3)] : []),
-    '-i', webmPath!,
+    '-i',
+    webmPath!,
     // Pad-then-trim so an explicit per-frame length lands exactly (e.g. user
     // asked 4s, animation ran 2.8s → hold the final frame to fill 4s).
     ...(explicit ? ['-vf', `tpad=stop_mode=clone:stop_duration=${totalDuration}`] : []),
     // Force exact duration: playwright's recordVideo sometimes overshoots
     // by the time it takes to close the context. -t trims to the requested
     // length (seconds, accepts fractions).
-    '-t', String(totalDuration),
-    '-r', String(fps),
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-preset', 'medium',
-    '-crf', '20',
-    '-movflags', '+faststart',
+    '-t',
+    String(totalDuration),
+    '-r',
+    String(fps),
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-preset',
+    'medium',
+    '-crf',
+    '20',
+    '-movflags',
+    '+faststart',
     input.config.outputPath,
   ]);
 
@@ -383,7 +407,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       renderWallClockSec: (Date.now() - t0) / 1000,
       engineVersion: `hyperframes-playwright@${ADAPTER_VERSION}`,
     },
-    diagnostics: [`recorded via playwright/chromium then encoded with ffmpeg (libx264 crf20)`],
+    diagnostics: ['recorded via playwright/chromium then encoded with ffmpeg (libx264 crf20)'],
   };
 }
 
@@ -396,16 +420,20 @@ function runFfmpeg(args: string[]): Promise<void> {
     });
     proc.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'ENOENT') {
-        reject(new HtmlVideoError('render-failed',
-          'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS).'));
+        reject(
+          new HtmlVideoError(
+            'render-failed',
+            'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS).',
+          ),
+        );
       } else reject(err);
     });
     proc.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new HtmlVideoError(
-        'render-failed',
-        `ffmpeg exited ${code}: ${stderr.slice(-2000)}`,
-      ));
+      else
+        reject(
+          new HtmlVideoError('render-failed', `ffmpeg exited ${code}: ${stderr.slice(-2000)}`),
+        );
     });
   });
 }
@@ -541,10 +569,7 @@ export async function renderToHtml(
   ctx: RenderContext,
 ): Promise<HtmlSceneOutput> {
   if (!existsSync(input.template.sourcePath)) {
-    throw new HtmlVideoError(
-      'template-invalid',
-      `Source not found: ${input.template.sourcePath}`,
-    );
+    throw new HtmlVideoError('template-invalid', `Source not found: ${input.template.sourcePath}`);
   }
 
   await mkdir(ctx.workDir, { recursive: true });
@@ -585,13 +610,12 @@ console.log('html-video preview vars', window.__HV_VARS__);
     await mkdir(dirname(dest), { recursive: true });
     if (!existsSync(dest)) await copyFile(v, dest);
     const m = /assets\/([0-9a-f]{40})\./.exec(v);
-    if (m && m[1]) {
+    if (m?.[1]) {
       referencedAssets.push({ assetId: m[1], usagePath: dest });
     }
   }
 
-  const totalDuration =
-    input.config.duration === 'auto' ? 5 : input.config.duration;
+  const totalDuration = input.config.duration === 'auto' ? 5 : input.config.duration;
   return {
     htmlPath,
     referencedAssets,

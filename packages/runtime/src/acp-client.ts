@@ -55,7 +55,9 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
   }
 
   let stderrBuf = '';
-  child.stderr?.on('data', (c: Buffer) => { stderrBuf += c.toString('utf8'); });
+  child.stderr?.on('data', (c: Buffer) => {
+    stderrBuf += c.toString('utf8');
+  });
 
   return await new Promise<{ exitCode: number }>((done) => {
     let settled = false;
@@ -69,12 +71,15 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
     let stageTimer: ReturnType<typeof setTimeout> | null = null;
 
     const writeRpc = (id: JsonRpcId, method: string, params: unknown) => {
-      child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
     };
 
     const armTimer = (label: string) => {
       if (stageTimer) clearTimeout(stageTimer);
-      stageTimer = setTimeout(() => finish(-1, `ACP timed out waiting for ${label}`), DEFAULT_STAGE_TIMEOUT_MS);
+      stageTimer = setTimeout(
+        () => finish(-1, `ACP timed out waiting for ${label}`),
+        DEFAULT_STAGE_TIMEOUT_MS,
+      );
     };
 
     const finish = (code: number, errMsg?: string) => {
@@ -85,7 +90,11 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
         const tail = stderrBuf.trim().slice(-400);
         opts.onEvent({ type: 'error', message: tail ? `${errMsg} — ${tail}` : errMsg });
       }
-      try { child.kill('SIGTERM'); } catch { /* already gone */ }
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
       done({ exitCode: code });
     };
 
@@ -95,12 +104,13 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
     child.on('exit', (code) => {
       // Normal completion path resolves on the prompt result; an exit before
       // that is an error (often: not logged in, surfaced on stderr).
-      if (!settled) finish(code ?? -1, `vela exited (code ${code ?? 'null'}) before the turn completed`);
+      if (!settled)
+        finish(code ?? -1, `vela exited (code ${code ?? 'null'}) before the turn completed`);
     });
 
     const handle = (msg: Record<string, unknown>) => {
       // --- responses to our requests (have an id + result/error) ---
-      if ('id' in msg && (('result' in msg) || ('error' in msg))) {
+      if ('id' in msg && ('result' in msg || 'error' in msg)) {
         if (msg.error) {
           const e = msg.error as { message?: string; code?: number };
           return finish(-1, `ACP error${e.code ? ` ${e.code}` : ''}: ${e.message ?? 'unknown'}`);
@@ -153,10 +163,17 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
         // We run non-interactively; reject so the agent proceeds with defaults
         // rather than hanging. (OD picks an allow option; for our read-only
         // text turn, declining is safe and avoids file mutations.)
-        const params = msg.params as { options?: Array<{ optionId?: string; kind?: string }> } | undefined;
-        const allow = params?.options?.find((o) => /allow|accept|yes/i.test(o.kind ?? o.optionId ?? ''));
+        const params = msg.params as
+          | { options?: Array<{ optionId?: string; kind?: string }> }
+          | undefined;
+        const allow = params?.options?.find((o) =>
+          /allow|accept|yes/i.test(o.kind ?? o.optionId ?? ''),
+        );
         const optionId = allow?.optionId ?? params?.options?.[0]?.optionId;
-        if (optionId) child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { outcome: { outcome: 'selected', optionId } } })}\n`);
+        if (optionId)
+          child.stdin?.write(
+            `${JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { outcome: { outcome: 'selected', optionId } } })}\n`,
+          );
         return;
       }
     };
@@ -170,16 +187,25 @@ export async function runAcpAgent(opts: RunAcpOptions): Promise<{ exitCode: numb
       });
     };
 
-    child.stdout!.on('data', (chunk: Buffer) => {
+    child.stdout?.on('data', (chunk: Buffer) => {
       buf += chunk.toString('utf8');
-      let nl: number;
-      while ((nl = buf.indexOf('\n')) >= 0) {
+      while (true) {
+        const nl = buf.indexOf('\n');
+        if (nl < 0) break;
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
         if (!line) continue;
         let msg: Record<string, unknown>;
-        try { msg = JSON.parse(line); } catch { continue; } // ignore non-JSON noise
-        try { handle(msg); } catch (e) { finish(-1, `ACP handler error: ${e instanceof Error ? e.message : e}`); }
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        } // ignore non-JSON noise
+        try {
+          handle(msg);
+        } catch (e) {
+          finish(-1, `ACP handler error: ${e instanceof Error ? e.message : e}`);
+        }
       }
     });
 

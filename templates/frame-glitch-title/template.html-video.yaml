@@ -62,6 +62,22 @@ license:
   redistribution_allowed: true
   commercial_use: true
 
+provenance:
+  origin:
+    name: none
+    kind: none
+    reference: "Original html-video skill example authored by the Open Design team"
+  via_skill:
+    name: open-design
+    author: "nexu-io"
+    url: https://github.com/nexu-io/open-design
+    license: Apache-2.0
+    source_file: repo/skills/frame-glitch-title/example.html
+  transformation: >
+    Open Design skill example HTML cherry-picked into a standalone html-video template
+    with metadata schema, inputs, and agent-facing SKILL.md. Glitch/RGB-shift effects
+    preserved from the upstream example.
+
 author:
   name: nexu-io
   url: https://github.com/nexu-io

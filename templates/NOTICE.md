@@ -1,5 +1,9 @@
 # Template attributions
 
+> **Canonical mapping (RFC-07 three-layer provenance)**: see repo-root [`ATTRIBUTIONS.md`](../ATTRIBUTIONS.md).
+> This file is a legacy quick index; per-template `provenance` blocks in each
+> `template.html-video.yaml` are authoritative.
+
 Several templates in this directory are forked from upstream projects.
 Original licenses apply; see each template's `template.html-video.yaml`
 `assets_attribution` block for the canonical source URL.

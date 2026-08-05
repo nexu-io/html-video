@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import type { AgentDef } from '../types.js';
 
@@ -74,7 +74,9 @@ export function readVelaProfile(): { name: string; profile: VelaProfile } | null
     const raw = readFileSync(join(homedir(), '.vela', 'config.json'), 'utf8');
     const cfg = JSON.parse(raw) as { profiles?: Record<string, VelaProfile> };
     const profiles = cfg.profiles ?? {};
-    const name = process.env.VELA_PROFILE?.trim() || (profiles.prod ? 'prod' : Object.keys(profiles)[0] ?? '');
+    const name =
+      process.env.VELA_PROFILE?.trim() ||
+      (profiles.prod ? 'prod' : (Object.keys(profiles)[0] ?? ''));
     const profile = profiles[name];
     return profile ? { name, profile } : null;
   } catch {
@@ -102,7 +104,10 @@ export const amr: AgentDef = {
   async extraDetect(resolvedBin: string) {
     const prof = readVelaProfile();
     if (!prof || !prof.profile.runtimeKey) {
-      return { available: false, hint: 'Sign in to AMR in the Open Design app first (vela login).' };
+      return {
+        available: false,
+        hint: 'Sign in to AMR in the Open Design app first (vela login).',
+      };
     }
     // whoami is the authoritative liveness check — the stored runtimeKey can
     // expire even when config.json still looks populated.
@@ -110,15 +115,24 @@ export const amr: AgentDef = {
       const { stdout } = await exec(resolvedBin, ['whoami'], { timeout: 6000 });
       const out = stdout.trim();
       if (/not logged in|run `?vela login`?/i.test(out)) {
-        return { available: false, hint: 'AMR session expired — re-run vela login in Open Design.' };
+        return {
+          available: false,
+          hint: 'AMR session expired — re-run vela login in Open Design.',
+        };
       }
       const email = prof.profile.user?.email;
       const plan = prof.profile.user?.plan;
-      return { available: true, version: `AMR${email ? ` · ${email}` : ''}${plan ? ` (${plan})` : ''}` };
+      return {
+        available: true,
+        version: `AMR${email ? ` · ${email}` : ''}${plan ? ` (${plan})` : ''}`,
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/not logged in/i.test(msg)) {
-        return { available: false, hint: 'AMR session expired — re-run vela login in Open Design.' };
+        return {
+          available: false,
+          hint: 'AMR session expired — re-run vela login in Open Design.',
+        };
       }
       return { available: false, hint: `vela whoami failed: ${msg.slice(0, 120)}` };
     }
@@ -127,11 +141,20 @@ export const amr: AgentDef = {
 
 /** Preferred ordering — surface the cheap/fast default + flagships first. */
 const AMR_MODEL_RANK: ReadonlyMap<string, number> = new Map(
-  ['deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-4.8', 'claude-sonnet-4.6', 'gpt-5.5', 'gemini-3.1-pro-preview']
-    .map((id, i) => [id, i]),
+  [
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'claude-opus-4.8',
+    'claude-sonnet-4.6',
+    'gpt-5.5',
+    'gemini-3.1-pro-preview',
+  ].map((id, i) => [id, i]),
 );
 
-export interface AmrModel { id: string; label: string }
+export interface AmrModel {
+  id: string;
+  label: string;
+}
 
 /**
  * List the live AMR catalog via `vela model list`. Each line is
@@ -139,7 +162,10 @@ export interface AmrModel { id: string; label: string }
  * in session/set_model, so no normalization is needed. Ordered preferred-first.
  */
 export async function listAmrModels(resolvedBin: string): Promise<AmrModel[]> {
-  const { stdout } = await exec(resolvedBin, ['model', 'list'], { timeout: 10_000, maxBuffer: 1024 * 1024 });
+  const { stdout } = await exec(resolvedBin, ['model', 'list'], {
+    timeout: 10_000,
+    maxBuffer: 1024 * 1024,
+  });
   const seen = new Set<string>();
   const models: AmrModel[] = [];
   for (const line of String(stdout).split('\n')) {

@@ -9,7 +9,10 @@ interface SearchOpts {
 }
 
 export async function searchTemplates(ctx: CliContext, opts: SearchOpts): Promise<void> {
-  const allowed = opts.licenseAllow?.split(',').map((s) => s.trim()).filter(Boolean);
+  const allowed = opts.licenseAllow
+    ?.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const enginesAvailable = ctx.engines.list().map((e) => e.id);
   const matches = ctx.templates.search({
     ...(opts.intent !== undefined && { intent: opts.intent }),

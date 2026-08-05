@@ -4,11 +4,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
-import type { Asset, AssetType } from './types/index.js';
 import { HtmlVideoError } from './errors.js';
+import type { Asset, AssetType } from './types/index.js';
 
 export interface AssetStoreOptions {
   projectRoot: string;

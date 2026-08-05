@@ -122,8 +122,9 @@ function extractBalanced(html: string, tag: string, openTagRe: RegExp): string |
   const tagRe = new RegExp(`<(/)?${tag}\\b[^>]*>`, 'gi');
   tagRe.lastIndex = start;
   let depth = 1;
-  let t: RegExpExecArray | null;
-  while ((t = tagRe.exec(html))) {
+  while (true) {
+    const t = tagRe.exec(html);
+    if (!t) break;
     if (t[1]) {
       depth--;
       if (depth === 0) return html.slice(start, t.index);
@@ -147,14 +148,14 @@ function extractMainHtml(html: string): string {
   if (main && main.length > 200) return main;
   // Fall back to <body> so we don't carry <head> noise.
   const bodyM = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  return bodyM && bodyM[1] ? bodyM[1] : html;
+  return bodyM?.[1] ? bodyM[1] : html;
 }
 
 function extractTitle(html: string): string {
   const og = html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-  if (og && og[1]) return decodeEntities(og[1]).trim();
+  if (og?.[1]) return decodeEntities(og[1]).trim();
   const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return t && t[1] ? decodeEntities(t[1]).replace(/\s+/g, ' ').trim() : '';
+  return t?.[1] ? decodeEntities(t[1]).replace(/\s+/g, ' ').trim() : '';
 }
 
 /** Lean, dependency-free HTML→Markdown. Not a full converter — just enough to
@@ -162,10 +163,16 @@ function extractTitle(html: string): string {
 export function htmlToMarkdown(html: string): string {
   let s = html;
   // Drop non-content elements entirely.
-  s = s.replace(/<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(
+    /<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi,
+    '',
+  );
   s = s.replace(/<!--[\s\S]*?-->/g, '');
   // Block-ish → newlines / markers.
-  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, lvl, inner) => `\n\n${'#'.repeat(Number(lvl))} ${strip(inner)}\n`);
+  s = s.replace(
+    /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi,
+    (_m, lvl, inner) => `\n\n${'#'.repeat(Number(lvl))} ${strip(inner)}\n`,
+  );
   s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner) => `\n- ${strip(inner)}`);
   s = s.replace(/<(p|div|section|article|tr|h[1-6]|ul|ol|blockquote)[^>]*>/gi, '\n');
   s = s.replace(/<\/(p|div|section|article|tr|li|ul|ol|blockquote)>/gi, '\n');
@@ -175,7 +182,10 @@ export function htmlToMarkdown(html: string): string {
     const text = strip(inner);
     return text ? `[${text}](${href})` : '';
   });
-  s = s.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, alt, src) => `![${alt}](${src})`);
+  s = s.replace(
+    /<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (_m, alt, src) => `![${alt}](${src})`,
+  );
   s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, src) => `![](${src})`);
   // Strip every remaining tag.
   s = s.replace(/<[^>]+>/g, '');
@@ -192,7 +202,9 @@ export function htmlToMarkdown(html: string): string {
 
 /** Strip tags + decode entities + collapse spaces (for inline fragments). */
 function strip(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]+>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function decodeEntities(s: string): string {
@@ -204,8 +216,8 @@ function decodeEntities(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => safeCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(parseInt(d, 10)));
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => safeCodePoint(Number.parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(Number.parseInt(d, 10)));
 }
 
 function safeCodePoint(n: number): string {
@@ -226,12 +238,28 @@ function parseGithubRepo(u: URL): { owner: string; repo: string } | null {
   if (parts.length < 2) return null;
   // Skip non-repo paths (search, marketplace, etc. have reserved first segments,
   // but a 2-segment owner/repo is the common case; reject known non-repo roots).
-  const reserved = new Set(['search', 'marketplace', 'topics', 'collections', 'sponsors', 'about', 'features']);
-  if (reserved.has(parts[0]!.toLowerCase())) return null;
-  return { owner: parts[0]!, repo: parts[1]!.replace(/\.git$/, '') };
+  const reserved = new Set([
+    'search',
+    'marketplace',
+    'topics',
+    'collections',
+    'sponsors',
+    'about',
+    'features',
+  ]);
+  const owner = parts[0];
+  const repo = parts[1]?.replace(/\.git$/, '');
+  if (!owner || !repo) return null;
+  if (reserved.has(owner.toLowerCase())) return null;
+  return { owner, repo };
 }
 
-async function fetchRepo(owner: string, repo: string, url: string, signal?: AbortSignal): Promise<FetchedSource> {
+async function fetchRepo(
+  owner: string,
+  repo: string,
+  url: string,
+  signal?: AbortSignal,
+): Promise<FetchedSource> {
   const api = `https://api.github.com/repos/${owner}/${repo}`;
   const ghHeaders = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
 
@@ -248,9 +276,11 @@ async function fetchRepo(owner: string, repo: string, url: string, signal?: Abor
   };
 
   // README (raw) + top-level tree — best-effort, don't fail the whole thing.
-  const readme = await fetchText(`${api}/readme`, { ...ghHeaders, accept: 'application/vnd.github.raw' }, signal).catch(
-    () => '',
-  );
+  const readme = await fetchText(
+    `${api}/readme`,
+    { ...ghHeaders, accept: 'application/vnd.github.raw' },
+    signal,
+  ).catch(() => '');
   const tree = await fetchTopLevelTree(api, ghHeaders, signal).catch(() => [] as string[]);
 
   const title = meta.full_name || `${owner}/${repo}`;
@@ -258,8 +288,10 @@ async function fetchRepo(owner: string, repo: string, url: string, signal?: Abor
   if (meta.description) lines.push(`> ${meta.description}`, '');
   const facts: string[] = [];
   if (meta.language) facts.push(`Language: ${meta.language}`);
-  if (typeof meta.stargazers_count === 'number') facts.push(`Stars: ${meta.stargazers_count.toLocaleString('en-US')}`);
-  if (meta.license?.spdx_id && meta.license.spdx_id !== 'NOASSERTION') facts.push(`License: ${meta.license.spdx_id}`);
+  if (typeof meta.stargazers_count === 'number')
+    facts.push(`Stars: ${meta.stargazers_count.toLocaleString('en-US')}`);
+  if (meta.license?.spdx_id && meta.license.spdx_id !== 'NOASSERTION')
+    facts.push(`License: ${meta.license.spdx_id}`);
   if (meta.homepage) facts.push(`Homepage: ${meta.homepage}`);
   if (meta.topics?.length) facts.push(`Topics: ${meta.topics.join(', ')}`);
   if (facts.length) lines.push(...facts.map((f) => `- ${f}`), '');
@@ -292,7 +324,11 @@ async function fetchTopLevelTree(
 // shared fetch
 // --------------------------------------------------------------------------
 
-async function fetchText(url: string, extraHeaders: Record<string, string>, signal?: AbortSignal): Promise<string> {
+async function fetchText(
+  url: string,
+  extraHeaders: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<string> {
   assertPublicHttpUrl(url);
   const res = await fetch(url, {
     headers: { 'user-agent': UA, ...extraHeaders },

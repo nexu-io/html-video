@@ -14,7 +14,8 @@
     "build": "tsc -p tsconfig.json && chmod +x dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node dist/smoke.js",
-    "test": "npm run build && node --test --experimental-strip-types \"test/**/*.test.ts\""
+    "validate-templates": "pnpm run build && node dist/validate-templates.js",
+    "test": "pnpm run build && node --test --experimental-strip-types \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@html-video/content-graph": "workspace:*",
@@ -23,7 +24,8 @@
     "@html-video/adapter-remotion": "workspace:*",
     "@html-video/project-studio": "workspace:*",
     "@html-video/runtime": "workspace:*",
-    "cac": "^6.7.14"
+    "cac": "^6.7.14",
+    "yaml": "^2.7.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

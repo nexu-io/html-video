@@ -76,7 +76,11 @@ export class TaskRegistry {
       const ev: TaskEvent = { seq: ++this.seq, data };
       task.events.push(ev);
       for (const fn of task.subscribers) {
-        try { fn(ev); } catch { /* a dead subscriber shouldn't break the task */ }
+        try {
+          fn(ev);
+        } catch {
+          /* a dead subscriber shouldn't break the task */
+        }
       }
     };
 
@@ -128,7 +132,9 @@ export class TaskRegistry {
     }
     task.subscribers.add(onEvent);
     return {
-      unsubscribe: () => { task.subscribers.delete(onEvent); },
+      unsubscribe: () => {
+        task.subscribers.delete(onEvent);
+      },
       finished: false,
     };
   }
