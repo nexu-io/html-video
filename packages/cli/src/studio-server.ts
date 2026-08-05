@@ -1388,7 +1388,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return res.end('missing ?path');
         }
         const safe = resolve(p);
-        if (!safe.includes('/.html-video/projects/')) {
+        if (!isWithinProjects(safe)) {
           res.writeHead(403);
           return res.end('forbidden');
         }
@@ -1635,6 +1635,21 @@ async function readBodyText(req: IncomingMessage): Promise<string> {
 type MultipartPart =
   | { kind: 'field'; name: string; value: string }
   | { kind: 'file'; name: string; filename: string; tmpPath: string };
+
+/**
+ * The `/asset` route only serves files that live under `.html-video/projects/`.
+ * The check runs after `resolve()`, so any `..` segments are already collapsed
+ * and traversal outside the tree is still rejected.
+ *
+ * `resolve()` uses the platform path separator, so on Windows `resolvedPath`
+ * comes back with backslashes (`C:\Users\...\.html-video\projects\...`). A raw
+ * `includes('/.html-video/projects/')` therefore never matches on Windows and
+ * the route 403s every legitimate asset. Normalize separators before the
+ * substring test so the guard behaves the same on both platforms.
+ */
+export function isWithinProjects(resolvedPath: string): boolean {
+  return resolvedPath.replace(/\\/g, '/').includes('/.html-video/projects/');
+}
 
 /**
  * Recover the real filename from a multipart part header (issue #9).
