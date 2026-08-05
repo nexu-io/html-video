@@ -21,7 +21,7 @@ endorsement. Studio names are **not** used as template names.
 
 Per-template details (the full three-layer `provenance` block: `origin` / `via_skill` /
 `transformation`) live in each template's `template.html-video.yaml`. Run
-`pnpm validate-templates` to audit all 27 templates.
+`pnpm validate-templates` to audit all 28 templates.
 
 ---
 
