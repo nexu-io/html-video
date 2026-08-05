@@ -141,14 +141,14 @@ templates/frame-<descriptive-name>/
 
 | 现 id | L1 工作室 | L2 skill | 整改 |
 |---|---|---|---|
-| frame-pentagram-stat | Pentagram (Bierut) | huashu-design | 三层署名 + 重命名 + 自有示例 |
-| frame-build-minimal | Build studio | huashu-design | 同上 |
-| frame-takram-organic | Takram | huashu-design | 同上 |
-| frame-bold-signal | — | frontend-slides (Zara Zhang) | 补 L2 真实作者 |
-| frame-creative-voltage | — | frontend-slides | 同上 |
-| frame-electric-studio | — | frontend-slides | 同上 |
+| ~~frame-pentagram-stat~~ → **`frame-editorial-anchor`** | Pentagram (Bierut) | huashu-design | ✅ 2026-08-05 重命名 + 自有示例 |
+| ~~frame-build-minimal~~ → **`frame-luxe-minimal`** | Build studio | huashu-design | ✅ 2026-08-05 重命名 + 自有示例 |
+| ~~frame-takram-organic~~ → **`frame-soft-radar`** | Takram | huashu-design | ✅ 2026-08-05 重命名 + 自有示例 |
+| frame-bold-signal | — | frontend-slides (Zara Zhang) | ✅ 三层署名（无需改 id） |
+| frame-creative-voltage | — | frontend-slides | ✅ 同上 |
+| frame-electric-studio | — | frontend-slides | ✅ 同上 |
 
-整改是独立的下一步，逐个改 + 验证渲染不破。
+huashu 三件套重命名已于 2026-08-05 落地；frontend-slides 三件套 id 保持不变。
 
 ---
 

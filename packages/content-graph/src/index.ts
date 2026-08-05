@@ -4,8 +4,8 @@
  * Structured intermediate representation produced by the agent's first round,
  * consumed by the second round to render HTML frame sequences.
  *
- * See research/2026-05-28-understand-anything-takeaways.md (#1 content-graph,
- * #4 graph-then-sort) for the design rationale.
+ * Spec: research/2026-05-28-spec-06-content-graph.md (RFC-06).
+ * Rationale: research/2026-05-28-understand-anything-takeaways.md (#1, #4).
  */
 
 export type NodeKind = 'entity' | 'data' | 'text';
@@ -84,13 +84,7 @@ export interface ContentGraph {
    *   - "promo":       pacy social-cut style.
    *   - "comparison":  before/after; contrast edges drive layout.
    */
-  intent:
-    | 'single-frame'
-    | 'explainer'
-    | 'data-viz'
-    | 'promo'
-    | 'comparison'
-    | 'other';
+  intent: 'single-frame' | 'explainer' | 'data-viz' | 'promo' | 'comparison' | 'other';
   /**
    * One-line synopsis the agent writes for itself / the user. Shown in
    * studio's graph view as the "what is this video about?" header.
@@ -221,7 +215,7 @@ export function topoSort(graph: ContentGraph): string[] {
   for (const e of graph.edges) {
     if (e.kind !== 'dependency') continue;
     if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
-    deps.get(e.from)!.push(e.to);
+    deps.get(e.from)?.push(e.to);
     indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
   }
 
@@ -232,7 +226,7 @@ export function topoSort(graph: ContentGraph): string[] {
     if (e.kind !== 'sequence') continue;
     if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
     if (!seqAfter.has(e.from)) seqAfter.set(e.from, new Set());
-    seqAfter.get(e.from)!.add(e.to);
+    seqAfter.get(e.from)?.add(e.to);
   }
 
   const ready: string[] = [];
@@ -293,18 +287,18 @@ function findDependencyCycle(graph: ContentGraph): string | null {
   for (const e of graph.edges) {
     if (e.kind !== 'dependency') continue;
     if (!adj.has(e.from) || !adj.has(e.to)) continue;
-    adj.get(e.from)!.push(e.to);
+    adj.get(e.from)?.push(e.to);
   }
-  const WHITE = 0,
-    GRAY = 1,
-    BLACK = 2;
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
   const color = new Map<string, number>();
   for (const id of adj.keys()) color.set(id, WHITE);
   const stack: { id: string; iter: Iterator<string> }[] = [];
   for (const start of adj.keys()) {
     if (color.get(start) !== WHITE) continue;
     color.set(start, GRAY);
-    stack.push({ id: start, iter: adj.get(start)![Symbol.iterator]() });
+    stack.push({ id: start, iter: (adj.get(start) ?? [])[Symbol.iterator]() });
     while (stack.length > 0) {
       const top = stack[stack.length - 1]!;
       const next = top.iter.next();
@@ -316,7 +310,7 @@ function findDependencyCycle(graph: ContentGraph): string | null {
         if (c === GRAY) return next.value;
         if (c === WHITE) {
           color.set(next.value, GRAY);
-          stack.push({ id: next.value, iter: adj.get(next.value)![Symbol.iterator]() });
+          stack.push({ id: next.value, iter: (adj.get(next.value) ?? [])[Symbol.iterator]() });
         }
       }
     }

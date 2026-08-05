@@ -2,7 +2,9 @@
 
 Structured intermediate representation produced by the agent's first round and consumed by the second round to render HTML frame sequences.
 
-See `research/2026-05-28-understand-anything-takeaways.md` (#1 content-graph, #4 graph-then-sort) for the design rationale, and the upcoming RFC-06 draft for the full spec.
+See [RFC-06](../../research/2026-05-28-spec-06-content-graph.md) for the full spec, and
+`research/2026-05-28-understand-anything-takeaways.md` (#1 content-graph, #4 graph-then-sort)
+for the design rationale.
 
 ## Schema
 

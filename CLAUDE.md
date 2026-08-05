@@ -1,4 +1,60 @@
-# html-video 项目工作区
+# html-video — HTML→Video Meta-layer
+
+> **窗口范围**：仅 `/home/chenys/html-video`。Open-source 多引擎 HTML 视频框架（Hyperframes / Remotion 等）。
+
+## Agent 入口（新会话先读这段）
+
+**产品**：本地 coding agent 把 HTML / 文章链接 / GitHub 仓库 → 多帧动画视频 → 真实 MP4。
+
+**Agent 协议**：读根目录 [`SKILL.md`](SKILL.md)（CLI 单帧/多帧命令）；只调 `html-video` CLI，不直接 import npm 包。可安装副本：`skills/html-video/` · `.cursor/skills/html-video/` · `bash scripts/install-agent-skill.sh`。
+
+## Commands
+
+```bash
+pnpm install && pnpm build
+
+# Studio（默认 http://127.0.0.1:3071）
+node packages/cli/dist/bin.js studio
+
+# 诊断 / 模板
+node packages/cli/dist/bin.js doctor
+node packages/cli/dist/bin.js search-templates --intent "data chart" --top 3
+pnpm validate-templates
+
+# 质量门禁
+pnpm verify          # build + typecheck + lint + validate-templates + test + fast smoke
+pnpm smoke           # 含 MP4 渲染（需 Chromium + ffmpeg）；CI 用 HV_SMOKE_FAST=1 pnpm smoke
+```
+
+**前置**：Node 20+、pnpm 9+、ffmpeg、Chromium（或 `npx playwright install chromium`）
+
+## 架构
+
+```
+packages/
+├── core/           # Project / orchestrator / exportMp4
+├── cli/            # html-video CLI + studio server
+├── content-graph/  # 多帧 content graph
+├── adapter-hyperframes/
+└── adapter-remotion/
+templates/          # 27 帧模板（template.html-video.yaml）
+```
+
+## Conventions
+
+- **Package manager**：pnpm workspace（根目录 monorepo）
+- **定位**：Meta-aggregator，非 Hyperframes 竞品；Remotion 为按帧「动效增强插件」
+- **混流 concat**：多引擎 MP4 用 concat **filter**，不用 demuxer（PTS 不兼容）
+- 详细会话笔记、RFC、决策记录见下文 ↓
+
+## WSL 说明
+
+- ffmpeg / Chromium 在 WSL 下可用；渲染依赖本机 GPU 非必须
+- 端口 **3071-3079**（T9 段）
+
+---
+
+# html-video 项目工作区（内部笔记）
 
 > Open-source HTML→Video meta-layer。让本地 coding agent 跨多个渲染 engine（Hyperframes / Remotion / Motion Canvas / Revideo）一站式做 HTML 视频。
 > 启动时间：2026-05-26（继 OD / HA / OD-pitch / OD-landing 之后的下一代 nexu-io 开源产品）
@@ -41,19 +97,23 @@ html-video/
 
 代码骨架（adapter spec、CLI、studio 等）等架构定型后另起 `core/` `adapters/` `cli/` `studio/` 等目录。
 
-## 当前状态（2026-05-28 v0.8 content-graph + multi-frame）
+## 当前状态（2026-08-05 — 能力真相源；下方旧会话笔记保留作历史）
 
-v0.7 之前的进展见 git log。本节记 v0.8 落地的事 + 还没接的事。
+**已可跑（勿再写「HF stub / 空 MP4」）：**
 
-- ✅ `@html-video/content-graph` 新 package：ContentGraph schema（entity/data/text 节点 + sequence/dependency/contrast 边）+ `validate` + `topoSort`（dependency 硬约束 / sequence 软排 / contrast 不参与排序）+ `totalDurationSec`
-- ✅ core：`Project` 加 `contentGraphPath` + `frames[]`；`orchestrator` 加 `writeContentGraph` / `readContentGraph` / `writeFrameHtml`；`exportMp4` 多帧路径走 ffmpeg concat（缺 ffmpeg 时报友好错）
-- ✅ studio agent：prompt 同时教单帧 fast path + 多帧（\`\`\`json#content-graph + \`\`\`html#&lt;nodeId&gt; 双块协议）；server 解析后自动调 writeContentGraph + writeFrameHtml；无 graph 时回落 v0.7
-- ✅ studio UI：frames-strip 切帧 + graph viewer modal（JSON 只读 + 下载）；单帧 fast path 时整条隐藏
-- ✅ 已 push `nexu-io/html-video` main（commit `149ace9`）
-- ⏳ HF upstream 真实 render（v0.9?）：adapter-hyperframes 仍是 stub，单帧/多帧 export MP4 都是空文件
-- ⏳ ffmpeg concat 真实跑通：依赖 ffmpeg 装好；adapter render 出真 MP4 之后才 end-to-end 有用
-- ⏳ RFC-06 正式文档稿（落 `research/2026-05-28-spec-06-content-graph.md`）；目前规范散在 content-graph package README + smoke + agent prompt 三处
-- ⏳ studio 的 graph viewer 现在只读，未来可加可视化编辑（拖节点 / 加边）
+- ✅ **Hyperframes adapter**：无头 Chromium（Playwright）录屏 + ffmpeg → **真实 MP4**（非 stub）
+- ✅ **Remotion adapter**：bridge + **5 个原生数据模板**（rollup / donut / hbars / line / radar）；按帧 `enhanceFrameNative`；Studio opt-in toggle
+- ✅ **混引擎 concat**：异引擎必须用 ffmpeg **concat filter**（重建 PTS）；同引擎可 demuxer `-c copy`
+- ✅ **content-graph 多帧**：`@html-video/content-graph` + CLI + Studio 双块协议；规范见 [`research/2026-05-28-spec-06-content-graph.md`](research/2026-05-28-spec-06-content-graph.md)（RFC-06）
+- ✅ Studio：frames-strip、graph viewer（**只读**）、文章/repo 抓取、MiniMax 配乐、14 agent runtime
+
+**仍待完善（整改队列）：**
+
+- ⏳ RFC-07 模板中性重命名：~~`frame-pentagram-stat` → `frame-editorial-anchor` 等~~ **已于 2026-08-05 完成**（`editorial-anchor` / `luxe-minimal` / `soft-radar`）
+- ~~原生 Remotion 扩到非图表动效~~ → **已于 2026-08-05 加 `frame-kpi-pulse`**；或接 Revideo adapter
+- ⏳ studio graph viewer 可编辑（先 pacing / 顺序，再拖拽拓扑）
+- ⏳ Motion Canvas / Revideo / marketplace（README Roadmap）
+- ⏳ `studio-next` spike 已否决整套 HF NLE；需 quarantine / 文档标明
 
 ## 会话进度（2026-06-07）— Remotion 原生数据模板 + 按帧增强（Phase A+B 跑通，**git 待 Joey 定**）
 
@@ -178,8 +238,7 @@ v0.7 之前的进展见 git log。本节记 v0.8 落地的事 + 还没接的事�
 
 **待办（下次接）：**
 - ~~commit + push~~ → **已于 6/4 完成并 merge 进 main（`db31210`）**，此条作废。
-- ⏳ 下一轮（独立）：按 RFC-07 ③ 给 6 个模板**重命名**（去掉挪用的工作室名，改设计特征中性名，
-  如 `frame-editorial-anchor` / `frame-luxe-minimal` / `frame-soft-radar`），涉及改 id 要同步 source 目录名 + 引用。
+- ~~RFC-07 ③ 重命名~~ → **已于 2026-08-05 完成**：`frame-editorial-anchor` / `frame-luxe-minimal` / `frame-soft-radar`。
 
 > 笔误备忘：本项目正确写法是 **hyperframes**（不是 hiframes/HiFrames），文档里如再见到要改。
 > 上游 clone 仍在 `~/Desktop/claude-code/scratch/upstream-check/`（huashu-design + frontend-slides，可能被定期清理）。
