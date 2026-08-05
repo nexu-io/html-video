@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
   <a href="#supported-agents"><img alt="Agents" src="https://img.shields.io/badge/agents-14%20backends-111?style=flat-square" /></a>
-  <a href="#showcase"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
+  <a href="#showcase"><img alt="Templates" src="https://img.shields.io/badge/templates-27-3ce6ac?style=flat-square" /></a>
   <a href="#turn-a-link-into-a-video"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#soundtrack"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
   <a href="#quick-start"><img alt="Quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-22a34a?style=flat-square" /></a>
@@ -61,7 +61,7 @@ Every template below is a real, animated single-file HTML video — these are li
 </tr>
 </table>
 
-…and 15 more, including multi-scene product promos, kinetic type, Swiss-grid and Vignelli data cards, decision-tree explainers, Takram-organic motion, and warm-grain editorial. Browse all 21 live in the studio gallery.
+…and 21 more, including native Remotion data charts, multi-scene product promos, kinetic type, Swiss-grid and modular data cards, decision-tree explainers, soft-radar organic motion, and warm-grain editorial. Browse all 27 live in the studio gallery.
 
 ---
 
@@ -72,7 +72,7 @@ HTML→Video is a real category — but every engine is opinionated, and each wa
 | Engine | Paradigm | Tradeoff | In html-video |
 |---|---|---|---|
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP, agent-skill driven | Single rendering paradigm | ✅ **Shipped** — the default engine; renders real MP4 via headless Chromium + ffmpeg |
-| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | 🗺️ Planned |
+| [Remotion](https://www.remotion.dev/) | React components | Source-available, paid above 4 devs | ✅ **Shipped** — opt-in per-frame enhance; 5 native data charts (bars / donut / h-bars / line / radar) |
 | [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | TypeScript generators on canvas | Best for explainers, code-first | 🗺️ Planned |
 | [Manim](https://github.com/3b1b/manim) & friends | Math / 3D first | Niche | 🗺️ Researching |
 
@@ -82,7 +82,7 @@ Picking the right engine per use case, learning each model, and stitching them i
 
 The same idea powers [Open Design](https://github.com/nexu-io/open-design) in the *design* space — an agent meta-layer over many tools. html-video is the *motion* counterpart from the same team.
 
-> **Status:** the pluggable-engine architecture is in place, and the **Hyperframes engine is fully wired up and renders real MP4** — headless Chromium records the animated HTML frame-by-frame and ffmpeg encodes it (libx264). Remotion, Motion Canvas / Revideo, and Manim are on the roadmap: the adapter interface is designed for them, but their adapters aren't built yet. The "In html-video" column above is the single source of truth for what's actually runnable today.
+> **Status:** the pluggable-engine architecture is in place. **Hyperframes** is the default base (headless Chromium + ffmpeg → real MP4). **Remotion** is available as a user-opt-in per-frame enhancement for native data charts; mixed-engine videos are concatenated with ffmpeg's concat filter. Motion Canvas / Revideo and Manim remain on the roadmap. The "In html-video" column above is the single source of truth for what's actually runnable today.
 
 ---
 
@@ -93,7 +93,7 @@ The same idea powers [Open Design](https://github.com/nexu-io/open-design) in th
 | **Coding agents (14)** | Open Design (Vela) · Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API — auto-detected on your `PATH`, switchable from the top bar. |
 | **Real MP4 render** | Headless Chromium records the animated HTML and ffmpeg encodes it (libx264) — locally, no cloud render, no per-clip fee. |
 | **Article / repo → video** | Paste a URL or GitHub repo; the studio fetches it server-side (handles WeChat 公众号 articles) and builds the video from the real content. |
-| **21 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
+| **27 templates** | Curated, license-clean patterns: data viz, product promos, social shorts, explainers, kinetic type, transitions — previewed live in the gallery. |
 | **Multi-frame storyboards** | A content-graph drives multi-scene videos; edit per-frame text inline, reorder, re-render. |
 | **AI soundtrack** | Optional background music + narration via MiniMax, mixed into the MP4 at export. |
 | **Studio + CLI** | A local browser studio *and* a scriptable `html-video` CLI. |
@@ -175,17 +175,35 @@ npx playwright install chromium
 
 ```bash
 pnpm install
-pnpm -r build
+pnpm build
+pnpm doctor          # or: node packages/cli/dist/bin.js doctor
 node packages/cli/dist/bin.js studio    # opens the studio at http://127.0.0.1:3071
 ```
 
 In the studio: pick a template (or just describe a video / paste a link), chat with your agent, edit per-frame text, add a soundtrack, and export MP4.
 
-CLI utilities:
+### For coding agents
+
+Point your agent at **[`SKILL.md`](SKILL.md)** — the CLI contract for single-frame and multi-frame workflows. Full command reference: [`packages/cli/README.md`](packages/cli/README.md). Agents call **`html-video` commands only** (never import npm packages directly). JSON envelope: `{ "status": "ok", ... }`; project lifecycle is **`project_status`**, not `status`.
+
+Quick CLI path (multi-frame):
 
 ```bash
-node packages/cli/dist/bin.js doctor                 # detect installed agents + engines
-node packages/cli/dist/bin.js search-templates --intent "github stars race" --top 3
+html-video project-create --name "Demo" --intent "3-frame explainer"
+html-video project-set-graph $ID --graph-file storyboard.json
+html-video project-write-frame $ID --node intro --html-file frames/intro.html
+html-video project-render $ID --output out.mp4 --stream-progress
+```
+
+Maintainers: `pnpm verify` runs build, typecheck, lint, template audit, tests, and fast smoke.
+
+### CLI utilities
+
+```bash
+html-video doctor
+html-video search-templates --intent "github stars race" --top 3
+html-video project-list
+pnpm validate-templates    # RFC-07 provenance + manifest audit (27 templates)
 ```
 
 ---
@@ -228,14 +246,14 @@ Both are mixed into the exported MP4 (music ducked under the voice, optional fad
 
 ## Template gallery
 
-The 21 templates aren't a random grab-bag — each one is a self-contained, agent-readable unit described by a `template.html-video.yaml` manifest the studio scans at startup. A manifest carries everything the agent needs to pick and drive the template without opening the HTML:
+The 27 templates aren't a random grab-bag — each one is a self-contained, agent-readable unit described by a `template.html-video.yaml` manifest the studio scans at startup. A manifest carries everything the agent needs to pick and drive the template without opening the HTML:
 
 - **What it's for** — `category`, `tags`, and a `best_for` list (e.g. *"Corporate slide"*, *"Minimal report card"*) that `search-templates` matches your intent against.
 - **What it outputs** — supported resolutions, aspect ratios, fps, duration bounds, whether it has an alpha channel or audio.
 - **What goes in** — an `inputs` JSON schema, so the agent knows exactly which text/data slots to fill.
 - **License provenance** — an SPDX id plus explicit `attribution_required` / `redistribution_allowed` / `commercial_use` flags, and an `assets_attribution` block pointing at the upstream source URL.
 
-That last part is deliberate. Every template is **license-clean by construction**: forks carry their original license, the repo-root [`NOTICE.md`](templates/NOTICE.md) records each source and SPDX, and nothing without a clear permissive license ships. So you can put any of them in commercial work without an audit. Templates span data viz (NYT-style charts, Swiss/Vignelli grids), titles & VFX (glitch, kinetic type, typewriter cursor), heroes & cinematics (liquid gradients, light-leak, warm grain), product promos (15s / 30s multi-scene), and explainer scaffolds (decision trees) — and the format is open, so community templates drop in the same way.
+That last part is deliberate. Every template is **license-clean by construction**: forks carry their original license, the repo-root [`ATTRIBUTIONS.md`](ATTRIBUTIONS.md) records each upstream and SPDX, and nothing without a clear permissive license ships. So you can put any of them in commercial work without an audit. Templates span data viz (NYT-style charts, Swiss/Vignelli grids, native Remotion charts), titles & VFX (glitch, kinetic type, typewriter cursor), heroes & cinematics (liquid gradients, light-leak, warm grain), product promos (15s / 30s multi-scene), and explainer scaffolds (decision trees) — and the format is open, so community templates drop in the same way.
 
 ---
 
@@ -251,7 +269,7 @@ packages/
 ├── adapter-hyperframes/   Hyperframes engine adapter — real render via Chromium + ffmpeg
 ├── cli/                   `html-video` command + the studio HTTP server + source fetching
 └── project-studio/        Browser studio UI (chat, template gallery, frames, soundtrack, export)
-templates/                 21 curated, license-clean video templates
+templates/                 27 curated, license-clean video templates
 research/                  RFCs (engine adapter / template metadata / agent skill / content-graph)
 ```
 
@@ -267,8 +285,10 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 - [x] AI soundtrack (MiniMax music + narration), mixed at export
 - [x] Real MP4 render — Hyperframes engine via headless Chromium + ffmpeg
 - [x] Agent model selection — Open Design (Vela) backend, live model catalog
-- [ ] Adapters for Remotion / Motion Canvas / Revideo
-- [ ] Agent skill packages + a template marketplace
+- [x] Remotion adapter — bridge + 5 native data templates; per-frame enhance (CLI + Studio)
+- [x] Agent skill — repo `SKILL.md` + installable Claude Code / Cursor copies (`scripts/install-agent-skill.sh`)
+- [ ] Adapters for Motion Canvas / Revideo
+- [ ] Template marketplace
 
 ---
 
@@ -279,6 +299,8 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 | [Open Design](https://github.com/nexu-io/open-design) | Sister project — the design-agent meta-layer; same team, shared philosophy |
 | [HTML Anything](https://github.com/nexu-io/html-anything) | Sister project — HTML for *static* deliverables; html-video is the *motion* side |
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | The shipped engine adapter; the HTML+CSS+GSAP rendering paradigm and the source of several Apache-2.0 templates |
+
+Template upstream mapping: [`ATTRIBUTIONS.md`](ATTRIBUTIONS.md) · agent CLI contract: [`SKILL.md`](SKILL.md)
 
 ## License
 

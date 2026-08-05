@@ -1,0 +1,7 @@
+{
+  "name": "@html-video/template-frame-editorial-anchor",
+  "version": "0.2.0",
+  "description": "html-video template: frame-editorial-anchor (Swiss-grid stat anchor, distilled from huashu-design editorial showcase, MIT)",
+  "private": true,
+  "license": "Apache-2.0"
+}

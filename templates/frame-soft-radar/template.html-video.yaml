@@ -1,10 +1,11 @@
 spec_version: 1
-id: frame-takram-organic
-name: Takram Organic
+id: frame-soft-radar
+name: Soft Radar
 description: >
   Soft-tech radial node graph as art — a frosted rounded card holds the message while
   curved links draw and eight nodes pop outward around an evolving core, then everything
-  gently floats. Warm, natural, organic. Distilled from the huashu-design "Takram" philosophy.
+  gently floats. Warm, natural, organic. Distilled from the huashu-design soft-tech
+  radial showcase (L1 inspiration recorded in provenance.origin only).
 
 engine: hyperframes
 engine_version: ^0.4.0
@@ -12,7 +13,7 @@ source_entry: source/index.html
 
 category: explainer
 subcategory: concept-diagram
-tags: [organic, soft-tech, radial, node-graph, takram, beige, diagram]
+tags: [organic, soft-tech, radial, node-graph, beige, diagram, radar]
 
 best_for:
   - "System / architecture concept reveal"
@@ -66,7 +67,7 @@ inputs:
         maximum: 7
         default: 5
   examples:
-    - {"eyebrow": "Context · Memory · Evolution", "title": "A design agent that remembers.", "caption": "Eight context nodes feed one evolving core — every project makes the next one sharper."}
+    - {"eyebrow": "Engine · Template · Storyboard", "title": "A meta-layer that composes.", "caption": "Eight capability nodes orbit one storyboard core — pick an engine per frame, keep the narrative whole."}
 
 license:
   spdx: Apache-2.0
@@ -75,35 +76,36 @@ license:
   commercial_use: true
 
 provenance:
-  # L1 — original design inspiration (real world)
   origin:
     name: Takram
     kind: design-studio
     reference: "Japanese design firm — speculative, organic soft-tech; data-as-art visualisation"
-  # L2 — the open-source skill we actually transformed from (license governs here)
   via_skill:
     name: huashu-design
     author: "alchaincyf (花叔 · 花生)"
     url: https://github.com/alchaincyf/huashu-design
     license: MIT
     source_file: assets/showcases/ppt/ppt-takram.html
-  # L3 — what this template does
   transformation: >
     Static PPT showcase → animated hyperframes timeline (frosted rounded card holds the
     message while curved SVG links draw and radial nodes pop outward around an evolving
     core, then everything gently floats) built as original CSS/SVG keyframes. Re-coloured
-    palette; original sample data. No upstream source code copied verbatim.
+    palette; sample copy replaced with html-video meta-layer messaging. No upstream source
+    code copied verbatim. Template id uses a neutral design-feature name (RFC-07 §③).
 
 author:
   name: nexu-io
   url: https://github.com/nexu-io
   contact: open-design@nexu.io
 
-version: 0.1.0
+version: 0.2.0
 changelog:
+  - version: 0.2.0
+    date: 2026-08-05
+    notes: Renamed id to frame-soft-radar (RFC-07); refreshed sample copy.
   - version: 0.1.0
     date: 2026-06-03
-    notes: Distilled from huashu-design Takram showcase into an animated html-video template.
+    notes: Distilled from huashu-design soft-tech radial showcase into an animated html-video template.
 
 preview:
   poster: preview.png

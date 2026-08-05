@@ -1,0 +1,7 @@
+{
+  "name": "@html-video/template-frame-soft-radar",
+  "version": "0.2.0",
+  "description": "html-video template: frame-soft-radar (soft-tech radial node graph, distilled from huashu-design, MIT)",
+  "private": true,
+  "license": "Apache-2.0"
+}

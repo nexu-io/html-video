@@ -9,7 +9,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" /></a>
   <a href="#支持的-agent"><img alt="Agents" src="https://img.shields.io/badge/agents-14%20backends-111?style=flat-square" /></a>
-  <a href="#作品展示"><img alt="Templates" src="https://img.shields.io/badge/templates-21-3ce6ac?style=flat-square" /></a>
+  <a href="#作品展示"><img alt="Templates" src="https://img.shields.io/badge/templates-27-3ce6ac?style=flat-square" /></a>
   <a href="#把链接变成视频"><img alt="Sources" src="https://img.shields.io/badge/from-article%20%C2%B7%20repo%20%C2%B7%20prompt-9b59b6?style=flat-square" /></a>
   <a href="#配乐"><img alt="Soundtrack" src="https://img.shields.io/badge/soundtrack-AI%20music%20%2B%20narration-e67e22?style=flat-square" /></a>
   <a href="#快速开始"><img alt="Quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-22a34a?style=flat-square" /></a>
@@ -60,7 +60,7 @@
 </tr>
 </table>
 
-……还有 15 个，包括多场景产品宣传、动感排版、瑞士网格与 Vignelli 数据卡、决策树解说、Takram 有机动效、暖色颗粒杂志风。全部 21 个都可在 studio 模板库里实时浏览。
+……还有 21 个，包括原生 Remotion 数据图表、多场景产品宣传、动感排版、瑞士网格与模块化数据卡、决策树解说、柔和放射有机动效、暖色颗粒杂志风。全部 27 个都可在 studio 模板库里实时浏览。
 
 ---
 
@@ -71,7 +71,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 | 引擎 | 范式 | 取舍 | 在 html-video 中 |
 |---|---|---|---|
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP，agent skill 驱动 | 单一渲染范式 | ✅ **已发布** —— 默认引擎；经无头 Chromium + ffmpeg 渲染出真实 MP4 |
-| [Remotion](https://www.remotion.dev/) | React 组件 | source-available，4 人以上收费 | 🗺️ 计划中 |
+| [Remotion](https://www.remotion.dev/) | React 组件 | source-available，4 人以上收费 | ✅ **已发布** —— 按帧可选增强；5 个原生数据图表（柱状 / 圆环 / 横条 / 折线 / 雷达） |
 | [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | canvas 上的 TypeScript 生成器 | 最适合解说类、代码优先 | 🗺️ 计划中 |
 | [Manim](https://github.com/3b1b/manim) 等 | 数学 / 3D 优先 | 小众 | 🗺️ 调研中 |
 
@@ -81,7 +81,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 
 同一套思路也驱动着 [Open Design](https://github.com/nexu-io/open-design) 在*设计*领域的产品 —— 凌驾于众多工具之上的 agent meta-layer。html-video 是同一团队在*动态视频*这一面的对应物。
 
-> **状态：** 可插拔引擎架构已就位，**Hyperframes 引擎已完整接通、能渲染出真实 MP4** —— 无头 Chromium 逐帧录制带动画的 HTML，再用 ffmpeg 编码（libx264）。Remotion、Motion Canvas / Revideo、Manim 在路线图上：适配器接口已为它们设计好，但适配器本身还没写。上表「在 html-video 中」这一列，是当下真正可运行内容的唯一权威来源。
+> **状态：** 可插拔引擎架构已就位。**Hyperframes** 是默认基座（无头 Chromium + ffmpeg → 真实 MP4）。**Remotion** 可作为用户主动开启的按帧增强（原生数据图表）；混引擎成片走 ffmpeg concat filter。Motion Canvas / Revideo、Manim 仍在路线图上。上表「在 html-video 中」这一列，是当下真正可运行内容的唯一权威来源。
 
 ---
 
@@ -92,7 +92,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 | **Coding agent（14 个）** | Open Design (Vela) · Windsurf CLI · Trae CLI · Claude Code · Cursor Agent · Codex CLI · Gemini CLI · Grok Build · Qwen Code · OpenCode · GitHub Copilot CLI · Aider · Hermes · Anthropic Messages API —— 在 `PATH` 上自动探测，顶栏一键切换。 |
 | **真实 MP4 渲染** | 无头 Chromium 录制带动画的 HTML，ffmpeg 编码（libx264）—— 全在本地，无云端渲染，无单片费用。 |
 | **文章 / 仓库 → 视频** | 粘一个 URL 或 GitHub 仓库；studio 在服务端抓取（支持微信公众号文章），用真实内容生成视频。 |
-| **21 个模板** | 精选、许可清晰的样式：数据可视化、产品宣传、社媒短片、解说、动感排版、转场 —— 在模板库里实时预览。 |
+| **27 个模板** | 精选、许可清晰的样式：数据可视化、产品宣传、社媒短片、解说、动感排版、转场 —— 在模板库里实时预览。 |
 | **多帧故事板** | content-graph 驱动多场景视频；逐帧改文案、重排、重渲染。 |
 | **AI 配乐** | 可选背景音乐 + 旁白（MiniMax），导出时混进 MP4。 |
 | **Studio + CLI** | 一个本地浏览器 studio，外加一个可脚本化的 `html-video` CLI。 |
@@ -227,7 +227,7 @@ node packages/cli/dist/bin.js search-templates --intent "github stars race" --to
 
 ## 模板库
 
-这 21 个模板不是随手凑的一堆 —— 每一个都是自包含、agent 可读的单元，由一份 `template.html-video.yaml` 清单描述，studio 启动时扫描加载。一份清单带齐了 agent 挑选和驱动这个模板所需的一切，根本不用打开 HTML：
+这 27 个模板不是随手凑的一堆 —— 每一个都是自包含、agent 可读的单元，由一份 `template.html-video.yaml` 清单描述，studio 启动时扫描加载。一份清单带齐了 agent 挑选和驱动这个模板所需的一切，根本不用打开 HTML：
 
 - **它用来做什么** —— `category`、`tags`，外加一个 `best_for` 清单（如*「企业幻灯片」*、*「极简报告卡」*），`search-templates` 拿你的意图去匹配它。
 - **它输出什么** —— 支持的分辨率、画幅比、fps、时长上下限、是否有 alpha 通道或音频。
@@ -250,7 +250,7 @@ packages/
 ├── adapter-hyperframes/   Hyperframes 引擎适配器 —— 经 Chromium + ffmpeg 真实渲染
 ├── cli/                   `html-video` 命令 + studio HTTP server + 来源抓取
 └── project-studio/        浏览器 studio UI（对话、模板库、帧、配乐、导出）
-templates/                 21 个精选、许可清晰的视频模板
+templates/                 27 个精选、许可清晰的视频模板
 research/                  RFC（引擎适配器 / 模板元数据 / agent skill / content-graph）
 ```
 
@@ -266,8 +266,10 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 - [x] AI 配乐（MiniMax 音乐 + 旁白），导出时混合
 - [x] 真实 MP4 渲染 —— Hyperframes 引擎经无头 Chromium + ffmpeg
 - [x] Agent 模型选择 —— Open Design (Vela) 后端，实时模型目录
-- [ ] Remotion / Motion Canvas / Revideo 适配器
-- [ ] Agent skill 包 + 模板市场
+- [x] Remotion 适配器 —— 桥接 + 5 个原生数据模板；按帧增强（CLI + Studio）
+- [x] Agent skill —— 根目录 `SKILL.md` + 可安装 Claude Code / Cursor 副本（`scripts/install-agent-skill.sh`）
+- [ ] Motion Canvas / Revideo 适配器
+- [ ] 模板市场
 
 ---
 

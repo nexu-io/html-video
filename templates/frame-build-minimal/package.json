@@ -1,8 +1,0 @@
-{
-  "name": "@html-video/template-frame-build-minimal",
-  "version": "0.1.0",
-  "description": "html-video template: frame-build-minimal (luxury-minimal whitespace hero, distilled from huashu-design Build philosophy, MIT)",
-  "license": "Apache-2.0",
-  "private": true,
-  "files": ["template.html-video.yaml", "source", "SKILL.md", "example.md", "preview.png"]
-}

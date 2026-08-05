@@ -1,10 +1,11 @@
 spec_version: 1
-id: frame-build-minimal
-name: Build Minimal
+id: frame-luxe-minimal
+name: Luxe Minimal
 description: >
   Luxury-minimal whitespace hero — a single word reveals letter by letter in ultra-thin
   Inter, a warm-gold hairline extends, thin indicators rise and breathe. Calm, premium,
-  70%+ whitespace. Distilled from the huashu-design "Build Studio" philosophy.
+  70%+ whitespace. Distilled from the huashu-design luxury-minimal showcase
+  (L1 inspiration recorded in provenance.origin only).
 
 engine: hyperframes
 engine_version: ^0.4.0
@@ -12,7 +13,7 @@ source_entry: source/index.html
 
 category: presentation
 subcategory: hero
-tags: [minimal, luxury, whitespace, hero, gold, build, thin]
+tags: [minimal, luxury, whitespace, hero, gold, thin, luxe]
 
 best_for:
   - "Premium product / brand hero"
@@ -60,7 +61,7 @@ inputs:
         maximum: 7
         default: 5
   examples:
-    - {"eyebrow": "Design Agent", "hero": "Agent", "desc": "Every use is an evolution. From craft, to assist, to self-evolving."}
+    - {"eyebrow": "HTML → Video", "hero": "Local", "desc": "One agent loop. Real MP4 on your laptop. No per-clip fee."}
 
 license:
   spdx: Apache-2.0
@@ -69,35 +70,36 @@ license:
   commercial_use: true
 
 provenance:
-  # L1 — original design inspiration (real world)
   origin:
     name: Build
     kind: design-studio
     reference: "London branding studio — luxury minimalism, ultra-thin type, generous whitespace"
-  # L2 — the open-source skill we actually transformed from (license governs here)
   via_skill:
     name: huashu-design
     author: "alchaincyf (花叔 · 花生)"
     url: https://github.com/alchaincyf/huashu-design
     license: MIT
     source_file: assets/showcases/ppt/ppt-build.html
-  # L3 — what this template does
   transformation: >
     Static PPT showcase → animated hyperframes timeline (hero word reveals letter by
     letter in ultra-thin Inter, #D4A574 gold hairline extends, thin indicators rise and
-    breathe) built as original CSS keyframes. Re-typed for motion; original sample data.
-    No upstream source code copied verbatim.
+    breathe) built as original CSS keyframes. Re-typed for motion; sample copy replaced
+    with html-video messaging. No upstream source code copied verbatim. Template id uses
+    a neutral design-feature name (RFC-07 §③).
 
 author:
   name: nexu-io
   url: https://github.com/nexu-io
   contact: open-design@nexu.io
 
-version: 0.1.0
+version: 0.2.0
 changelog:
+  - version: 0.2.0
+    date: 2026-08-05
+    notes: Renamed id to frame-luxe-minimal (RFC-07); refreshed sample copy.
   - version: 0.1.0
     date: 2026-06-03
-    notes: Distilled from huashu-design Build showcase into an animated html-video template.
+    notes: Distilled from huashu-design luxury-minimal showcase into an animated html-video template.
 
 preview:
   poster: preview.png

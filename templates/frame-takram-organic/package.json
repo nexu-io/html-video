@@ -1,8 +1,0 @@
-{
-  "name": "@html-video/template-frame-takram-organic",
-  "version": "0.1.0",
-  "description": "html-video template: frame-takram-organic (soft-tech radial node graph, distilled from huashu-design Takram philosophy, MIT)",
-  "license": "Apache-2.0",
-  "private": true,
-  "files": ["template.html-video.yaml", "source", "SKILL.md", "example.md", "preview.png"]
-}

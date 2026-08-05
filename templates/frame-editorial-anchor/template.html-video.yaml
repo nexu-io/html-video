@@ -1,10 +1,11 @@
 spec_version: 1
-id: frame-pentagram-stat
-name: Pentagram Stat
+id: frame-editorial-anchor
+name: Editorial Anchor
 description: >
   Swiss-grid statistic anchor — a giant number bleeds off the edge while grid rules
   sweep in, a bar chart grows, and a black data bar slides up. Rational, editorial,
-  high-contrast. Distilled from the huashu-design "Pentagram" design philosophy.
+  high-contrast. Distilled from the huashu-design Swiss-grid editorial showcase
+  (L1 inspiration recorded in provenance.origin only).
 
 engine: hyperframes
 engine_version: ^0.4.0
@@ -12,7 +13,7 @@ source_entry: source/index.html
 
 category: data-viz
 subcategory: stat-card
-tags: [stat, swiss-grid, editorial, data, pentagram, number, benchmark]
+tags: [stat, swiss-grid, editorial, data, number, benchmark, anchor]
 
 best_for:
   - "Single hero metric / benchmark reveal"
@@ -64,7 +65,7 @@ inputs:
         maximum: 6
         default: 4
   examples:
-    - {"label": "Benchmark · Coding", "headline": "95.7", "subtitle": "AIME score — new SOTA for open coding models", "anchor": "95"}
+    - {"label": "html-video · Gallery", "headline": "27", "subtitle": "Curated templates — license-clean, agent-ready, on your laptop", "anchor": "27"}
 
 license:
   spdx: Apache-2.0
@@ -89,19 +90,23 @@ provenance:
   transformation: >
     Static PPT showcase → animated hyperframes timeline (Swiss grid sweeps in, giant
     typographic anchor bleeds off-edge, bar chart grows, black data bar slides up) built
-    as original CSS keyframes. Pentagram's signature #E63946 red is retained as the
-    recognisable brand cue; original sample data. No upstream source code copied verbatim.
+    as original CSS keyframes. Signature #E63946 red retained as a recognisable editorial
+    cue; sample data replaced with html-video gallery metrics. No upstream source code
+    copied verbatim. Template id uses a neutral design-feature name (RFC-07 §③).
 
 author:
   name: nexu-io
   url: https://github.com/nexu-io
   contact: open-design@nexu.io
 
-version: 0.1.0
+version: 0.2.0
 changelog:
+  - version: 0.2.0
+    date: 2026-08-05
+    notes: Renamed id to frame-editorial-anchor (RFC-07); replaced upstream sample metrics.
   - version: 0.1.0
     date: 2026-06-03
-    notes: Distilled from huashu-design Pentagram showcase into an animated html-video template.
+    notes: Distilled from huashu-design Swiss-grid editorial showcase into an animated html-video template.
 
 preview:
   poster: preview.png
