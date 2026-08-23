@@ -87,6 +87,13 @@ export class TemplateRegistry {
     return [...this.templates.values()];
   }
 
+  /** Remotion templates with a native composition (enhance picker / format card). */
+  listNative(): TemplateMetadata[] {
+    return this.list()
+      .filter((t) => t.engine === 'remotion' && !!t.native?.compositionId)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   search(opts: {
     intent?: string;
     aspect?: string;

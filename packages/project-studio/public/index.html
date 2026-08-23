@@ -712,6 +712,20 @@
   .frames-strip button.frame-tab .order { opacity: .5; }
   .frames-strip button.frame-tab .fid { overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
+  .frames-strip button.frame-tab .frame-dur {
+    display: flex; align-items: center; gap: 3px; padding: 4px 8px 7px;
+    border-top: 1px solid var(--border); background: var(--bg);
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    cursor: default; }
+  .frames-strip button.frame-tab .frame-dur input {
+    width: 42px; background: var(--bg-panel); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; padding: 2px 4px;
+    font-family: var(--font-mono); font-size: 11px; text-align: right; }
+  .frames-strip button.frame-tab .frame-dur input:focus {
+    border-color: var(--accent); outline: none; }
+  .frames-strip button.frame-tab.dragging { opacity: .45; }
+  .frames-strip button.frame-tab.drag-over { border-color: var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent); }
   .frames-strip .frame-graph-btn { margin-left: auto; background: var(--bg);
     border: 1px solid var(--border); color: var(--text); padding: 6px 10px;
     border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; }

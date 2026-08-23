@@ -2,7 +2,7 @@
   "name": "html-video-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "HTML→Video meta-layer for coding agents",
+  "description": "HTML\u2192Video meta-layer for coding agents",
   "license": "Apache-2.0",
   "homepage": "https://github.com/nexu-io/html-video",
   "repository": {
@@ -24,7 +24,8 @@
     "test": "pnpm -r test",
     "smoke": "pnpm --filter @html-video/cli smoke",
     "format": "biome format --write .",
-    "lint": "biome lint ."
+    "lint": "biome lint .",
+    "test:mp4": "pnpm --filter @html-video/cli test:mp4"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
