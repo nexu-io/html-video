@@ -14,6 +14,7 @@
     "build": "tsc -p tsconfig.json && chmod +x dist/bin.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "node dist/smoke.js",
+    "test:mp4": "pnpm run build && node --test --experimental-strip-types test/smoke-mp4.test.ts",
     "validate-templates": "pnpm run build && node dist/validate-templates.js",
     "test": "pnpm run build && node --test --experimental-strip-types \"test/**/*.test.ts\""
   },

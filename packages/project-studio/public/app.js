@@ -1,6 +1,7 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
 import { AVAILABLE_LOCALES, getLocale, setLocale, t } from './i18n.js';
+import { API } from './api.js';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -43,56 +44,7 @@ const NARRATION_VOICES = [
   { key: 'female_sweet', voiceId: 'female-shaonv' },
 ];
 
-const API = {
-  projects: () => fetch('/api/projects').then((r) => r.json()),
-  createProject: (b) =>
-    fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(b),
-    }).then((r) => r.json()),
-  getProject: (id) => fetch(`/api/projects/${id}`).then((r) => r.json()),
-  patchProject: (id, b) =>
-    fetch(`/api/projects/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(b),
-    }).then((r) => r.json()),
-  deleteProject: (id) => fetch(`/api/projects/${id}`, { method: 'DELETE' }).then((r) => r.json()),
-  templates: () => fetch('/api/templates').then((r) => r.json()),
-  agents: () => fetch('/api/agents').then((r) => r.json()),
-  setTemplate: (id, tid) =>
-    fetch(`/api/projects/${id}/template`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ template_id: tid }),
-    }).then((r) => r.json()),
-  setAgent: (id, aid, model) =>
-    fetch(`/api/projects/${id}/agent`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ agent_id: aid, ...(model !== undefined && { agent_model: model }) }),
-    }).then((r) => r.json()),
-  exportMp4: (id) => fetch(`/api/projects/${id}/export`, { method: 'POST' }).then((r) => r.json()),
-  getMessages: (id) => fetch(`/api/projects/${id}/messages`).then((r) => r.json()),
-  rawHtml: (id) => fetch(`/api/projects/${id}/raw-html`).then((r) => (r.ok ? r.text() : null)),
-  putRawHtml: (id, html) =>
-    fetch(`/api/projects/${id}/raw-html`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ html }),
-    }).then((r) => r.json()),
-  contentGraph: (id) =>
-    fetch(`/api/projects/${id}/content-graph`).then((r) => (r.ok ? r.json() : null)),
-  unenhanceFrame: (id, nodeId) =>
-    fetch(`/api/projects/${id}/frames/${encodeURIComponent(nodeId)}/unenhance`, {
-      method: 'POST',
-    }).then((r) => r.json()),
-  nativeTemplates: () => fetch('/api/native-templates').then((r) => r.json()),
-  testAgent: (id) =>
-    fetch(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' }).then((r) => r.json()),
-  rescanAgents: () => fetch('/api/agents?force=1').then((r) => r.json()),
-};
+
 
 const state = {
   projects: [],
@@ -2564,7 +2516,8 @@ function renderFramesStrip() {
           enhanceCtl = `<span class="frame-enhance" data-fid="${esc(f.graphNodeId)}" data-act="enhance" title="${esc(t('frames.enhance_hint'))}">${t('frames.enhance')}</span>`;
         }
       }
-      return `<button class="${cls}${isData ? ' is-data' : ''}" data-fid="${esc(f.graphNodeId)}">
+      const dur = Number(f.durationSec) || 4;
+      return `<button class="${cls}${isData ? ' is-data' : ''}" data-fid="${esc(f.graphNodeId)}" draggable="true" title="${esc(t('frames.drag_hint'))}">
       <div class="frame-thumb">
         ${thumbInner}
         ${enhanceCtl}
@@ -2574,22 +2527,27 @@ function renderFramesStrip() {
         <span class="order">${String(f.order + 1).padStart(2, '0')}</span>
         <span class="fid">${esc(f.graphNodeId)}</span>
       </div>
+      <label class="frame-dur" title="${esc(t('frames.duration_hint'))}">
+        <input type="number" min="0.5" max="60" step="0.5" value="${dur}" data-fid="${esc(f.graphNodeId)}" />
+        <span>s</span>
+      </label>
     </button>`;
     })
     .join('');
   strip.innerHTML = `<span class="label">${t('frames.label')}</span>${tabs}
     <button class="frame-graph-btn" id="btn-show-graph">${t('frames.view_graph')}</button>`;
   // Single-click: switch which frame is shown in the centre preview.
-  // Double-click: pin this frame as the iteration target so subsequent
-  // chat messages only rewrite this frame. Click another / dbl-click the
-  // same one to clear.
+  // Click again on the focused frame clears iterate focus.
   strip.querySelectorAll('button.frame-tab').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // Duration field / enhance badge handle their own clicks.
+      if (e.target.closest('.frame-dur') || e.target.closest('.frame-enhance')) return;
+      if (state._frameDragMoved) {
+        state._frameDragMoved = false;
+        return;
+      }
       const fid = btn.dataset.fid;
       state.activeFrameId = fid;
-      // First click also pins focus so the user doesn't have to dbl-click —
-      // but only when nothing else is focused, or they're switching to a new
-      // frame. Clicking the already-focused frame again clears focus.
       if (state.iterateFocusFrameId === fid) {
         state.iterateFocusFrameId = null;
       } else {
@@ -2597,27 +2555,107 @@ function renderFramesStrip() {
       }
       renderPreview();
       renderComposer();
-      // Refresh the right-pane Frame text editor to point at the newly
-      // active frame's data-hv-text values.
       refreshTextFields();
-      // Soundtrack narration is per-frame — point the textarea at this frame.
       if (typeof window.__hvSyncNarration === 'function') window.__hvSyncNarration();
     });
   });
-  // Per-frame enhance / revert toggle (data frames only). stopPropagation so
-  // clicking it doesn't also fire the parent tab's frame-switch handler.
-  // Enhance opens a chart-type picker (5 native Remotion templates).
+  // Per-frame enhance / revert toggle (data frames only).
   strip.querySelectorAll('.frame-enhance').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (state.enhancing) return; // single in-flight; ignore double-clicks
+      if (state.enhancing) return;
       const fid = el.dataset.fid;
       if (el.dataset.act === 'unenhance') unenhanceFrameAction(fid);
       else if (el.dataset.act === 'enhance') openEnhancePicker(fid, el);
     });
   });
+  wireFrameDurationInputs(strip);
+  wireFrameStripDrag(strip);
   const gbtn = document.getElementById('btn-show-graph');
   if (gbtn) gbtn.addEventListener('click', openGraphModal);
+}
+
+function wireFrameDurationInputs(strip) {
+  strip.querySelectorAll('.frame-dur input').forEach((input) => {
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    input.addEventListener('change', async () => {
+      if (!state.selected) return;
+      const fid = input.dataset.fid;
+      const sec = Number(input.value);
+      const r = await API.setFrameDuration(state.selected.id, fid, sec);
+      if (r.error || !r.project) {
+        toast(t('frames.duration_failed', { message: r.error || 'unknown' }), 'error');
+        const cur = (state.selected.frames || []).find((f) => f.graphNodeId === fid);
+        if (cur) input.value = String(cur.durationSec ?? 4);
+        return;
+      }
+      state.selected = r.project;
+      const idx = state.projects.findIndex((p) => p.id === r.project.id);
+      if (idx >= 0) state.projects[idx] = r.project;
+      if (r.durationSec != null) input.value = String(r.durationSec);
+      renderFramesStrip();
+    });
+  });
+}
+
+function wireFrameStripDrag(strip) {
+  let dragFid = null;
+  strip.querySelectorAll('button.frame-tab').forEach((btn) => {
+    btn.addEventListener('dragstart', (e) => {
+      dragFid = btn.dataset.fid;
+      state._frameDragMoved = false;
+      btn.classList.add('dragging');
+      try {
+        e.dataTransfer.setData('text/plain', dragFid);
+        e.dataTransfer.effectAllowed = 'move';
+      } catch {
+        /* ignore */
+      }
+    });
+    btn.addEventListener('dragend', () => {
+      btn.classList.remove('dragging');
+      strip.querySelectorAll('.frame-tab.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      dragFid = null;
+    });
+    btn.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!dragFid || dragFid === btn.dataset.fid) return;
+      btn.classList.add('drag-over');
+      try {
+        e.dataTransfer.dropEffect = 'move';
+      } catch {
+        /* ignore */
+      }
+    });
+    btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
+    btn.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.remove('drag-over');
+      const from = dragFid || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+      const to = btn.dataset.fid;
+      if (!from || !to || from === to || !state.selected) return;
+      state._frameDragMoved = true;
+      const frames = [...(state.selected.frames || [])].sort((a, b) => a.order - b.order);
+      const ids = frames.map((f) => f.graphNodeId);
+      const fromIdx = ids.indexOf(from);
+      const toIdx = ids.indexOf(to);
+      if (fromIdx < 0 || toIdx < 0) return;
+      ids.splice(fromIdx, 1);
+      ids.splice(toIdx, 0, from);
+      const r = await API.reorderFrames(state.selected.id, ids);
+      if (r.error || !r.project) {
+        toast(t('frames.reorder_failed', { message: r.error || 'unknown' }), 'error');
+        return;
+      }
+      state.selected = r.project;
+      const idx = state.projects.findIndex((p) => p.id === r.project.id);
+      if (idx >= 0) state.projects[idx] = r.project;
+      renderFramesStrip();
+      renderPreview();
+    });
+  });
 }
 
 async function openGraphModal() {

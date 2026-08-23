@@ -17,6 +17,9 @@ import {
 } from '@html-video/content-graph';
 import type { AssetStore } from './asset-store.js';
 import { HtmlVideoError } from './errors.js';
+import { isForceRerender, planFrameRender } from './frame-cache.js';
+import { buildConcatFfmpegPlan, needsConcatReencode } from './frame-concat.js';
+import { applyFrameDuration, reorderContentGraph, reorderFrameRecords } from './frame-pacing.js';
 import { normalizeNativeData } from './native-data.js';
 import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
 import type {
@@ -249,14 +252,18 @@ export class ProjectOrchestrator {
     project.contentGraphPath = graphPath;
     await mkdir(join(projectDir, 'frames'), { recursive: true });
     if (opts.preserveFrames) {
-      // Editing an existing storyboard's metadata (e.g. re-pacing durations) —
-      // keep the rendered frames, just sync each frame's durationSec from the
-      // graph so export uses the new timing.
+      // Editing an existing storyboard's metadata (re-pace / reorder) — keep
+      // rendered HTML, sync durationSec + play order from the graph.
+      const playOrder = topoSort(graph);
+      const orderIdx = new Map(playOrder.map((id, i) => [id, i]));
       const byId = new Map(graph.nodes.map((n) => [n.id, n.durationSec]));
-      project.frames = (project.frames ?? []).map((f) => ({
-        ...f,
-        durationSec: byId.get(f.graphNodeId) ?? f.durationSec,
-      }));
+      project.frames = (project.frames ?? [])
+        .map((f) => ({
+          ...f,
+          durationSec: byId.get(f.graphNodeId) ?? f.durationSec,
+          order: orderIdx.get(f.graphNodeId) ?? f.order,
+        }))
+        .sort((a, b) => a.order - b.order);
     } else {
       // Fresh graph → agent will re-emit per-frame HTML; drop stale frames.
       project.frames = [];
@@ -264,6 +271,69 @@ export class ProjectOrchestrator {
     }
     await this.deps.projects.save(project);
     return { project, graphPath };
+  }
+
+  /**
+   * Reorder multi-frame play order (Studio strip drag). Updates content-graph
+   * node order + sequence edges and FrameRecord.order; HTML on disk is kept.
+   * Dirty-frame cache stays valid (keyed by node id).
+   */
+  async reorderFrames(projectId: string, orderedIds: string[]): Promise<{ project: Project }> {
+    const project = await this.deps.projects.load(projectId);
+    const frames = project.frames ?? [];
+    if (frames.length === 0) {
+      throw new HtmlVideoError('invalid-input', 'Project has no frames to reorder');
+    }
+    const graph = await this.readContentGraph(projectId);
+    if (!graph) {
+      throw new HtmlVideoError('invalid-input', 'Project has no content graph');
+    }
+    try {
+      const nextGraph = reorderContentGraph(graph, orderedIds);
+      const nextFrames = reorderFrameRecords(frames, orderedIds);
+      // Persist graph first (validates); preserveFrames syncs order again from topo.
+      await this.writeContentGraph(projectId, nextGraph, { preserveFrames: true });
+      const updated = await this.deps.projects.load(projectId);
+      // writeContentGraph already synced order from topoSort; assert frames list
+      // matches the explicit order (same ids) — prefer our explicit FrameRecords
+      // so enhance fields never drift.
+      updated.frames = nextFrames;
+      await this.deps.projects.save(updated);
+      return { project: updated };
+    } catch (e) {
+      throw new HtmlVideoError('invalid-input', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /**
+   * Set one frame's duration (seconds). Updates graph node + FrameRecord.
+   * Next export re-renders that frame (fingerprint includes durationSec).
+   */
+  async setFrameDuration(
+    projectId: string,
+    graphNodeId: string,
+    durationSec: number,
+  ): Promise<{ project: Project; frame: FrameRecord; durationSec: number }> {
+    const project = await this.deps.projects.load(projectId);
+    const frames = project.frames ?? [];
+    const graph = await this.readContentGraph(projectId);
+    if (!graph) {
+      throw new HtmlVideoError('invalid-input', 'Project has no content graph');
+    }
+    try {
+      const applied = applyFrameDuration(graph, frames, graphNodeId, durationSec);
+      await this.writeContentGraph(projectId, applied.graph, { preserveFrames: true });
+      const updated = await this.deps.projects.load(projectId);
+      // preserveFrames syncs duration from graph; keep any enhance fields intact.
+      const frame = (updated.frames ?? []).find((f) => f.graphNodeId === graphNodeId);
+      if (!frame) {
+        throw new HtmlVideoError('invalid-input', `Frame "${graphNodeId}" not found`);
+      }
+      return { project: updated, frame, durationSec: applied.durationSec };
+    } catch (e) {
+      if (e instanceof HtmlVideoError) throw e;
+      throw new HtmlVideoError('invalid-input', e instanceof Error ? e.message : String(e));
+    }
   }
 
   /**
@@ -399,12 +469,35 @@ export class ProjectOrchestrator {
       // h264 params (hyperframes' libx264 vs Remotion's encoder), so a stream
       // -c copy concat can stutter/corrupt. Re-encode the join in that case.
       const enginesUsed = new Set(ordered.map((f) => f.engine ?? projectEngine));
-      const reencode = enginesUsed.size > 1;
+      const reencode = needsConcatReencode(enginesUsed);
+      const resolution = project.preferences.resolution ?? { width: 1920, height: 1080 };
+      const fps = project.preferences.fps ?? 60;
+      const { mkdir } = await import('node:fs/promises');
+      const cacheDir = join(projectDir, 'frames', 'cache');
+      await mkdir(cacheDir, { recursive: true });
+      const force = isForceRerender();
 
       for (let i = 0; i < ordered.length; i++) {
-        const f = ordered[i]!;
-        const frameOut = join(projectDir, 'frames', `${String(i + 1).padStart(2, '0')}.mp4`);
+        const f = ordered[i];
+        if (!f) continue;
         const { engine: frameEngine, templateRef } = this.resolveFrameTemplateRef(f, projectEngine);
+        const plan = await planFrameRender({
+          frame: f,
+          projectEngine,
+          resolution,
+          fps,
+          variables: project.variables,
+          cacheDir,
+          force,
+        });
+        if (plan.reuse) {
+          args.onProgress?.(
+            ((i + 1) / ordered.length) * 100,
+            `frame ${i + 1}/${ordered.length}: cached`,
+          );
+          frameMp4s.push(plan.cachePath);
+          continue;
+        }
         const adapter = this.deps.engines.get(frameEngine);
         await adapter.render(
           {
@@ -415,13 +508,13 @@ export class ProjectOrchestrator {
               f.data !== undefined ? { ...project.variables, data: f.data } : project.variables,
             config: {
               format: 'mp4',
-              resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
-              fps: project.preferences.fps ?? 60,
+              resolution,
+              fps,
               duration: f.durationSec,
               // The user set per-frame length on the format card — honor it as a
               // hard cap so one runaway animation can't stretch a 4s frame to ~30s.
               durationMode: 'explicit',
-              outputPath: frameOut,
+              outputPath: plan.cachePath,
             },
           },
           {
@@ -436,12 +529,13 @@ export class ProjectOrchestrator {
             ...(args.signal !== undefined && { signal: args.signal }),
           },
         );
-        frameMp4s.push(frameOut);
+        f.renderFingerprint = plan.fingerprint;
+        frameMp4s.push(plan.cachePath);
       }
 
       await concatFramesWithFfmpeg(frameMp4s, outputPath, projectDir, {
         reencode,
-        fps: project.preferences.fps ?? 60,
+        fps,
       });
       const totalDur = ordered.reduce((s, f) => s + (f.durationSec || 0), 0);
       await this.applySoundtrack(project, outputPath, totalDur, args.onProgress);
@@ -607,8 +701,8 @@ export class ProjectOrchestrator {
    * — the same per-frame engine/template resolution exportMp4 uses — so the
    * preview is pixel-identical to what the final export will stitch in.
    *
-   * Writes to `frames/<order>.preview.mp4` (distinct from export's `frames/NN.mp4`
-   * so the two never overwrite each other). No soundtrack mux — a per-frame
+   * Writes to `frames/<order>.preview.mp4` (distinct from export's
+   * `frames/cache/<nodeId>.mp4` so the two never overwrite each other). No soundtrack mux — a per-frame
    * preview is silent and faster. Sets `frame.previewMp4Path` and saves (bumping
    * `updatedAt`, which the studio uses as the <video> cache-bust token).
    */
@@ -741,38 +835,17 @@ async function concatFramesWithFfmpeg(
   const { join } = await import('node:path');
   const { spawn } = await import('node:child_process');
 
-  const fps = opts.fps ?? 60;
-  let ffmpegArgs: string[];
-
-  if (opts.reencode) {
-    // concat FILTER: independent `-i` per segment + filter rebuilds the timeline.
-    const n = frameMp4s.length;
-    const inputs = frameMp4s.flatMap((p) => ['-i', p]);
-    const filter = `${frameMp4s.map((_, i) => `[${i}:v]`).join('')}concat=n=${n}:v=1:a=0[v]`;
-    ffmpegArgs = [
-      '-y',
-      ...inputs,
-      '-filter_complex',
-      filter,
-      '-map',
-      '[v]',
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-r',
-      String(fps),
-      '-movflags',
-      '+faststart',
-      outputPath,
-    ];
-  } else {
-    // concat DEMUXER + stream copy: needs the list file.
-    const listPath = join(workDir, 'frames', 'concat.txt');
-    const list = frameMp4s.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
-    await writeFile(listPath, list, 'utf8');
-    ffmpegArgs = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outputPath];
+  const listPath = join(workDir, 'frames', 'concat.txt');
+  let plan;
+  try {
+    plan = buildConcatFfmpegPlan(frameMp4s, outputPath, listPath, opts);
+  } catch (e) {
+    throw new HtmlVideoError('render-failed', e instanceof Error ? e.message : String(e));
   }
+  if (plan.needsListFile && plan.listPath && plan.listContents !== undefined) {
+    await writeFile(plan.listPath, plan.listContents, 'utf8');
+  }
+  const ffmpegArgs = plan.args;
 
   await new Promise<void>((resolveFn, reject) => {
     const proc = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });

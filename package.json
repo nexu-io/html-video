@@ -19,6 +19,7 @@
     "build": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r build",
     "typecheck": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r typecheck",
     "test": "pnpm --filter './packages/**' --filter '!@html-video/studio-next' -r test",
+    "test:mp4": "pnpm --filter @html-video/cli test:mp4",
     "presmoke": "pnpm --filter @html-video/cli build",
     "smoke": "pnpm --filter @html-video/cli smoke",
     "format": "biome format --write .",

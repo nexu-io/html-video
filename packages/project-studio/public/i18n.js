@@ -83,6 +83,10 @@ const DICT = {
 
     'frames.label': 'Frames',
     'frames.view_graph': 'View graph',
+    'frames.duration_hint': 'Seconds for this frame (export timing)',
+    'frames.drag_hint': 'Drag to reorder',
+    'frames.reorder_failed': 'Could not reorder frames: {message}',
+    'frames.duration_failed': 'Could not set duration: {message}',
     'frames.enhance': '⚡ Remotion',
     'frames.enhance_hint':
       'Pick a native Remotion chart for this data frame (bars, donut, line, …)',
@@ -346,6 +350,10 @@ const DICT = {
 
     'frames.label': '分镜',
     'frames.view_graph': '看图谱',
+    'frames.duration_hint': '这一帧的时长（秒），导出时生效',
+    'frames.drag_hint': '拖动排序',
+    'frames.reorder_failed': '调整顺序失败：{message}',
+    'frames.duration_failed': '设置时长失败：{message}',
     'frames.enhance': '⚡ Remotion',
     'frames.enhance_hint': '为这个数据帧选择原生 Remotion 图表（柱状 / 圆环 / 折线…）',
     'frames.enhanced_revert': '⚡ Remotion ✓（还原）',

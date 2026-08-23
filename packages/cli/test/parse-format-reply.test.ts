@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseFormatReply } from '../dist/studio-server.js';
+import { parseFormatReply } from '../dist/detect-phase.js';
 
 // Regression coverage for issue #2: a typed free-text format answer (when the
 // model asked in prose instead of rendering the hv-form card) must parse into

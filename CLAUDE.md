@@ -109,11 +109,13 @@ html-video/
 
 **仍待完善（整改队列）：**
 
-- ⏳ RFC-07 模板中性重命名：~~`frame-pentagram-stat` → `frame-editorial-anchor` 等~~ **已于 2026-08-05 完成**（`editorial-anchor` / `luxe-minimal` / `soft-radar`）
-- ~~原生 Remotion 扩到非图表动效~~ → **已于 2026-08-05 加 `frame-kpi-pulse`**；或接 Revideo adapter
-- ⏳ studio graph viewer 可编辑（先 pacing / 顺序，再拖拽拓扑）
+- ✅ RFC-07 模板中性重命名（2026-08-05）：`editorial-anchor` / `luxe-minimal` / `soft-radar`
+- ✅ Studio 稳定性整改（2026-08-23）：`detectPhase` 单测、脏帧 export 缓存、帧条排序/时长、concat/enhance/SSRF 单测、`studio-server` 拆模块（http/parse/prompt）、`api.js` 抽出
+- ✅ `studio-next` quarantine：`QUARANTINE.md` + 根脚本已排除 build/typecheck/test
+- ⏳ studio graph viewer 可编辑（帧顺序/时长已在 frames strip 完成；graph modal 拓扑仍只读）
+- ⏳ `studio-server` 路由层 / `runSplitMultiFrameGenerate` 进一步拆分（server 仍 ~2200 行；已抽 template-preview）
+- ✅ PR 级 1 帧 MP4 smoke：`smoke-mp4.test.ts` + CI `mp4-smoke` job
 - ⏳ Motion Canvas / Revideo / marketplace（README Roadmap）
-- ⏳ `studio-next` spike 已否决整套 HF NLE；需 quarantine / 文档标明
 
 ## 会话进度（2026-06-07）— Remotion 原生数据模板 + 按帧增强（Phase A+B 跑通，**git 待 Joey 定**）
 

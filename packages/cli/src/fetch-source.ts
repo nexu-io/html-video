@@ -59,10 +59,12 @@ export function assertPublicHttpUrl(raw: string): URL {
     throw new Error(`only http(s) URLs are allowed (got ${u.protocol})`);
   }
   const host = u.hostname.toLowerCase();
+  // Node may return IPv6 hostnames with brackets (e.g. "[::1]").
+  const bareHost = host.replace(/^\[(.*)\]$/, '$1');
   if (
     host === 'localhost' ||
     host === '0.0.0.0' ||
-    host === '::1' ||
+    bareHost === '::1' ||
     host.endsWith('.localhost') ||
     host.endsWith('.internal') ||
     host.endsWith('.local')
