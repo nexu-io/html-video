@@ -50,6 +50,7 @@ export class ParallelSearch {
   private connected = false;
   private session: string;
   private timeout: number;
+  private operationSignal?: AbortSignal;
 
   constructor(
     cwd: string,
@@ -101,6 +102,7 @@ export class ParallelSearch {
 
     // Include both initialization/discovery and tool execution in the same deadline.
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(this.timeout)]);
+    this.operationSignal = deadline;
     if (!this.connected) {
       const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
       if (process.env.PARALLEL_API_KEY)
@@ -112,7 +114,7 @@ export class ParallelSearch {
             ...init,
             signal: AbortSignal.any([
               signal,
-              AbortSignal.timeout(this.timeout),
+              this.operationSignal ?? signal,
               ...(init?.signal ? [init.signal] : []),
             ]),
           }),
