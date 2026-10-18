@@ -80,6 +80,8 @@ export interface AgentDef {
 }
 
 export interface AgentInvokeContext {
+  /** Disable built-in HTTP-agent web research for this invocation. */
+  webSearch?: boolean;
   cwd: string;
   /** Allowed working dirs (e.g. project's .html-video/projects/<id>/) */
   extraAllowedDirs?: string[];
