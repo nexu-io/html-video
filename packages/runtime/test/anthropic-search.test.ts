@@ -88,7 +88,7 @@ function fixture(
   setEnv('ANTHROPIC_API_KEY', 'inference-fixture');
   setEnv('ANTHROPIC_BASE_URL', 'https://messages.example.test');
   setEnv('HV_AGENT_MODEL', 'claude-test-model');
-  delete process.env.HV_WEB_SEARCH;
+  Reflect.deleteProperty(process.env, 'HV_WEB_SEARCH');
   if (options.envDisabled) setEnv('HV_WEB_SEARCH', 'off');
   setEnv('HV_WEB_SEARCH_TIMEOUT_MS', options.failure === 'timeout' ? '20' : '20000');
   if (options.apiKey) setEnv('PARALLEL_API_KEY', options.apiKey);
@@ -335,7 +335,7 @@ test('plain response without tool use makes no discovery or search requests', as
 
 test('configured routing token remains usable without the canonical inference key', async (t) => {
   fixture(t, { disabled: true });
-  delete process.env.ANTHROPIC_API_KEY;
+  Reflect.deleteProperty(process.env, 'ANTHROPIC_API_KEY');
   process.env.ANTHROPIC_AUTH_TOKEN = 'inference-fixture';
   assert.equal((await run({ disabled: true })).exitCode, 0);
 });
