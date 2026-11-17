@@ -278,7 +278,7 @@ research/                  RFCs (engine adapter / template metadata / agent skil
 |---|---|
 | [Open Design](https://github.com/nexu-io/open-design) | Sister project — the design-agent meta-layer; same team, shared philosophy |
 | [HTML Anything](https://github.com/nexu-io/openmotion/tree/legacy) | Sister project — HTML for *static* deliverables; html-video is the *motion* side |
-| [OpenMotion](https://github.com/nexu-io/openmotion) | Remix a reference video into editable HTML scenes, then export an MP4 |
+| [OpenMotion](https://github.com/nexu-io/openmotion) | A full-stack agentic video studio and an open-source alternative to Claude Motion and CapCut. Upload a reference video or paste a social video link to recreate it with your own brand kit and copy. |
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | The shipped engine adapter; the HTML+CSS+GSAP rendering paradigm and the source of several Apache-2.0 templates |
 
 ## License
