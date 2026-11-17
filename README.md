@@ -34,6 +34,12 @@
 
 Every template below is a real, animated single-file HTML video — these are live renders, not mockups. Drop one in, let the agent fill it with your content, export to MP4.
 
+Rendered sample: [frame-product-promo.mp4](docs/assets/renders/frame-product-promo.mp4) (`frame-product-promo`, 14.4s, 1920×1080, 60fps).
+
+```bash
+node packages/cli/dist/bin.js project-render <project_id> --output docs/assets/renders/frame-product-promo.mp4 --stream-progress
+```
+
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/templates/frame-data-chart-nyt.png" alt="NYT-style data chart" /></td>

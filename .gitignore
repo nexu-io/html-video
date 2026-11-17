@@ -65,3 +65,5 @@ tmp/
 *.gif
 output/
 renders/
+!docs/assets/renders/
+!docs/assets/renders/*.mp4

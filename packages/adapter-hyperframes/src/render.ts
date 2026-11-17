@@ -257,7 +257,15 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
           const td = typeof c.totalDuration === 'function' ? c.totalDuration() : 0;
           if (Number.isFinite(td)) gsapMs = Math.max(gsapMs, td * 1000);
         }
-        return Math.max(maxMs, gsapMs);
+        let scheduledMs = 0;
+        document.querySelectorAll<HTMLElement>('[data-start][data-duration]').forEach((el) => {
+          const start = Number.parseFloat(el.getAttribute('data-start') || '0') || 0;
+          const duration = Number.parseFloat(el.getAttribute('data-duration') || '0') || 0;
+          if (Number.isFinite(start) && Number.isFinite(duration)) {
+            scheduledMs = Math.max(scheduledMs, (start + duration) * 1000);
+          }
+        });
+        return Math.max(maxMs, gsapMs, scheduledMs);
       });
       // +0.4s settle so the final animation frame is actually captured; cap at
       // 30s so a stray huge value can't make a frame run away.
@@ -463,6 +471,17 @@ async function prepareSourceHtml(
   const player = `
 <script>
 (function () {
+  function readNumber(value, fallback) {
+    var n = parseFloat(value || '');
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function findCompositionElement(id) {
+    var all = document.querySelectorAll('[data-composition-id]');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute('data-composition-id') === id) return all[i];
+    }
+    return null;
+  }
   function reexec(root) {
     root.querySelectorAll('script').forEach(function (old) {
       if (old.src) { old.parentNode.removeChild(old); return; }
@@ -494,10 +513,54 @@ async function prepareSourceHtml(
   // probe see the real 14.7s and record the whole story.
   window.__hvPlayAll = function () {
     var tls = window.__timelines || {};
+    var gsap = window.gsap;
+    var master = gsap && typeof gsap.timeline === 'function'
+      ? gsap.timeline({ paused: true })
+      : null;
+    var hosts = Array.prototype.slice.call(document.querySelectorAll('[data-composition-src]'));
+
+    if (gsap && typeof gsap.set === 'function') {
+      hosts.forEach(function (host) { gsap.set(host, { autoAlpha: 0 }); });
+    } else {
+      hosts.forEach(function (host) {
+        host.style.opacity = '0';
+        host.style.visibility = 'hidden';
+      });
+    }
+
+    hosts.forEach(function (host) {
+      var start = readNumber(host.getAttribute('data-start'), 0);
+      var duration = readNumber(host.getAttribute('data-duration'), 0);
+      if (master) {
+        master.set(host, { autoAlpha: 1 }, start);
+        if (duration > 0) master.set(host, { autoAlpha: 0 }, start + duration);
+      } else {
+        setTimeout(function () {
+          host.style.opacity = '1';
+          host.style.visibility = 'visible';
+        }, start * 1000);
+        if (duration > 0) {
+          setTimeout(function () {
+            host.style.opacity = '0';
+            host.style.visibility = 'hidden';
+          }, (start + duration) * 1000);
+        }
+      }
+    });
+
     Object.keys(tls).forEach(function (k) {
       var tl = tls[k];
-      if (tl && typeof tl.play === 'function') tl.play(0);
+      if (!tl || typeof tl.play !== 'function') return;
+      var el = findCompositionElement(k);
+      var start = readNumber(el && el.getAttribute('data-start'), 0);
+      if (master && typeof master.add === 'function') {
+        if (typeof tl.pause === 'function') tl.pause(0);
+        master.add(tl, start);
+      } else {
+        setTimeout(function () { tl.play(0); }, start * 1000);
+      }
     });
+    if (master) master.play(0);
   };
   function boot() {
     window.__timelines = window.__timelines || {};
