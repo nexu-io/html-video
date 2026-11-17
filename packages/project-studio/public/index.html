@@ -704,6 +704,11 @@
     color: #fff; font-weight: 600; animation: none; }
   .frames-strip button.frame-tab .frame-enhance.busy { background: var(--accent);
     cursor: default; opacity: .9; animation: none; }
+  .frames-strip button.frame-tab .frame-enhance.clip-del { background: rgba(220,38,38,.85);
+    color: #fff; font-weight: 700; font-size: 14px; padding: 3px 8px; animation: none;
+    border-color: rgba(255,255,255,.3); }
+  .frames-strip button.frame-tab .frame-enhance.clip-del:hover { background: rgba(239,68,68,.92);
+    transform: translateX(-50%) scale(1.08); }
   .frames-strip button.frame-tab .frame-tab-label { display: flex;
     align-items: center; gap: 6px; padding: 6px 8px; font-size: 11px;
     font-family: var(--font-mono); white-space: nowrap; overflow: hidden;
@@ -1034,6 +1039,23 @@
   .small-modal button.primary { background: var(--accent); color: var(--accent-fg);
     border-color: var(--accent); font-weight: 500; }
   .small-modal button.primary:hover { background: var(--accent-hover); }
+
+  /* ===== Modal: pre-export "clips have no audio" confirm ===== */
+  #audio-confirm-body .ac-intro { font-size: 13.5px; color: var(--text); line-height: 1.5;
+    margin: 0 0 10px; }
+  #audio-confirm-body .ac-list { list-style: none; margin: 0 0 10px; padding: 0;
+    max-height: 220px; overflow-y: auto; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); }
+  #audio-confirm-body .ac-list li { display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  #audio-confirm-body .ac-list li:last-child { border-bottom: 0; }
+  #audio-confirm-body .ac-kind { flex: 0 0 auto; font-family: var(--font-mono);
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-muted); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 1px 8px; }
+  #audio-confirm-body .ac-label { min-width: 0; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #audio-confirm-body .ac-hint { font-size: 11.5px; color: var(--text-muted); margin: 0; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -1125,6 +1147,17 @@
     <div class="actions">
       <button id="new-cancel" data-i18n="modal.new.cancel">Cancel</button>
       <button class="primary" id="new-ok" data-i18n="modal.new.create">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg small-modal" id="audio-confirm-modal">
+  <div class="modal">
+    <h2 data-i18n="export.audio_title">Some clips have no audio</h2>
+    <div id="audio-confirm-body"></div>
+    <div class="actions">
+      <button id="audio-confirm-cancel" data-i18n="export.audio_cancel">Cancel</button>
+      <button class="primary" id="audio-confirm-ok" data-i18n="export.audio_proceed">Export anyway</button>
     </div>
   </div>
 </div>
