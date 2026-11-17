@@ -1114,7 +1114,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               sum.bgColors.length ? `Palette: ${sum.bgColors.join(' / ')}` : '',
               sum.fontFamilies.length ? `Fonts: ${sum.fontFamilies.join(', ')}` : '',
               ``,
-              `Begin reply with \`\`\`html. Tag visible text with data-hv-text. No prose outside the block.`,
+              `Begin reply with \`\`\`html. Tag every visible text node with data-hv-text using a short snake_case key (headline, subtitle, cta — never use text content as the key, never leave it valueless). No prose outside the block.`,
             ].filter(Boolean).join('\n');
             let retryText = '';
             const retryHandle = spawnAgent({
@@ -2826,7 +2826,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
         p.push('');
       }
     }
-    p.push(`Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a stable key (brand_name, headline, item_1, cta…). No prose outside code blocks.`);
+    p.push(`Constraints: full-bleed ${resolution}, opens with an animation timeline, inline CSS + JS, single complete <!doctype html>...</html> document(s). CDN imports (Tailwind, GSAP) are fine. Tag every visible text node with data-hv-text set to a short snake_case key (brand_name, headline, item_1, cta — NEVER use the element's text content as the key, NEVER leave the attribute valueless). No prose outside code blocks.`);
     p.push('');
     // Frame-count safety: claude --print can truncate / stall on very large
     // multi-frame batches. Cap at 10 (high frame counts get progressively
@@ -2971,7 +2971,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1.2s ease forwards;opacity:0
     if (summary.fontFamilies.length) it.push(`Fonts: ${summary.fontFamilies.join(', ')}`);
     it.push('');
   }
-  it.push(`Output: ONE complete HTML document. Begin your reply with \`\`\`html and end with \`\`\`. Inline all CSS / JS. Full-bleed 1920×1080. Tag visible text with data-hv-text (preserve existing keys when meaningful). No prose outside the block. Do NOT return an empty reply.`);
+  it.push(`Output: ONE complete HTML document. Begin your reply with \`\`\`html and end with \`\`\`. Inline all CSS / JS. Full-bleed 1920×1080. Tag every visible text node with data-hv-text using a short snake_case key (preserve existing keys when meaningful — never use text content as the key, never leave it valueless). No prose outside the block. Do NOT return an empty reply.`);
   it.push('');
   it.push(`Skeleton to extend (replace with the real content + visual style):`);
   it.push('```html');
@@ -3348,7 +3348,7 @@ async function runSplitMultiFrameGenerate(
       for (const a of frameSourceTexts) fp.push((a.inlineText ?? '').slice(0, 3000));
       fp.push('');
     }
-    fp.push(`Output: begin with \`\`\`html and end with \`\`\`. Inline CSS + JS, full-bleed ${resolution}, opens with an animation timeline. Tag visible text with data-hv-text. CDN imports (Tailwind, GSAP) fine. No prose outside the block.`);
+    fp.push(`Output: begin with \`\`\`html and end with \`\`\`. Inline CSS + JS, full-bleed ${resolution}, opens with an animation timeline. Tag every visible text node with data-hv-text using a short snake_case key (headline, cta, bar1_label — never use text content as the key, never leave it valueless). CDN imports (Tailwind, GSAP) fine. No prose outside the block.`);
     fp.push('');
     if (templateHtml) {
       // A template is selected → its HTML is the REQUIRED look for every frame.
@@ -3395,7 +3395,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     // One retry on empty: shorter prompt, just the skeleton call.
     if (!extracted) {
       onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
-      const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
+      const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag every visible text node with data-hv-text using a short snake_case key (headline, cta — never use text content as the key, never leave it valueless). No prose.`;
       frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
       extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
         ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
