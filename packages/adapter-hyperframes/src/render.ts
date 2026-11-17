@@ -26,11 +26,27 @@ import type {
   RenderOutput,
 } from '@html-video/core';
 import { HtmlVideoError } from '@html-video/core';
+import { tryDeterministicRender } from './renderDeterministic.js';
 
 const ADAPTER_VERSION = '0.2.0-playwright';
 
 /** Real render: chromium records the page, ffmpeg transcodes to MP4. */
 export async function render(input: RenderInput, ctx: RenderContext): Promise<RenderOutput> {
+  // Prefer the real upstream Hyperframes pipeline (paused timeline, per-frame
+  // seek, BeginFrame capture) when `@hyperframes/producer` is installed and
+  // the template is a Hyperframes composition. Frame-perfect and faster than
+  // realtime; see renderDeterministic.ts. Falls through to the realtime
+  // capture below when the deterministic path doesn't apply or fails.
+  try {
+    const deterministic = await tryDeterministicRender(input, ctx);
+    if (deterministic) return deterministic;
+  } catch (err) {
+    if (ctx.signal?.aborted) throw err;
+    ctx.onProgress?.(
+      5,
+      `deterministic render failed (${err instanceof Error ? err.message : err}) — falling back to realtime capture`,
+    );
+  }
   const t0 = Date.now();
   ctx.onProgress?.(5, 'preparing');
   const outDir = dirname(input.config.outputPath);
