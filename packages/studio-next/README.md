@@ -1,4 +1,6 @@
-# @html-video/studio-next (experiment)
+# @html-video/studio-next (quarantined experiment)
+
+> **Quarantined spike — not part of production Studio.** Read [`QUARANTINE.md`](./QUARANTINE.md) and [`SPIKE-REPORT.md`](./SPIKE-REPORT.md) before touching this package. Production UI: `packages/project-studio/` (port 3071).
 
 Spike to evaluate integrating [`@hyperframes/studio`](https://github.com/heygen-com/hyperframes) (Apache-2.0)
 as our editor UI instead of hand-rolling click-to-edit, timeline, property panel, etc.

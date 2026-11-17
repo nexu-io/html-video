@@ -363,9 +363,17 @@ export interface FrameRecord {
    * When enhanced: path to a short single-frame MP4 the studio renders so the
    * user can preview the native animation before a full export (a native frame
    * has no HTML to load in an iframe). Cleared on unenhance. Separate from the
-   * export loop's `frames/NN.mp4` so the two lifecycles don't collide.
+   * export loop's `frames/cache/<nodeId>.mp4` so the two lifecycles don't collide.
    */
   previewMp4Path?: string;
+  /**
+   * SHA-256 prefix of the last successful export inputs for this frame
+   * (HTML or native data, duration, engine, resolution, fps, project variables).
+   * `exportMp4` skips Chromium/Remotion when this still matches and
+   * `frames/cache/<nodeId>.mp4` exists. Absent on projects exported before
+   * dirty-frame caching.
+   */
+  renderFingerprint?: string;
 }
 
 /**
