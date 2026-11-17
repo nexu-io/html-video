@@ -9,6 +9,9 @@
  * The request/parse pattern is ported from open-design's `renderMinimaxTTS`
  * (apps/daemon/src/media.ts): fetch → Bearer → check `base_resp.status_code`
  * (an HTTP 200 can still be a logical failure) → `Buffer.from(hex, 'hex')`.
+ * That transport now lives in `audio-http.ts` and is shared with the
+ * wire-compatible SenseAudio provider; this module keeps the MiniMax-specific
+ * defaults (models, region hints) and the music endpoint MiniMax alone exposes.
  *
  * Credentials are read from the environment so the studio works without any
  * config file; a missing key yields `null` from {@link resolveMinimaxCredentials}
@@ -16,6 +19,7 @@
  */
 
 import { HtmlVideoError } from './errors.js';
+import { postAudioAndDecode, type GeneratedAudio } from './audio-http.js';
 
 /** Default base URL. The old `api.minimaxi.chat` host is RETIRED server-side
  *  (issue #4). MiniMax now has two region-bound endpoints — international
@@ -24,9 +28,6 @@ import { HtmlVideoError } from './errors.js';
  *  OD_MINIMAX_BASE_URL / MINIMAX_BASE_URL (or the Studio Settings UI). */
 const MINIMAX_DEFAULT_BASE_URL = 'https://api.minimax.io/v1';
 
-/** Hard ceiling for a single MiniMax request. Music generation is slow but a
- *  request that hasn't returned in 2 minutes is hung, not slow. */
-const MINIMAX_REQUEST_TIMEOUT_MS = 120_000;
 /** Fast turbo speech tier (same default open-design ships). */
 const MINIMAX_TTS_MODEL = 'speech-02-turbo';
 /**
@@ -43,16 +44,8 @@ export interface MinimaxCredentials {
   baseUrl: string;
 }
 
-export interface MinimaxAudioResult {
-  /** Decoded audio bytes (MP3). */
-  bytes: Buffer;
-  /** File extension to store under. */
-  ext: '.mp3';
-  /** Human-readable note of what was produced (provider · model · size). */
-  providerNote: string;
-  /** Reported duration in seconds, if the API surfaced it. */
-  durationSec?: number;
-}
+/** Re-exported under the historical name; the shape is provider-neutral now. */
+export type MinimaxAudioResult = GeneratedAudio;
 
 /**
  * Resolve MiniMax credentials from the environment. Returns `null` (not throw)
@@ -74,87 +67,30 @@ export function resolveMinimaxCredentials(
 }
 
 /**
- * Shared POST + decode for both MiniMax audio endpoints. Throws
- * HtmlVideoError('render-failed', …) on transport / API / decode failure.
+ * Shared POST + decode for both MiniMax audio endpoints, delegating to the
+ * generic Bearer-audio transport but carrying MiniMax's region/balance hints.
  */
-async function postAndDecode(
+function postAndDecode(
   endpoint: string,
   body: unknown,
   creds: MinimaxCredentials,
   label: string,
   signal?: AbortSignal,
 ): Promise<{ bytes: Buffer; extraInfo: Record<string, unknown> }> {
-  // MiniMax generation (esp. music) can take tens of seconds, but it must NOT
-  // hang forever — an unbounded fetch leaves the studio's SSE stream stuck on
-  // "generating…" with no failure event, which reads to the user as "the button
-  // does nothing". Cap it; if the caller passed its own signal, respect that.
-  const timeoutSignal = AbortSignal.timeout(MINIMAX_REQUEST_TIMEOUT_MS);
-  const effectiveSignal = signal
-    ? (AbortSignal.any ? AbortSignal.any([signal, timeoutSignal]) : signal)
-    : timeoutSignal;
-  let resp: Response;
-  try {
-    resp = await fetch(`${creds.baseUrl}/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${creds.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: effectiveSignal,
-    });
-  } catch (e) {
-    const isTimeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new HtmlVideoError(
-      'render-failed',
-      isTimeout
-        ? `minimax ${label} timed out after ${Math.round(MINIMAX_REQUEST_TIMEOUT_MS / 1000)}s (the API did not respond — try again, or check OD_MINIMAX_BASE_URL)`
-        : `minimax ${label} request failed: ${msg} (check the API region — international is api.minimax.io, China is api.minimaxi.com; a key only works against its own region)`,
-      true,
-    );
-  }
-
-  const respText = await resp.text();
-  if (!resp.ok) {
-    throw new HtmlVideoError(
-      'render-failed',
-      `minimax ${label} ${resp.status}: ${truncate(respText, 240)}`,
-      resp.status >= 500,
-    );
-  }
-
-  let data: {
-    base_resp?: { status_code?: number; status_msg?: string };
-    data?: { audio?: unknown };
-    extra_info?: Record<string, unknown>;
-  };
-  try {
-    data = JSON.parse(respText);
-  } catch {
-    throw new HtmlVideoError('render-failed', `minimax ${label} non-JSON: ${truncate(respText, 200)}`);
-  }
-
-  // MiniMax wraps every response in base_resp; an HTTP 200 can still be a
-  // logical failure (auth / params), surfaced via a non-zero status_code.
-  if (data.base_resp && data.base_resp.status_code !== 0) {
-    const code = data.base_resp.status_code;
-    const hint = code === 1004 || code === 1008 ? ' (auth / insufficient balance — check the API key)' : '';
-    throw new HtmlVideoError(
-      'render-failed',
-      `minimax ${label} api error ${code}: ${data.base_resp.status_msg || 'unknown'}${hint}`,
-    );
-  }
-
-  const hex = data.data?.audio;
-  if (typeof hex !== 'string' || !hex) {
-    throw new HtmlVideoError('render-failed', `minimax ${label} response missing data.audio`);
-  }
-  const bytes = Buffer.from(hex, 'hex');
-  if (bytes.length === 0) {
-    throw new HtmlVideoError('render-failed', `minimax ${label} decoded zero bytes`);
-  }
-  return { bytes, extraInfo: data.extra_info ?? {} };
+  return postAudioAndDecode({
+    provider: 'minimax',
+    endpoint,
+    body,
+    creds,
+    label,
+    signal,
+    hints: {
+      transport:
+        ' (check the API region — international is api.minimax.io, China is api.minimaxi.com; a key only works against its own region)',
+      status: (code) =>
+        code === 1004 || code === 1008 ? ' (auth / insufficient balance — check the API key)' : '',
+    },
+  });
 }
 
 /**
@@ -238,8 +174,4 @@ export async function generateMusic(opts: {
     ext: '.mp3',
     providerNote: `minimax/${MINIMAX_MUSIC_MODEL} · ${instrumental ? 'instrumental' : 'with-vocals'} · ${bytes.length} bytes`,
   };
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
 }
