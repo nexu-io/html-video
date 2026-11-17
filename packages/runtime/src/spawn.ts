@@ -21,9 +21,8 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
   // ---- http agents (anthropic-api etc): no child process, just fetch ----
   if (def.kind === 'http' && def.httpHandler) {
     const ac = new AbortController();
-    if (opts.signal) {
-      opts.signal.addEventListener('abort', () => ac.abort());
-    }
+    if (opts.signal?.aborted) ac.abort();
+    else opts.signal?.addEventListener('abort', () => ac.abort(), { once: true });
     const done = def.httpHandler(prompt, context, (ev) => onEvent?.(ev), ac.signal)
       .then(({ exitCode }) => {
         onEvent?.({ type: 'message_end', reason: exitCode === 0 ? 'ok' : 'error' });
