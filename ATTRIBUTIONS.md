@@ -49,6 +49,19 @@ affiliation or endorsement. Studio names are **not** used as template names.
 
 ---
 
+## Original html-video templates (no L2 upstream)
+
+These were authored directly for html-video (native Remotion compositions). See each
+template's `provenance.origin` / `via_skill` for detail.
+
+- `frame-data-rollup` — native Remotion bar chart + count-up
+- `frame-data-donut` — native Remotion donut chart
+- `frame-data-hbars` — native Remotion horizontal bar chart
+- `frame-data-line` — native Remotion line chart
+- `frame-data-radar` — native Remotion radar / spider chart
+
+---
+
 ## Studio names referenced as L1 inspiration
 
 The following real-world design studios / designers are named in template `provenance.origin`

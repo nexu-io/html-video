@@ -50,6 +50,7 @@ const API = {
   putRawHtml: (id, html) => fetch(`/api/projects/${id}/raw-html`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ html }) }).then(r => r.json()),
   contentGraph: id => fetch(`/api/projects/${id}/content-graph`).then(r => r.ok ? r.json() : null),
   unenhanceFrame: (id, nodeId) => fetch(`/api/projects/${id}/frames/${encodeURIComponent(nodeId)}/unenhance`, { method: 'POST' }).then(r => r.json()),
+  nativeTemplates: () => fetch('/api/native-templates').then(r => r.json()),
   testAgent: id => fetch(`/api/agents/${encodeURIComponent(id)}/test`, { method: 'POST' }).then(r => r.json()),
   rescanAgents: () => fetch('/api/agents?force=1').then(r => r.json()),
 };
@@ -75,6 +76,9 @@ const state = {
   // Phase C: per-frame native Remotion enhancement
   frameKinds: {},          // { [graphNodeId]: 'entity'|'data'|'text' } for the selected project
   enhancing: null,         // { nodeId, pct, stage } while a single-frame enhance render is in flight
+  nativeTemplates: [],     // from /api/native-templates
+  nativeDefaultId: 'frame-data-rollup',
+  enhancePicker: null,     // { nodeId } while the chart-type menu is open
 };
 
 // ============== boot ==============
@@ -228,13 +232,79 @@ async function startExportStream() {
 }
 
 // ============== Per-frame native enhancement (streamed) ==============
+/** Short labels for the enhance picker (id → display). */
+function nativeTemplateShortLabel(id) {
+  const map = {
+    'frame-data-rollup': t('enhance.chart.rollup'),
+    'frame-data-donut': t('enhance.chart.donut'),
+    'frame-data-hbars': t('enhance.chart.hbars'),
+    'frame-data-line': t('enhance.chart.line'),
+    'frame-data-radar': t('enhance.chart.radar'),
+  };
+  return map[id] || id.replace(/^frame-data-/, '');
+}
+
+function closeEnhancePicker() {
+  state.enhancePicker = null;
+  const el = document.getElementById('enhance-picker');
+  if (el) el.remove();
+}
+
+/** Show a chart-type menu anchored near the enhance badge, then enhance. */
+function openEnhancePicker(nodeId, anchorEl) {
+  closeEnhancePicker();
+  const list =
+    state.nativeTemplates.length > 0
+      ? state.nativeTemplates
+      : [{ id: state.nativeDefaultId || 'frame-data-rollup', name: 'Data Rollup' }];
+  const rect = anchorEl.getBoundingClientRect();
+  state.enhancePicker = { nodeId };
+  const menu = document.createElement('div');
+  menu.id = 'enhance-picker';
+  menu.className = 'enhance-picker';
+  menu.innerHTML = `<div class="enhance-picker-title">${esc(t('enhance.pick_title'))}</div>${list
+    .map(
+      (tmpl) =>
+        `<button type="button" data-tid="${esc(tmpl.id)}" title="${esc(tmpl.description || tmpl.name || '')}">${esc(nativeTemplateShortLabel(tmpl.id))}<span class="sub">${esc(tmpl.name || tmpl.id)}</span></button>`,
+    )
+    .join('')}`;
+  document.body.appendChild(menu);
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  let left = rect.left + rect.width / 2 - mw / 2;
+  let top = rect.bottom + 6;
+  if (left < 8) left = 8;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, rect.top - mh - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelectorAll('button[data-tid]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tid = btn.dataset.tid;
+      closeEnhancePicker();
+      if (tid) startEnhanceStream(nodeId, tid);
+    });
+  });
+  setTimeout(() => {
+    const onDoc = (e) => {
+      if (menu.contains(e.target)) return;
+      closeEnhancePicker();
+      document.removeEventListener('click', onDoc, true);
+    };
+    document.addEventListener('click', onDoc, true);
+  }, 0);
+}
+
 // Render ONE data frame with the native Remotion template and stream progress,
 // mirroring startExportStream. On done, swap that frame's thumbnail + centre
 // preview to the rendered <video>. User-initiated only (the toggle's click).
-async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup') {
+async function startEnhanceStream(nodeId, nativeTemplateId) {
   if (!state.selected || state.enhancing) return;
+  const tid = nativeTemplateId || state.nativeDefaultId || 'frame-data-rollup';
   const projectId = state.selected.id;
   state.enhancing = { nodeId, pct: 0, stage: 'starting' };
+  closeEnhancePicker();
   renderFramesStrip();
 
   let res;
@@ -242,7 +312,7 @@ async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup'
     res = await fetch(`/api/projects/${projectId}/frames/${encodeURIComponent(nodeId)}/enhance`, {
       method: 'POST',
       headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ nativeTemplateId }),
+      body: JSON.stringify({ nativeTemplateId: tid }),
     });
   } catch (e) {
     state.enhancing = null;
@@ -278,7 +348,7 @@ async function startEnhanceStream(nodeId, nativeTemplateId = 'frame-data-rollup'
         } else if (ev.type === 'enhance_done') {
           state.enhancing = null;
           if (ev.project) state.selected = ev.project; // bumped updatedAt → fresh <video> URL
-          state.messages.push({ role: 'preview-event', content: t('enhance.done'), ts: Date.now() });
+          state.messages.push({ role: 'preview-event', content: t('enhance.done_with', { template: nativeTemplateShortLabel(tid) }), ts: Date.now() });
           renderChatLog();
           renderFramesStrip();
           renderPreview();
@@ -339,6 +409,13 @@ async function revealExportedFile() {
 async function refreshTemplates() {
   const r = await API.templates();
   state.templates = r.templates ?? [];
+  try {
+    const n = await API.nativeTemplates();
+    state.nativeTemplates = n.templates ?? [];
+    if (n.default_id) state.nativeDefaultId = n.default_id;
+  } catch {
+    state.nativeTemplates = (state.templates ?? []).filter((t) => t.native);
+  }
 }
 async function refreshAgents() {
   try { state.agents = (await API.agents()).agents ?? []; }
@@ -2230,13 +2307,14 @@ function renderFramesStrip() {
   });
   // Per-frame enhance / revert toggle (data frames only). stopPropagation so
   // clicking it doesn't also fire the parent tab's frame-switch handler.
+  // Enhance opens a chart-type picker (5 native Remotion templates).
   strip.querySelectorAll('.frame-enhance').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       if (state.enhancing) return; // single in-flight; ignore double-clicks
       const fid = el.dataset.fid;
       if (el.dataset.act === 'unenhance') unenhanceFrameAction(fid);
-      else if (el.dataset.act === 'enhance') startEnhanceStream(fid);
+      else if (el.dataset.act === 'enhance') openEnhancePicker(fid, el);
     });
   });
   const gbtn = document.getElementById('btn-show-graph');

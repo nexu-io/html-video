@@ -1,0 +1,154 @@
+spec_version: 1
+id: frame-data-donut
+name: Data Donut
+description: >
+  A native Remotion donut/ring chart template: SVG slices grow in with spring
+  physics, the center figure rolls from 0 to its real value, and legend entries
+  slide in with staggered timing. The second native Remotion template (after
+  frame-data-rollup) — shows that Phase 2 data-driven compositions can express
+  any chart vocabulary, not just bars. Adapted from Hermes Studio's SceneDonut
+  component (SCPM KPI dashboard).
+
+engine: remotion
+engine_version: ^4.0.0
+source_entry: source/entry.ts
+native:
+  compositionId: DataDonut
+
+category: data-viz
+subcategory: pie-donut
+tags: [data, chart, donut, ring, pie, animated, svg, remotion, native, kpi, distribution]
+
+best_for:
+  - "A data frame where proportional breakdown should animate, not sit static"
+  - "Revenue / budget / headcount distribution by category"
+  - "KPI water-level attainment distribution (e.g. 4-tier scoring)"
+  - "Enhancing a composition frame in an otherwise hyperframes video"
+
+not_for:
+  - "Precise comparisons between categories (use a bar chart instead)"
+  - "More than ~8 slices (the chart gets crowded — consider grouping small items)"
+  - "Decorative title cards (use a hyperframes template)"
+
+output:
+  formats: [mp4, webm]
+  default_format: mp4
+  resolution:
+    default: { width: 1920, height: 1080 }
+    supported_aspects: ["16:9", "9:16", "1:1"]
+  fps:
+    default: 30
+    supported: [30, 60]
+  duration:
+    type: variable
+    min_sec: 4
+    max_sec: 10
+  alpha: true
+  audio:
+    supported: false
+    expected_inputs: []
+
+inputs:
+  schema:
+    type: object
+    required: [data]
+    properties:
+      data:
+        type: object
+        required: [items]
+        properties:
+          title:
+            type: "string"
+            maxLength: 48
+            description: "Optional heading shown above the chart"
+          unit:
+            type: "string"
+            maxLength: 4
+            description: "Optional suffix after the center rolled number, e.g. K or %"
+          centerValue:
+            type: "number"
+            description: "Optional center figure; defaults to the sum of all items"
+          centerLabel:
+            type: "string"
+            maxLength: 16
+            description: "Optional label under the center figure. Default 'Total'"
+          items:
+            type: "array"
+            maxItems: 8
+            description: "The donut slices; each sweeps in with spring animation"
+            items:
+              type: object
+              required: [label, value]
+              properties:
+                label: { type: "string", maxLength: 24 }
+                value: { type: "number" }
+                color:
+                  type: "string"
+                  description: "Optional hex color. Auto-assigned from a 10-color palette if omitted"
+      background:
+        type: "string"
+        description: "Background color (hex). Default #0E0E10"
+      foreground:
+        type: "string"
+        description: "Title / label color (hex). Default #F5F5F2"
+      muted:
+        type: "string"
+        description: "Muted text color for legend labels (hex). Default #888888"
+  examples:
+    - {"data": {"title": "Revenue by Region", "unit": "K", "items": [{"label": "North America", "value": 420, "color": "#3B82F6"}, {"label": "Europe", "value": 280, "color": "#22C55E"}, {"label": "Asia Pacific", "value": 190, "color": "#EAB308"}, {"label": "Latin America", "value": 75, "color": "#F97316"}, {"label": "Middle East", "value": 35, "color": "#A855F7"}]}}
+    - {"data": {"title": "KPI Attainment", "unit": "%", "items": [{"label": "Exceed Target", "value": 28}, {"label": "Met Target", "value": 35}, {"label": "Met Threshold", "value": 22}, {"label": "Below Threshold", "value": 15}], "centerLabel": "Items"}, "background": "#0B1120", "foreground": "#FFFFFF"}
+
+license:
+  spdx: Apache-2.0
+  attribution_required: true
+  redistribution_allowed: true
+  commercial_use: true
+
+provenance:
+  # L1 — original data-viz vocabulary, not derived from a specific studio
+  origin:
+    name: "none"
+    kind: none
+    reference: >
+      Standard donut-chart data-visualization vocabulary. Not derived from any
+      specific studio, designer, or upstream template.
+  # L2 — adapted from Hermes Studio / SCPM, implemented from scratch
+  via_skill:
+    name: "Hermes Studio"
+    author: "chenys"
+    url: https://github.com/chenys/hermes-studio
+    license: Apache-2.0
+    source_file: "src/video/scenes.tsx (SceneDonut component)"
+  # L3 — what changed
+  transformation: >
+    Adapted from the Hermes Studio SCPM dashboard SceneDonut component. The
+    original used a hardcoded data shape for KPI water-level attainment; this
+    template generalizes to arbitrary label/value items with optional per-slice
+    colors. Rewritten from scratch as a standalone Remotion composition with
+    responsive layout (useVideoConfig for 16:9/9:16/1:1), system fonts only,
+    spring-physics slice animation, center figure rollup, and staggered legend
+    slide-in. Original Hermes Studio code used Arial + SVG circles with
+    strokeDasharray; this uses proper SVG arc paths and a 10-color palette.
+
+author:
+  name: nexu-io
+  url: https://github.com/nexu-io
+  contact: open-design@nexu.io
+
+version: 0.1.0
+changelog:
+  - version: 0.1.0
+    date: 2026-06-09
+    notes: >
+      Second native Remotion template (RFC-08 Phase 2) — donut/ring chart with
+      spring-animated SVG slices, center figure rollup, staggered legend.
+      Contributed from Hermes Studio's SceneDonut component.
+
+preview:
+  poster: preview.png
+
+performance:
+  reference_render:
+    duration_sec: 5
+    render_wall_clock_sec: 45
+    machine: "M2 MacBook Air"

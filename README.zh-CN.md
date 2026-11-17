@@ -71,7 +71,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 | 引擎 | 范式 | 取舍 | 在 html-video 中 |
 |---|---|---|---|
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | HTML + CSS + GSAP，agent skill 驱动 | 单一渲染范式 | ✅ **已发布** —— 默认引擎；经无头 Chromium + ffmpeg 渲染出真实 MP4 |
-| [Remotion](https://www.remotion.dev/) | React 组件 | source-available，4 人以上收费 | 🗺️ 计划中 |
+| [Remotion](https://www.remotion.dev/) | React 组件 | source-available，4 人以上收费 | ✅ **已发布** —— 按帧可选增强；5 个原生数据图表（柱状 / 圆环 / 横条 / 折线 / 雷达） |
 | [Motion Canvas](https://github.com/motion-canvas/motion-canvas) · [Revideo](https://github.com/redotvideo/revideo) | canvas 上的 TypeScript 生成器 | 最适合解说类、代码优先 | 🗺️ 计划中 |
 | [Manim](https://github.com/3b1b/manim) 等 | 数学 / 3D 优先 | 小众 | 🗺️ 调研中 |
 
@@ -81,7 +81,7 @@ HTML→Video 是个真实存在的品类 —— 但每个引擎都各有主张�
 
 同一套思路也驱动着 [Open Design](https://github.com/nexu-io/open-design) 在*设计*领域的产品 —— 凌驾于众多工具之上的 agent meta-layer。html-video 是同一团队在*动态视频*这一面的对应物。
 
-> **状态：** 可插拔引擎架构已就位，**Hyperframes 引擎已完整接通、能渲染出真实 MP4** —— 无头 Chromium 逐帧录制带动画的 HTML，再用 ffmpeg 编码（libx264）。Remotion、Motion Canvas / Revideo、Manim 在路线图上：适配器接口已为它们设计好，但适配器本身还没写。上表「在 html-video 中」这一列，是当下真正可运行内容的唯一权威来源。
+> **状态：** 可插拔引擎架构已就位。**Hyperframes** 是默认基座（无头 Chromium + ffmpeg → 真实 MP4）。**Remotion** 可作为用户主动开启的按帧增强（原生数据图表）；混引擎成片走 ffmpeg concat filter。Motion Canvas / Revideo、Manim 仍在路线图上。上表「在 html-video 中」这一列，是当下真正可运行内容的唯一权威来源。
 
 ---
 
@@ -266,8 +266,10 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 - [x] AI 配乐（MiniMax 音乐 + 旁白），导出时混合
 - [x] 真实 MP4 渲染 —— Hyperframes 引擎经无头 Chromium + ffmpeg
 - [x] Agent 模型选择 —— Open Design (Vela) 后端，实时模型目录
-- [ ] Remotion / Motion Canvas / Revideo 适配器
-- [ ] Agent skill 包 + 模板市场
+- [x] Remotion 适配器 —— 桥接 + 5 个原生数据模板；按帧增强（CLI + Studio）
+- [x] Agent skill —— 根目录 `SKILL.md` + 可安装 Claude Code / Cursor 副本（`scripts/install-agent-skill.sh`）
+- [ ] Motion Canvas / Revideo 适配器
+- [ ] 模板市场
 
 ---
 

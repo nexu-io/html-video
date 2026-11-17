@@ -72,11 +72,23 @@ packages/
 ├── content-graph/         Multi-frame storyboard IR (nodes + edges, topo-sort)
 ├── runtime/               Agent runtime — detect / spawn / stream (13 agents)
 ├── adapter-hyperframes/   Hyperframes engine adapter — Chromium + ffmpeg render
+├── adapter-remotion/      Remotion adapter — bridge + native data compositions
 ├── cli/                   `html-video` command + studio HTTP server + source fetching
 └── project-studio/        Browser studio UI (chat, gallery, frames, soundtrack, export)
-templates/                 21 curated, license-clean video templates
+templates/                 27 curated, license-clean video templates
+skills/html-video/         Installable Claude Code / Cursor agent skill
+.cursor/skills/html-video/ Project-scoped Cursor skill
 research/                  RFCs (engine adapter / template metadata / agent skill / content-graph)
 ```
+
+### Agent skill install
+
+```bash
+bash scripts/install-agent-skill.sh            # → ~/.claude/skills/html-video/
+bash scripts/install-agent-skill.sh --with-cursor  # also → ~/.cursor/skills/html-video/
+```
+
+Repo-root [`SKILL.md`](SKILL.md) is the canonical CLI contract; keep the copies in sync when you change commands.
 
 ---
 

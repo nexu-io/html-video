@@ -1,0 +1,1 @@
+{"name":"@html-video/template-frame-data-radar","version":"0.1.0","description":"html-video template: frame-data-radar (native Remotion radar/spider chart with warn threshold)","license":"Apache-2.0","private":true,"files":["template.html-video.yaml","source","SKILL.md","example.md","preview.png"]}

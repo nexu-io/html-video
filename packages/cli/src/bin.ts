@@ -1,23 +1,32 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cacModule from 'cac';
-import { bootstrap } from './context.js';
-import { setJsonMode, ok, fail } from './output.js';
 import { runDoctor } from './commands/doctor.js';
 import { listEngines } from './commands/list-engines.js';
-import { searchTemplates, inspectTemplate } from './commands/templates.js';
+import { listNativeTemplates } from './commands/list-native-templates.js';
 import {
-  projectCreate,
-  projectList,
-  projectShow,
-  projectDelete,
   projectAddAsset,
+  projectCreate,
+  projectDelete,
+  projectEnhanceFrame,
+  projectGetGraph,
+  projectList,
+  projectPreview,
   projectRemoveAsset,
+  projectRender,
+  projectSetGraph,
   projectSetTemplate,
   projectSetVar,
   projectSetVars,
-  projectPreview,
-  projectRender,
+  projectShow,
+  projectUnenhanceFrame,
+  projectWriteFrame,
 } from './commands/project.js';
+import { inspectTemplate, searchTemplates } from './commands/templates.js';
+import { bootstrap } from './context.js';
+import { fail, ok, setJsonMode } from './output.js';
 import { startStudioServer } from './studio-server.js';
 
 // cac is a CJS default export; ESM interop sometimes wraps it in `.default`
@@ -41,6 +50,14 @@ cli.command('list-engines', 'List installed engine adapters').action(async (opts
   const ctx = await bootstrap({ cwd: opts.cwd });
   await listEngines(ctx);
 });
+
+cli
+  .command('list-native-templates', 'List native Remotion templates for frame enhancement')
+  .action(async (opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await listNativeTemplates(ctx);
+  });
 
 cli
   .command('search-templates', 'Search templates by intent')
@@ -92,21 +109,17 @@ cli.command('project-list', 'List all projects').action(async (opts: any) => {
   await projectList(ctx);
 });
 
-cli
-  .command('project-show <id>', 'Show project details')
-  .action(async (id: string, opts: any) => {
-    setJsonMode(!!opts.json);
-    const ctx = await bootstrap({ cwd: opts.cwd });
-    await projectShow(ctx, id);
-  });
+cli.command('project-show <id>', 'Show project details').action(async (id: string, opts: any) => {
+  setJsonMode(!!opts.json);
+  const ctx = await bootstrap({ cwd: opts.cwd });
+  await projectShow(ctx, id);
+});
 
-cli
-  .command('project-delete <id>', 'Delete a project')
-  .action(async (id: string, opts: any) => {
-    setJsonMode(!!opts.json);
-    const ctx = await bootstrap({ cwd: opts.cwd });
-    await projectDelete(ctx, id);
-  });
+cli.command('project-delete <id>', 'Delete a project').action(async (id: string, opts: any) => {
+  setJsonMode(!!opts.json);
+  const ctx = await bootstrap({ cwd: opts.cwd });
+  await projectDelete(ctx, id);
+});
 
 cli
   .command('project-add-asset <id>', 'Add an asset to a project')
@@ -187,6 +200,67 @@ cli
     });
   });
 
+// ====== v0.8: content-graph + multi-frame (RFC-06) ======
+
+cli
+  .command('project-get-graph <id>', 'Read the project content-graph JSON')
+  .action(async (id: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await projectGetGraph(ctx, id);
+  });
+
+cli
+  .command('project-set-graph <id>', 'Write a content-graph from a JSON file')
+  .option('--graph-file <path>', 'Path to content-graph JSON (required)')
+  .option('--preserve-frames', 'Keep existing frames; only sync durations from graph')
+  .action(async (id: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await projectSetGraph(ctx, id, {
+      graphFile: opts.graphFile,
+      preserveFrames: !!opts.preserveFrames,
+    });
+  });
+
+cli
+  .command('project-write-frame <id>', 'Write HTML for one graph node')
+  .option('--node <nodeId>', 'Graph node id (required)')
+  .option('--html-file <path>', 'Path to frame HTML file')
+  .option('--html <text>', 'Inline HTML string')
+  .action(async (id: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await projectWriteFrame(ctx, id, {
+      node: opts.node,
+      htmlFile: opts.htmlFile,
+      html: opts.html,
+    });
+  });
+
+cli
+  .command('project-enhance-frame <id>', 'Enhance a data frame with a native Remotion template')
+  .option('--node <nodeId>', 'Graph node id (required)')
+  .option('--native-template <templateId>', 'Native Remotion template id (required)')
+  .action(async (id: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await projectEnhanceFrame(ctx, id, {
+      node: opts.node,
+      nativeTemplate: opts.nativeTemplate,
+    });
+  });
+
+cli
+  .command('project-unenhance-frame <id>', 'Revert a frame from native Remotion back to HTML')
+  .option('--node <nodeId>', 'Graph node id (required)')
+  .action(async (id: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    if (!opts.node) fail('invalid-input', '--node required');
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await projectUnenhanceFrame(ctx, id, opts.node);
+  });
+
 // ====== Studio (HTML Anything-style three-pane UI) ======
 
 cli
@@ -211,5 +285,8 @@ cli
   });
 
 cli.help();
-cli.version('0.1.0');
+const pkg = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
+) as { version: string };
+cli.version(pkg.version);
 cli.parse();
