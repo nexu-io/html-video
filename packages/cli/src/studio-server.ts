@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import { AssetStore, generateTts, generateMusic, formatExportDisplayName } from '@html-video/core';
+import type { Project } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -66,6 +67,50 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (url.pathname === '/api/projects' && m === 'GET') {
         const list = await ctx.orchestrator.list();
         return json(res, 200, { projects: list });
+      }
+
+      // Flatten export history across all projects (newest first).
+      if (url.pathname === '/api/library' && m === 'GET') {
+        const projects = await ctx.orchestrator.list();
+        const items: Array<{
+          projectId: string;
+          projectName: string;
+          filename: string;
+          displayName: string;
+          createdAt: string;
+        }> = [];
+        for (const p of projects) {
+          const seen = new Set<string>();
+          for (const ex of p.exports ?? []) {
+            if (!ex.filename || seen.has(ex.filename)) continue;
+            if (!existsSync(ex.path)) continue;
+            seen.add(ex.filename);
+            items.push({
+              projectId: p.id,
+              projectName: p.name,
+              filename: ex.filename,
+              displayName: ex.displayName ?? formatExportDisplayName(ex.createdAt),
+              createdAt: ex.createdAt,
+            });
+          }
+          // Projects exported before the history field existed only have
+          // lastOutputMp4Path — surface that too so old exports aren't lost.
+          if (p.lastOutputMp4Path && existsSync(p.lastOutputMp4Path)) {
+            const fname = basename(p.lastOutputMp4Path);
+            if (!seen.has(fname)) {
+              const createdAt = p.updatedAt ?? new Date().toISOString();
+              items.push({
+                projectId: p.id,
+                projectName: p.name,
+                filename: fname,
+                displayName: formatExportDisplayName(createdAt),
+                createdAt,
+              });
+            }
+          }
+        }
+        items.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+        return json(res, 200, { items });
       }
 
       // Create project
@@ -1309,6 +1354,30 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const sub = previewServeMatch[2] ?? '/preview.html';
         const project = await ctx.orchestrator.load(projId);
 
+        // Latest exported MP4 (shortcut) or a specific export from history.
+        if (sub === '/export.mp4' || sub === '/export.mp4/') {
+          const out = project.lastOutputMp4Path;
+          if (out && existsSync(out)) {
+            const fname = basename(out);
+            return serveExportMp4(out, fname, url, res, exportDownloadLabel(project, fname));
+          }
+          res.writeHead(404);
+          return res.end('No export yet');
+        }
+        const exportFileMatch = sub.match(/^\/exports\/([^/]+\.mp4)$/i);
+        if (exportFileMatch && exportFileMatch[1]) {
+          const filename = decodeURIComponent(exportFileMatch[1]);
+          const entry = (project.exports ?? []).find((e) => e.filename === filename);
+          if (entry && existsSync(entry.path)) {
+            return serveExportMp4(entry.path, filename, url, res, exportDownloadLabel(project, filename, entry));
+          }
+          if (project.lastOutputMp4Path && basename(project.lastOutputMp4Path) === filename && existsSync(project.lastOutputMp4Path)) {
+            return serveExportMp4(project.lastOutputMp4Path, filename, url, res, exportDownloadLabel(project, filename));
+          }
+          res.writeHead(404);
+          return res.end('Export not found');
+        }
+
         // Phase C: serve an enhanced frame's preview MP4 (native Remotion frames
         // have no HTML). Match the `.mp4` suffix BEFORE the plain HTML frame route.
         const frameMp4Match = sub.match(/^\/frame\/([a-z0-9_-]+)\.mp4$/i);
@@ -1584,6 +1653,42 @@ function injectCompositionPlayer(html: string): string {
 
   if (out.includes('</body>')) return out.replace('</body>', player + '\n</body>');
   return out + player;
+}
+
+/** Human-friendly filename for the Content-Disposition header — prefers the
+ *  export's displayName over the on-disk timestamp filename. */
+function exportDownloadLabel(
+  project: Project,
+  storageFilename: string,
+  entry?: { displayName?: string; createdAt: string },
+): string {
+  const resolved = entry ?? (project.exports ?? []).find((e) => e.filename === storageFilename);
+  const display = resolved?.displayName
+    ?? formatExportDisplayName(resolved?.createdAt ?? project.updatedAt ?? new Date().toISOString());
+  const base = display.replace(/[/\\?%*:|"<>]/g, '-').trim().slice(0, 80) || 'video';
+  return base.endsWith('.mp4') ? base : `${base}.mp4`;
+}
+
+async function serveExportMp4(
+  filePath: string,
+  storageFilename: string,
+  url: URL,
+  res: ServerResponse,
+  downloadLabel?: string,
+): Promise<void> {
+  const download = url.searchParams.get('download') === '1';
+  const buf = await readFile(filePath);
+  const headers: Record<string, string> = {
+    'content-type': 'video/mp4',
+    'cache-control': 'no-store, no-cache, must-revalidate',
+    pragma: 'no-cache',
+  };
+  if (download) {
+    const name = (downloadLabel ?? storageFilename).replace(/"/g, '');
+    headers['content-disposition'] = `attachment; filename="${name}"`;
+  }
+  res.writeHead(200, headers);
+  res.end(buf);
 }
 
 async function serveFile(filePath: string, res: ServerResponse): Promise<void> {

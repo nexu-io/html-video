@@ -922,11 +922,25 @@ async function muxAudioWithFfmpeg(args: {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Default library label for an export — local date/time, minute precision. */
+export function formatExportDisplayName(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Append this export to the project's history (newest last, de-duped by path,
  *  capped so it doesn't grow unbounded). */
 function recordExport(project: Project, outputPath: string): void {
+  const createdAt = new Date().toISOString();
   const list = (project.exports ?? []).filter((e) => e.path !== outputPath);
-  list.push({ path: outputPath, filename: basename(outputPath), createdAt: new Date().toISOString() });
+  list.push({
+    path: outputPath,
+    filename: basename(outputPath),
+    createdAt,
+    displayName: formatExportDisplayName(createdAt),
+  });
   // Keep the most recent 20.
   project.exports = list.slice(-20);
 }

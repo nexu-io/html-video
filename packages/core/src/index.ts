@@ -8,7 +8,7 @@ export type { ErrorCode } from './errors.js';
 export { AssetStore } from './asset-store.js';
 export type { AssetStoreOptions } from './asset-store.js';
 export { EngineRegistry, TemplateRegistry, ProjectStore } from './registry.js';
-export { ProjectOrchestrator } from './project.js';
+export { ProjectOrchestrator, formatExportDisplayName } from './project.js';
 export type {
   CreateProjectInput,
   ProjectOrchestratorDeps,

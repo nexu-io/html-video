@@ -42,6 +42,22 @@ const DICT = {
     'toolbar.agent_install': '○ install',
     'toolbar.export_mp4': 'Export MP4',
 
+    'nav.create': 'Create',
+    'nav.library': 'My Videos',
+
+    'library.title': 'My Videos',
+    'library.count': '{n} export(s)',
+    'library.empty_sub': 'No exports yet',
+    'library.empty_title': 'No videos yet',
+    'library.empty_body': 'Export an MP4 from Create — it will show up here to play or download.',
+    'library.go_create': 'Go to Create',
+    'library.play': 'Play',
+    'library.download': 'Download',
+    'library.continue_edit': 'Continue editing',
+    'library.project_missing': 'Project not found — refresh and try again',
+    'library.back': '← Back',
+    'library.back_list': 'Back to list',
+
     'composer.placeholder.no_project': 'Pick a project first…',
     'composer.placeholder.detecting_agents': 'Describe the video while we check for agents…',
     'composer.placeholder.no_agent': 'Install Claude Code (claude CLI) to enable chat…',
@@ -115,6 +131,8 @@ const DICT = {
     'export.copied': 'Path copied',
     'export.copy_failed': 'Copy failed: {message}',
     'export.reveal_failed': 'Open failed: {message}',
+    'export.ready_toast': '✓ Video exported — find it in My Videos',
+    'export.ready_player': '✓ Video ready — playing in My Videos',
 
     'soundtrack.title': '🎵 Add background music & narration',
     'soundtrack.summary_sub': 'AI music + voiceover, mixed into your export',
@@ -294,6 +312,22 @@ const DICT = {
     'toolbar.agent_install': '○ 待装',
     'toolbar.export_mp4': '导出 MP4',
 
+    'nav.create': '制作视频',
+    'nav.library': '我的视频',
+
+    'library.title': '我的视频',
+    'library.count': '共 {n} 个导出',
+    'library.empty_sub': '暂无导出',
+    'library.empty_title': '还没有视频',
+    'library.empty_body': '在「制作视频」里导出 MP4 后，会出现在这里，方便播放和下载。',
+    'library.go_create': '去制作视频',
+    'library.play': '播放',
+    'library.download': '下载',
+    'library.continue_edit': '继续编辑',
+    'library.project_missing': '找不到项目 — 请刷新后重试',
+    'library.back': '← 返回',
+    'library.back_list': '返回列表',
+
     'composer.placeholder.no_project': '先选一个项目…',
     'composer.placeholder.detecting_agents': '描述视频（正在探测 agent）…',
     'composer.placeholder.no_agent': '装 claude CLI 后即可聊天…',
@@ -364,6 +398,8 @@ const DICT = {
     'export.copied': '已复制路径',
     'export.copy_failed': '复制失败：{message}',
     'export.reveal_failed': '打开失败：{message}',
+    'export.ready_toast': '✓ 视频已导出 — 可在「我的视频」中查看',
+    'export.ready_player': '✓ 成片已就绪 — 正在「我的视频」中播放',
 
     'soundtrack.title': '🎵 添加背景音乐和配音',
     'soundtrack.summary_sub': 'AI 配乐 + 旁白，导出时自动混入',

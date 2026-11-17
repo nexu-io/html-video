@@ -421,7 +421,7 @@ export interface Project {
   lastOutputMp4Path?: string;
   /** Export history — every MP4 exported for this project, newest last. Each
    *  export writes a uniquely-named file so older ones aren't overwritten. */
-  exports?: Array<{ path: string; createdAt: string; filename: string }>;
+  exports?: Array<{ path: string; createdAt: string; filename: string; displayName?: string }>;
   /**
    * v0.8: path to content-graph.json for multi-frame projects.
    * Absent for single-frame fast-path projects.
