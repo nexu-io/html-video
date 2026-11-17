@@ -75,6 +75,7 @@ const state = {
   // Phase C: per-frame native Remotion enhancement
   frameKinds: {},          // { [graphNodeId]: 'entity'|'data'|'text' } for the selected project
   enhancing: null,         // { nodeId, pct, stage } while a single-frame enhance render is in flight
+  generatedVideoAssetId: null, // latest video clip generated for the selected project
 };
 
 // ============== boot ==============
@@ -355,6 +356,7 @@ async function selectProject(id) {
   state.activeFrameId = null;  // reset frame selection on project switch
   state.iterateFocusFrameId = null;
   state.editTextMode = false;
+  state.generatedVideoAssetId = null;
   state.enhancing = null;
   // Phase C: map graph node id → kind so the strip can show the "⚡ Enhance"
   // toggle only on data frames. One fetch per project switch.
@@ -789,6 +791,20 @@ function renderMain() {
               <span class="soundtrack-badge">${t('soundtrack.optional')}</span>
             </summary>
             <div class="soundtrack-body">
+              <!-- ===== Video clip generation ===== -->
+              <div class="st-section st-video-generation">
+                <div class="st-section-title">${t('video_gen.label')}</div>
+                <p class="soundtrack-hint">${t('video_gen.hint')}</p>
+                <div class="soundtrack-field">
+                  <textarea id="st-video-prompt" rows="2" placeholder="${t('video_gen.placeholder')}"></textarea>
+                </div>
+                <div class="st-section-actions">
+                  <button class="st-generate" id="btn-st-gen-video">${t('video_gen.generate')}</button>
+                  <span class="st-status" id="st-video-status"></span>
+                </div>
+                <div class="video-preview" id="st-video-preview"></div>
+              </div>
+
               <!-- ===== Background music: its own input + generate ===== -->
               <div class="st-section">
                 <div class="st-section-title">${t('soundtrack.music_label')}</div>
@@ -925,6 +941,9 @@ function wireSoundtrackPanel() {
   const clearBtn = document.getElementById('btn-st-clear');
   const musicStatusEl = document.getElementById('st-music-status');
   const narrationStatusEl = document.getElementById('st-narration-status');
+  const videoPrompt = document.getElementById('st-video-prompt');
+  const genVideoBtn = document.getElementById('btn-st-gen-video');
+  const videoStatusEl = document.getElementById('st-video-status');
   const previewEl = document.getElementById('st-preview');
   const draftFrameBtn = document.getElementById('btn-st-draft-frame');
   const draftAllBtn = document.getElementById('btn-st-draft-all');
@@ -1160,8 +1179,74 @@ function wireSoundtrackPanel() {
       clearBtn.disabled = false;
     }
   }
+
+  async function runGenerateVideo() {
+    if (!state.selected || !videoPrompt || !genVideoBtn) return;
+    const prompt = videoPrompt.value.trim();
+    if (!prompt) {
+      if (videoStatusEl) videoStatusEl.textContent = t('video_gen.empty');
+      return;
+    }
+    const label = genVideoBtn.textContent;
+    genVideoBtn.disabled = true;
+    if (videoStatusEl) videoStatusEl.textContent = t('video_gen.starting');
+
+    try {
+      const res = await fetch(`/api/projects/${state.selected.id}/generate-video`, {
+        method: 'POST',
+        headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const events = buf.split('\n\n');
+        buf = events.pop() ?? '';
+        for (const line of events) {
+          if (!line.startsWith('data: ')) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.type === 'video_started' && videoStatusEl) {
+            videoStatusEl.textContent = t('video_gen.starting');
+          } else if (ev.type === 'video_progress' && videoStatusEl) {
+            videoStatusEl.textContent = ev.message || t('video_gen.generating');
+          } else if (ev.type === 'video_done') {
+            if (ev.project) state.selected = ev.project;
+            state.generatedVideoAssetId = ev.asset?.id ?? null;
+            renderGeneratedVideoPreview(state.generatedVideoAssetId);
+            if (videoStatusEl) videoStatusEl.textContent = t('video_gen.done');
+          } else if (ev.type === 'video_failed' && videoStatusEl) {
+            videoStatusEl.textContent = t('video_gen.failed', { message: ev.message });
+          }
+        }
+      }
+    } catch (e) {
+      if (videoStatusEl) videoStatusEl.textContent = t('video_gen.failed', { message: e?.message ?? e });
+    } finally {
+      genVideoBtn.disabled = false;
+      genVideoBtn.textContent = label;
+    }
+  }
+
   if (genMusicBtn) genMusicBtn.onclick = () => runGenerate('music');
   if (genNarrationBtn) genNarrationBtn.onclick = () => runGenerate('narration');
+  if (genVideoBtn) genVideoBtn.onclick = runGenerateVideo;
+  renderGeneratedVideoPreview(state.generatedVideoAssetId);
+}
+
+function renderGeneratedVideoPreview(assetId) {
+  const previewEl = document.getElementById('st-video-preview');
+  if (!previewEl || !assetId || !state.selected) return;
+  const asset = (state.selected.assets || []).find((item) => item.id === assetId);
+  if (!asset?.path) return;
+  const src = `/asset?path=${encodeURIComponent(asset.path)}`;
+  previewEl.innerHTML = `<video controls preload="metadata" src="${src}"></video>`;
 }
 
 function renderSoundtrackPreview(soundtrack) {
@@ -3254,4 +3339,3 @@ init().catch((e) => {
   console.error('[hv-studio] init failed:', e);
   try { toast(`init 失败：${e.message}`, 'error'); } catch {}
 });
-
