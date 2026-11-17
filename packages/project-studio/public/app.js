@@ -729,9 +729,28 @@ function wireToolbar() {
   }
   const nameInput = document.getElementById('proj-name');
   if (nameInput) {
-    nameInput.onblur = () => {
-      if (state.selected) nameInput.value = state.selected.name;
-    };
+    nameInput.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') { nameInput.blur(); }
+      if (e.key === 'Escape') { if (state.selected) nameInput.value = state.selected.name; nameInput.blur(); }
+    });
+    nameInput.addEventListener('blur', async () => {
+      if (!state.selected) return;
+      const trimmed = nameInput.value.trim();
+      if (!trimmed || trimmed === state.selected.name) { nameInput.value = state.selected.name; return; }
+      try {
+        await API.patchProject(state.selected.id, { name: trimmed });
+        state.selected.name = trimmed;
+        // Also update the name in state.projects so the sidebar renders the new title
+        const proj = state.projects.find((p) => p.id === state.selected.id);
+        if (proj) proj.name = trimmed;
+        renderSidebar();
+        renderFooter();
+        toast(t('sidebar.renamed') || 'Renamed');
+      } catch (e) {
+        nameInput.value = state.selected.name;
+        toast(`${e?.message ?? e}`, 'error');
+      }
+    });
   }
   const sidebarToggle = document.getElementById('btn-sidebar-toggle');
   if (sidebarToggle) {
