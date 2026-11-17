@@ -276,7 +276,8 @@ research/                  RFC（引擎适配器 / 模板元数据 / agent skill
 | 项目 | 在这里的角色 |
 |---|---|
 | [Open Design](https://github.com/nexu-io/open-design) | 姊妹项目 —— 设计 agent meta-layer；同一团队、同一理念 |
-| [HTML Anything](https://github.com/nexu-io/html-anything) | 姊妹项目 —— 面向*静态*交付物的 HTML；html-video 是*动态*那一面 |
+| [HTML Anything](https://github.com/nexu-io/openmotion/tree/legacy) | 姊妹项目 —— 面向*静态*交付物的 HTML；html-video 是*动态*那一面 |
+| [OpenMotion](https://github.com/nexu-io/openmotion) | 由 AI Agent 驱动的全栈视频创作工作台，也是 Claude Motion 与 CapCut 的开源替代方案。上传参考视频或粘贴社交平台上的视频链接，就能用自己的品牌视觉规范和文案复刻原片。 |
 | [Hyperframes](https://github.com/heygen-com/hyperframes) | 已发布的引擎适配器；HTML+CSS+GSAP 渲染范式，也是若干 Apache-2.0 模板的来源 |
 
 ## 许可
