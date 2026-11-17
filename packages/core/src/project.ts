@@ -443,15 +443,24 @@ export class ProjectOrchestrator {
     const tmpl = this.deps.templates.get(project.templateId);
     const adapter = this.deps.engines.get(tmpl.engine);
 
+    // Use the agent-generated HTML if available; fall back to the template source.
+    const singleFrameTemplateRef = project.lastPreviewHtmlPath
+      ? { id: tmpl.id, engine: tmpl.engine, sourcePath: project.lastPreviewHtmlPath }
+      : templateRefFromMeta(tmpl);
+    // Honor the user-set duration; fall back to 'auto' so the adapter probes animation length.
+    const singleFrameDuration = project.preferences.durationTargetSec ?? 'auto';
+    const singleFrameDurationMode = typeof singleFrameDuration === 'number' ? 'explicit' as const : undefined;
+
     await adapter.render(
       {
-        template: templateRefFromMeta(tmpl),
+        template: singleFrameTemplateRef,
         variables: project.variables,
         config: {
           format: 'mp4',
           resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
           fps: project.preferences.fps ?? 60,
-          duration: 'auto',
+          duration: singleFrameDuration,
+          ...(singleFrameDurationMode && { durationMode: singleFrameDurationMode }),
           outputPath,
         },
       },
