@@ -801,6 +801,7 @@ function renderMain() {
                   <button class="st-generate" id="btn-st-gen-music">${t('soundtrack.gen_music')}</button>
                   <span class="st-status" id="st-music-status"></span>
                 </div>
+                <div class="soundtrack-preview" id="st-music-preview"></div>
               </div>
 
               <!-- ===== Narration / voiceover ===== -->
@@ -842,13 +843,13 @@ function renderMain() {
                     <button class="st-generate" id="btn-st-gen-narration">${t('soundtrack.gen_narration')}</button>
                     <span class="st-status" id="st-narration-status"></span>
                   </div>
+                  <div class="soundtrack-preview" id="st-narration-preview"></div>
                 </div>
               </div>
 
               <div class="soundtrack-actions">
                 <button class="st-clear" id="btn-st-clear">${t('soundtrack.clear')}</button>
               </div>
-              <div class="soundtrack-preview" id="st-preview"></div>
             </div>
           </details>
         </section>
@@ -925,7 +926,8 @@ function wireSoundtrackPanel() {
   const clearBtn = document.getElementById('btn-st-clear');
   const musicStatusEl = document.getElementById('st-music-status');
   const narrationStatusEl = document.getElementById('st-narration-status');
-  const previewEl = document.getElementById('st-preview');
+  const musicPreviewEl = document.getElementById('st-music-preview');
+  const narrationPreviewEl = document.getElementById('st-narration-preview');
   const draftFrameBtn = document.getElementById('btn-st-draft-frame');
   const draftAllBtn = document.getElementById('btn-st-draft-all');
   const whichEl = document.getElementById('st-narration-which');
@@ -1079,7 +1081,8 @@ function wireSoundtrackPanel() {
     await fetch(`/api/projects/${state.selected.id}/soundtrack`, { method: 'DELETE' });
     musicPrompt.value = '';
     narrationText.value = '';
-    previewEl.innerHTML = '';
+    if (musicPreviewEl) musicPreviewEl.innerHTML = '';
+    if (narrationPreviewEl) narrationPreviewEl.innerHTML = '';
     if (musicStatusEl) musicStatusEl.textContent = '';
     if (narrationStatusEl) narrationStatusEl.textContent = '';
     if (state.selected) delete state.selected.soundtrack;
@@ -1165,19 +1168,34 @@ function wireSoundtrackPanel() {
 }
 
 function renderSoundtrackPreview(soundtrack) {
-  const previewEl = document.getElementById('st-preview');
-  if (!previewEl || !soundtrack || !state.selected) return;
+  if (!soundtrack || !state.selected) return;
   const assets = state.selected.assets || [];
   const srcFor = (id) => {
     const a = assets.find((x) => x.id === id);
     return a?.path ? `/asset?path=${encodeURIComponent(a.path)}` : null;
   };
-  const blocks = [];
+  const musicPreviewEl = document.getElementById('st-music-preview');
+  const narrationPreviewEl = document.getElementById('st-narration-preview');
+  const legacyPreviewEl = document.getElementById('st-preview');
   const musicSrc = soundtrack.musicAssetId && srcFor(soundtrack.musicAssetId);
   const narrSrc = soundtrack.narrationAssetId && srcFor(soundtrack.narrationAssetId);
-  if (musicSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`);
-  if (narrSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`);
-  previewEl.innerHTML = blocks.join('');
+  if (musicPreviewEl) {
+    musicPreviewEl.innerHTML = musicSrc
+      ? `<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`
+      : '';
+  }
+  if (narrationPreviewEl) {
+    narrationPreviewEl.innerHTML = narrSrc
+      ? `<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`
+      : '';
+  }
+  // Compatibility: if the old single preview container still exists, render both.
+  if (legacyPreviewEl) {
+    const blocks = [];
+    if (musicSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`);
+    if (narrSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`);
+    legacyPreviewEl.innerHTML = blocks.join('');
+  }
 }
 
 // ============== composer attachments ==============
