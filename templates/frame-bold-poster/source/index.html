@@ -100,27 +100,38 @@
   <div class="sheet"></div>
 
   <div class="kicker">
-    <span class="label">Manifesto</span>
+    <span class="label">{{kicker}}</span>
     <span class="rule"></span>
-    <span class="date">Vol. 04 · 2026</span>
+    <span class="date">{{date}}</span>
   </div>
 
-  <div class="figure">03</div>
+  <div class="figure">{{figure}}</div>
 
-  <div class="head">
-    <span class="ln ln1">Make it</span>
-    <span class="ln ln2">loud.</span>
-    <span class="ln ln3">Make it last.</span>
-  </div>
+  <div class="head" id="hv-head"></div>
 
-  <div class="standfirst">Every slide should land like a printed page — set in heavy type, locked to one red accent, ruled in ink.</div>
+  <div class="standfirst">{{standfirst}}</div>
 
   <div class="footer">
     <div class="rule"></div>
     <div class="meta">
-      <span>Bold Poster</span>
-      <span class="red">html-video</span>
+      <span>{{footer_left}}</span>
+      <span class="red">{{footer_right}}</span>
     </div>
   </div>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var lines = vars.headline || [];
+    var classes = ['ln1','ln2','ln3'];
+    var head = document.getElementById('hv-head');
+    lines.forEach(function(text, i) {
+      var s = document.createElement('span');
+      s.className = 'ln ' + (classes[i] || 'ln' + (i+1));
+      s.textContent = text;
+      head.appendChild(s);
+    });
+  })();
+  </script>
 </body>
 </html>

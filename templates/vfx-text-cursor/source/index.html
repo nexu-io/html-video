@@ -43,14 +43,7 @@
   <div class="ray ray-3"></div>
 
   <main class="relative z-10 text-center max-w-[1280px] px-12">
-    <h1 class="chroma font-black leading-[1.05] tracking-[-0.02em]" style="font-size:clamp(48px,7vw,108px)">
-      Markdown 是给作者的<br/>
-      中间过程, <span style="color:#ff3b6f">HTML</span> 才是<br/>
-      给读者的最终形态<span class="cursor"></span>
-    </h1>
-    <p class="mt-10 text-[22px] opacity-60 font-medium">
-      — Claude Code 团队, 2026
-    </p>
+    <h1 class="chroma font-black leading-[1.05] tracking-[-0.02em]" style="font-size:clamp(48px,7vw,108px)" id="hv-text"></h1>
   </main>
 
   <div class="vignette"></div>
@@ -61,5 +54,20 @@
     <span>HOT PINK × CYAN CHROMATIC</span>
     <span>REC ●</span>
   </footer>
+
+  <script>
+  (function() {
+    var vars = window.__HV_VARS__ || {};
+    var text = vars.text || '';
+    var speedCps = vars.speed_cps || 15;
+    var el = document.getElementById('hv-text');
+    var cursor = '<span class="cursor"></span>';
+    var i = 0;
+    var interval = setInterval(function() {
+      if (i >= text.length) { clearInterval(interval); return; }
+      el.innerHTML = text.slice(0, ++i).replace(/\n/g, '<br/>') + cursor;
+    }, 1000 / speedCps);
+  })();
+  </script>
 </body>
 </html>
