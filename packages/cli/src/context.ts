@@ -10,15 +10,18 @@ import {
   EngineRegistry,
   ProjectOrchestrator,
   ProjectStore,
+  SourceRegistry,
   TemplateRegistry,
 } from '@html-video/core';
 import hfAdapter from '@html-video/adapter-hyperframes';
 import remotionAdapter, { remotionInstalled } from '@html-video/adapter-remotion';
+import whisperAdapter from '@html-video/adapter-whisper';
 import { MediaConfigStore } from './media-config.js';
 
 export interface CliContext {
   projectRoot: string;
   engines: EngineRegistry;
+  sources: SourceRegistry;
   templates: TemplateRegistry;
   projects: ProjectStore;
   assets: AssetStore;
@@ -63,6 +66,11 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
     engines.register(remotionAdapter);
   }
 
+  // RFC-11: footage ingest. whisper-local registers unconditionally; it throws
+  // a friendly hint at transcribe time if whisper-cli / model are missing.
+  const sources = new SourceRegistry();
+  sources.register(whisperAdapter);
+
   const templates = new TemplateRegistry();
   const templatesDir = findTemplatesDir(projectRoot);
   await templates.scan(templatesDir);
@@ -80,5 +88,5 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
 
   const mediaConfig = new MediaConfigStore(projectRoot);
 
-  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
+  return { projectRoot, engines, sources, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
 }

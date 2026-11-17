@@ -7,8 +7,18 @@ export { HtmlVideoError } from './errors.js';
 export type { ErrorCode } from './errors.js';
 export { AssetStore } from './asset-store.js';
 export type { AssetStoreOptions } from './asset-store.js';
-export { EngineRegistry, TemplateRegistry, ProjectStore } from './registry.js';
+export { EngineRegistry, SourceRegistry, TemplateRegistry, ProjectStore } from './registry.js';
 export { ProjectOrchestrator } from './project.js';
+export {
+  FILLER_WORDS,
+  normalizeWord,
+  fillersIn,
+  selectTake,
+  buildFootageGraph,
+  cutClip,
+  concatClips,
+} from './footage.js';
+export type { SceneSpec, SelectOptions } from './footage.js';
 export type {
   CreateProjectInput,
   ProjectOrchestratorDeps,

@@ -11,6 +11,7 @@ import type {
   EngineAdapter,
   EngineId,
   Project,
+  SourceAdapter,
   TemplateMetadata,
 } from './types/index.js';
 import { HtmlVideoError } from './errors.js';
@@ -42,6 +43,39 @@ export class EngineRegistry {
   }
 
   has(id: EngineId): boolean {
+    return this.adapters.has(id);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SourceRegistry (RFC-11: footage ingest adapters)
+// ---------------------------------------------------------------------------
+
+/** Registry of {@link SourceAdapter}s (transcription back-ends), mirroring
+ *  {@link EngineRegistry}. Keyed by adapter id (e.g. 'whisper-local'). */
+export class SourceRegistry {
+  private adapters = new Map<string, SourceAdapter>();
+
+  register(adapter: SourceAdapter): void {
+    this.adapters.set(adapter.id, adapter);
+  }
+
+  get(id: string): SourceAdapter {
+    const a = this.adapters.get(id);
+    if (!a) {
+      throw new HtmlVideoError(
+        'engine-not-registered',
+        `Source adapter "${id}" is not registered. Did you forget to install @html-video/adapter-${id.replace(/-local$/, '')}?`,
+      );
+    }
+    return a;
+  }
+
+  list(): SourceAdapter[] {
+    return [...this.adapters.values()];
+  }
+
+  has(id: string): boolean {
     return this.adapters.has(id);
   }
 }

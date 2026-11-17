@@ -1,0 +1,26 @@
+{
+  "name": "@html-video/adapter-whisper",
+  "version": "0.1.0",
+  "description": "Whisper source adapter for html-video (RFC-11) — on-device, word-level transcription of raw takes via whisper.cpp. The default ingest back-end for the footage-edit pipeline: local, free, no upload.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@html-video/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

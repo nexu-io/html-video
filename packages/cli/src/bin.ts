@@ -18,6 +18,7 @@ import {
   projectPreview,
   projectRender,
 } from './commands/project.js';
+import { footageEdit } from './commands/footage.js';
 import { startStudioServer } from './studio-server.js';
 
 // cac is a CJS default export; ESM interop sometimes wraps it in `.default`
@@ -184,6 +185,30 @@ cli
     await projectRender(ctx, id, {
       output: opts.output,
       streamProgress: !!opts.streamProgress,
+    });
+  });
+
+// ====== Footage edit (RFC-11: edit real takes as text) ======
+
+cli
+  .command('footage-edit', 'Edit raw takes into a cut: transcribe → select → cut → verify')
+  .option('--takes <dir>', 'Directory of take video files')
+  .option('--scenes <file>', 'Scenes JSON (SceneSpec[]); default = one scene per take')
+  .option('--out <file>', 'Output MP4 path (default: <work>/final.mp4)')
+  .option('--work <dir>', 'Work dir for transcripts/cuts (default: <takes>/../hv-footage-work)')
+  .option('--model <path>', 'Whisper ggml model (default: $HTMLVIDEO_WHISPER_MODEL)')
+  .option('--source <id>', 'Source adapter id', { default: 'whisper-local' })
+  .action(async (opts: any) => {
+    setJsonMode(!!opts.json);
+    if (!opts.takes) return fail('invalid-input', '--takes <dir> is required');
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    await footageEdit(ctx, {
+      takes: opts.takes,
+      scenes: opts.scenes,
+      out: opts.out,
+      work: opts.work,
+      model: opts.model,
+      source: opts.source,
     });
   });
 

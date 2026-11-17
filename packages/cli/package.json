@@ -21,6 +21,7 @@
     "@html-video/core": "workspace:*",
     "@html-video/adapter-hyperframes": "workspace:*",
     "@html-video/adapter-remotion": "workspace:*",
+    "@html-video/adapter-whisper": "workspace:*",
     "@html-video/project-studio": "workspace:*",
     "@html-video/runtime": "workspace:*",
     "cac": "^6.7.14"
