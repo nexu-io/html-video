@@ -158,6 +158,16 @@ export function validate(graph: ContentGraph): GraphValidationResult {
   }
 
   for (const e of graph.edges) {
+    // Graphs arrive as parsed agent output (plain JSON), so the EdgeKind union
+    // isn't enforced at runtime — validate it explicitly (issue #57, finding 25).
+    const kind = (e as { kind?: string }).kind;
+    if (kind !== 'sequence' && kind !== 'contrast' && kind !== 'dependency') {
+      errors.push({
+        code: 'invalid-kind',
+        message: `Edge ${e.from} → ${e.to} has unknown kind "${kind}" (expected sequence | contrast | dependency)`,
+        ref: `${e.from}->${e.to}`,
+      });
+    }
     if (e.from === e.to) {
       errors.push({
         code: 'self-edge',
