@@ -10,9 +10,9 @@
     "preview": "vite preview --port 3072"
   },
   "dependencies": {
-    "@hyperframes/core": "^0.6.52",
-    "@hyperframes/player": "^0.6.52",
-    "@hyperframes/studio": "^0.6.52",
+    "@hyperframes/core": "0.6.52",
+    "@hyperframes/player": "0.6.52",
+    "@hyperframes/studio": "0.6.52",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zustand": "^5.0.2"
