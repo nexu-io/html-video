@@ -46,10 +46,18 @@ function findTemplatesDir(projectRoot: string): string {
     // packages/cli/dist/context.js → up 3 levels → monorepo root → templates/
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'templates'),
   ];
-  for (const c of candidates) {
-    if (existsSync(c)) return c;
+  const found = candidates.find((c) => existsSync(c));
+  if (!found) {
+    // scan() silently returns [] for a missing dir, which used to surface as a
+    // baffling "0 templates" studio. Say what's actually wrong instead
+    // (issue #57, finding 8).
+    process.stderr.write(
+      `⚠ no templates directory found — looked at:\n  ${candidates.join('\n  ')}\n` +
+        'Run from the monorepo root (or a project with templates/); template commands will list nothing.\n',
+    );
+    return candidates[0]!;
   }
-  return candidates[0]!;
+  return found;
 }
 
 export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext> {
@@ -80,5 +88,14 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
 
   const mediaConfig = new MediaConfigStore(projectRoot);
 
-  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
+  return {
+    projectRoot,
+    engines,
+    templates,
+    projects,
+    assets,
+    orchestrator,
+    templatesDir,
+    mediaConfig,
+  };
 }

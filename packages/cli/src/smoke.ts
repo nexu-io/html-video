@@ -5,8 +5,9 @@
 
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { bootstrap } from './context.js';
 
 const log = (msg: string) => process.stdout.write(`▸ ${msg}\n`);
@@ -161,9 +162,10 @@ async function main() {
 }
 
 function __dirname_polyfill(): string {
-  const url = import.meta.url;
-  const path = url.replace(/^file:\/\//, '');
-  return path.replace(/\/[^/]*$/, '');
+  // fileURLToPath handles Windows drive letters (file:///C:/…) and URL-encoded
+  // segments; the old hand-rolled strip broke monorepoRoot on win32
+  // (issue #57, finding 11).
+  return dirname(fileURLToPath(import.meta.url));
 }
 
 main().catch((err) => {

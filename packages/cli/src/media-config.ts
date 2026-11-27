@@ -33,7 +33,13 @@ export class MediaConfigStore {
     if (!existsSync(this.path)) return {};
     try {
       return JSON.parse(readFileSync(this.path, 'utf8')) as MediaConfig;
-    } catch {
+    } catch (err) {
+      // A malformed config must not masquerade as "no config" — tell the user
+      // their file is broken (issue #57, finding 23). stderr keeps stdout
+      // machine-readable for --json consumers.
+      process.stderr.write(
+        `⚠ ${this.path} is malformed and was ignored (${err instanceof Error ? err.message : err})\n`,
+      );
       return {};
     }
   }
@@ -45,10 +51,20 @@ export class MediaConfigStore {
 
   /** What the Settings UI shows: whether a key is set + masked key + base URL.
    *  Never returns the raw key. Reports the source (config file vs env). */
-  getMinimaxStatus(): { configured: boolean; source: 'config' | 'env' | 'none'; maskedKey: string; baseUrl: string } {
+  getMinimaxStatus(): {
+    configured: boolean;
+    source: 'config' | 'env' | 'none';
+    maskedKey: string;
+    baseUrl: string;
+  } {
     const cfg = this.read().minimax;
     if (cfg?.apiKey) {
-      return { configured: true, source: 'config', maskedKey: mask(cfg.apiKey), baseUrl: cfg.baseUrl ?? '' };
+      return {
+        configured: true,
+        source: 'config',
+        maskedKey: mask(cfg.apiKey),
+        baseUrl: cfg.baseUrl ?? '',
+      };
     }
     const env = resolveMinimaxCredentials();
     if (env) {
