@@ -76,7 +76,11 @@ export class TaskRegistry {
       const ev: TaskEvent = { seq: ++this.seq, data };
       task.events.push(ev);
       for (const fn of task.subscribers) {
-        try { fn(ev); } catch { /* a dead subscriber shouldn't break the task */ }
+        try {
+          fn(ev);
+        } catch {
+          /* a dead subscriber shouldn't break the task */
+        }
       }
     };
 
@@ -86,12 +90,14 @@ export class TaskRegistry {
         task.status = 'done';
         task.endedAt = Date.now();
         emit({ type: 'task_done' });
+        this.prune();
       })
       .catch((err: unknown) => {
         task.status = 'failed';
         task.error = err instanceof Error ? err.message : String(err);
         task.endedAt = Date.now();
         emit({ type: 'task_failed', message: task.error });
+        this.prune();
       });
 
     return id;
@@ -99,6 +105,7 @@ export class TaskRegistry {
 
   /** The newest still-running (or just-finished) task for a project, if any. */
   activeTaskFor(projectId: string): { id: string; kind: TaskKind; status: TaskStatus } | null {
+    this.prune();
     let newest: Task | null = null;
     for (const t of this.tasks.values()) {
       if (t.projectId !== projectId) continue;
@@ -128,7 +135,9 @@ export class TaskRegistry {
     }
     task.subscribers.add(onEvent);
     return {
-      unsubscribe: () => { task.subscribers.delete(onEvent); },
+      unsubscribe: () => {
+        task.subscribers.delete(onEvent);
+      },
       finished: false,
     };
   }
@@ -137,6 +146,11 @@ export class TaskRegistry {
     return this.tasks.get(taskId);
   }
 
+  /**
+   * Drop tasks that finished more than TTL_MS ago. Runs on create(), on task
+   * completion and on activeTaskFor() so the registry shrinks even during
+   * long stretches with no new task creation (issue #57, finding 12).
+   */
   private prune(): void {
     const now = Date.now();
     for (const [id, t] of this.tasks) {

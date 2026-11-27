@@ -12,7 +12,15 @@ export function setJsonMode(on: boolean) {
 
 export function ok(payload: unknown): void {
   if (JSON_MODE) {
-    process.stdout.write(`${JSON.stringify({ status: 'ok', ...(payload as object) })}\n`);
+    // Only plain objects spread into the envelope cleanly. Spreading a string
+    // yields `{0:'s',1:'t',…}` and primitives/null/arrays collapse or
+    // mangle — wrap anything else under `data` so every `ok` line stays a
+    // valid, predictable JSON object (issue #57, finding 2).
+    const base =
+      payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : { data: payload };
+    process.stdout.write(`${JSON.stringify({ status: 'ok', ...base })}\n`);
   } else {
     process.stdout.write(`${pretty(payload)}\n`);
   }
@@ -29,9 +37,7 @@ export function fail(code: string, message: string, ctx: Record<string, unknown>
 
 export function progress(stage: string, pct: number, extra: Record<string, unknown> = {}): void {
   if (JSON_MODE) {
-    process.stdout.write(
-      `${JSON.stringify({ type: 'progress', stage, pct, ...extra })}\n`,
-    );
+    process.stdout.write(`${JSON.stringify({ type: 'progress', stage, pct, ...extra })}\n`);
   } else {
     process.stdout.write(`  ${stage}: ${pct}%\n`);
   }

@@ -15,6 +15,7 @@
 const ARTICLE_MAX = 8_000; // chars of markdown kept from an article
 const README_MAX = 10_000; // chars of README kept from a repo
 const FETCH_TIMEOUT_MS = 12_000;
+const MAX_REDIRECTS = 5;
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -46,7 +47,12 @@ export function extractUrls(text: string, max = 3): string[] {
 
 /**
  * Reject URLs that point at localhost / link-local / private network ranges
- * (SSRF guard). Only plain http(s) public hosts are allowed.
+ * (SSRF guard). Only plain http(s) public hosts are allowed. Covers IPv4
+ * private ranges AND IPv6 literals (bracketed hosts, loopback ::1/::,
+ * link-local fe80::/10, unique-local fc00::/7, and IPv4-mapped ::ffff:a.b.c.d
+ * addresses — issue #57, finding 1: `new URL('http://[::1]/')`.hostname is
+ * "[::1]", so the old bare `'::1'` string match never fired and bracketed
+ * IPv6 loopback URLs slipped straight past the guard).
  */
 export function assertPublicHttpUrl(raw: string): URL {
   let u: URL;
@@ -58,33 +64,90 @@ export function assertPublicHttpUrl(raw: string): URL {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
     throw new Error(`only http(s) URLs are allowed (got ${u.protocol})`);
   }
-  const host = u.hostname.toLowerCase();
+  // URL.hostname keeps brackets around IPv6 literals — strip them once here.
+  const isV6 = u.hostname.startsWith('[') && u.hostname.endsWith(']');
+  const host = isV6 ? u.hostname.slice(1, -1) : u.hostname.toLowerCase();
   if (
     host === 'localhost' ||
     host === '0.0.0.0' ||
-    host === '::1' ||
     host.endsWith('.localhost') ||
     host.endsWith('.internal') ||
     host.endsWith('.local')
   ) {
-    throw new Error(`refusing to fetch local host: ${host}`);
+    throw new Error(`refusing to fetch local host: ${u.hostname}`);
   }
-  // IPv4 private / loopback / link-local ranges.
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (
-      a === 127 || // loopback
-      a === 10 || // private
-      (a === 172 && b >= 16 && b <= 31) || // private
-      (a === 192 && b === 168) || // private
-      (a === 169 && b === 254) || // link-local (cloud metadata)
-      a === 0
-    ) {
+  if (isV6) {
+    if (ipv6IsPrivate(host)) {
+      throw new Error(`refusing to fetch private IP: ${u.hostname}`);
+    }
+  } else {
+    // IPv4 private / loopback / link-local ranges.
+    if (ipv4IsPrivate(host)) {
       throw new Error(`refusing to fetch private IP: ${host}`);
     }
   }
   return u;
+}
+
+/** IPv4 dotted-quad range check (private / loopback / link-local / this-host). */
+function ipv4IsPrivate(host: string): boolean {
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return (
+    a === 127 || // loopback
+    a === 10 || // private
+    (a === 172 && b >= 16 && b <= 31) || // private
+    (a === 192 && b === 168) || // private
+    (a === 169 && b === 254) || // link-local (cloud metadata)
+    a === 0 || // "this" network (incl. 0.0.0.0)
+    (a === 100 && b >= 64 && b <= 127) // CGNAT
+  );
+}
+
+/** Structural IPv6 check — no DNS, no deps: expand to 8 hextets and compare. */
+function ipv6IsPrivate(host: string): boolean {
+  const hextets = expandIPv6(host.toLowerCase());
+  if (!hextets) return false; // unparseable — let fetch fail naturally
+  // -1 is impossible for a real hextet (0..0xffff), so it's a safe default.
+  const [h0 = -1, h1 = -1, h2 = -1, h3 = -1, h4 = -1, h5 = -1, h6 = -1, h7 = -1] = hextets;
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+    if (h6 === 0 && h7 === 0) return true; // :: (unspecified)
+    if (h6 === 0 && h7 === 1) return true; // ::1 (loopback)
+  }
+  // IPv4-mapped ::ffff:a.b.c.d — 0:0:0:0:0:ffff then the v4 payload, one byte
+  // per half of hextets 6 and 7. Apply the IPv4 rules to the embedded address.
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
+    const v4 = `${h6 >>> 8}.${h6 & 0xff}.${h7 >>> 8}.${h7 & 0xff}`;
+    return ipv4IsPrivate(v4);
+  }
+  if (h0 >= 0xfe80 && h0 <= 0xfebf) return true; // fe80::/10 link-local
+  if (h0 >= 0xfc00 && h0 <= 0xfdff) return true; // fc00::/7 unique-local
+  return false;
+}
+
+/** Expand an IPv6 literal into 8 numeric hextets; null if malformed. */
+function expandIPv6(host: string): number[] | null {
+  if (!/^[0-9a-f:]+$/i.test(host) || !host.includes(':')) return null;
+  const halves = host.split('::');
+  if (halves.length > 2) return null;
+  const parse = (part: string) => (part === '' ? [] : part.split(':').filter((s) => s !== ''));
+  let groups = parse(halves[0] ?? '');
+  const tail = halves.length === 2 ? parse(halves[1] ?? '') : [];
+  if (halves.length === 2) {
+    const fill = 8 - groups.length - tail.length;
+    if (fill < 0) return null;
+    groups = [...groups, ...Array<string>(fill).fill('0'), ...tail];
+  }
+  if (groups.length !== 8) return null;
+  const out: number[] = [];
+  for (const g of groups) {
+    if (g.length > 4) return null;
+    const n = parseInt(g, 16);
+    if (Number.isNaN(n)) return null;
+    out.push(n);
+  }
+  return out;
 }
 
 /** Dispatch: GitHub repo URL → repo summary, anything else → article. */
@@ -162,10 +225,16 @@ function extractTitle(html: string): string {
 export function htmlToMarkdown(html: string): string {
   let s = html;
   // Drop non-content elements entirely.
-  s = s.replace(/<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi, '');
+  s = s.replace(
+    /<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi,
+    '',
+  );
   s = s.replace(/<!--[\s\S]*?-->/g, '');
   // Block-ish → newlines / markers.
-  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, lvl, inner) => `\n\n${'#'.repeat(Number(lvl))} ${strip(inner)}\n`);
+  s = s.replace(
+    /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi,
+    (_m, lvl, inner) => `\n\n${'#'.repeat(Number(lvl))} ${strip(inner)}\n`,
+  );
   s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner) => `\n- ${strip(inner)}`);
   s = s.replace(/<(p|div|section|article|tr|h[1-6]|ul|ol|blockquote)[^>]*>/gi, '\n');
   s = s.replace(/<\/(p|div|section|article|tr|li|ul|ol|blockquote)>/gi, '\n');
@@ -175,7 +244,10 @@ export function htmlToMarkdown(html: string): string {
     const text = strip(inner);
     return text ? `[${text}](${href})` : '';
   });
-  s = s.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, alt, src) => `![${alt}](${src})`);
+  s = s.replace(
+    /<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (_m, alt, src) => `![${alt}](${src})`,
+  );
   s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, src) => `![](${src})`);
   // Strip every remaining tag.
   s = s.replace(/<[^>]+>/g, '');
@@ -192,7 +264,9 @@ export function htmlToMarkdown(html: string): string {
 
 /** Strip tags + decode entities + collapse spaces (for inline fragments). */
 function strip(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]+>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function decodeEntities(s: string): string {
@@ -226,12 +300,25 @@ function parseGithubRepo(u: URL): { owner: string; repo: string } | null {
   if (parts.length < 2) return null;
   // Skip non-repo paths (search, marketplace, etc. have reserved first segments,
   // but a 2-segment owner/repo is the common case; reject known non-repo roots).
-  const reserved = new Set(['search', 'marketplace', 'topics', 'collections', 'sponsors', 'about', 'features']);
+  const reserved = new Set([
+    'search',
+    'marketplace',
+    'topics',
+    'collections',
+    'sponsors',
+    'about',
+    'features',
+  ]);
   if (reserved.has(parts[0]!.toLowerCase())) return null;
   return { owner: parts[0]!, repo: parts[1]!.replace(/\.git$/, '') };
 }
 
-async function fetchRepo(owner: string, repo: string, url: string, signal?: AbortSignal): Promise<FetchedSource> {
+async function fetchRepo(
+  owner: string,
+  repo: string,
+  url: string,
+  signal?: AbortSignal,
+): Promise<FetchedSource> {
   const api = `https://api.github.com/repos/${owner}/${repo}`;
   const ghHeaders = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
 
@@ -248,9 +335,11 @@ async function fetchRepo(owner: string, repo: string, url: string, signal?: Abor
   };
 
   // README (raw) + top-level tree — best-effort, don't fail the whole thing.
-  const readme = await fetchText(`${api}/readme`, { ...ghHeaders, accept: 'application/vnd.github.raw' }, signal).catch(
-    () => '',
-  );
+  const readme = await fetchText(
+    `${api}/readme`,
+    { ...ghHeaders, accept: 'application/vnd.github.raw' },
+    signal,
+  ).catch(() => '');
   const tree = await fetchTopLevelTree(api, ghHeaders, signal).catch(() => [] as string[]);
 
   const title = meta.full_name || `${owner}/${repo}`;
@@ -258,8 +347,10 @@ async function fetchRepo(owner: string, repo: string, url: string, signal?: Abor
   if (meta.description) lines.push(`> ${meta.description}`, '');
   const facts: string[] = [];
   if (meta.language) facts.push(`Language: ${meta.language}`);
-  if (typeof meta.stargazers_count === 'number') facts.push(`Stars: ${meta.stargazers_count.toLocaleString('en-US')}`);
-  if (meta.license?.spdx_id && meta.license.spdx_id !== 'NOASSERTION') facts.push(`License: ${meta.license.spdx_id}`);
+  if (typeof meta.stargazers_count === 'number')
+    facts.push(`Stars: ${meta.stargazers_count.toLocaleString('en-US')}`);
+  if (meta.license?.spdx_id && meta.license.spdx_id !== 'NOASSERTION')
+    facts.push(`License: ${meta.license.spdx_id}`);
   if (meta.homepage) facts.push(`Homepage: ${meta.homepage}`);
   if (meta.topics?.length) facts.push(`Topics: ${meta.topics.join(', ')}`);
   if (facts.length) lines.push(...facts.map((f) => `- ${f}`), '');
@@ -292,15 +383,40 @@ async function fetchTopLevelTree(
 // shared fetch
 // --------------------------------------------------------------------------
 
-async function fetchText(url: string, extraHeaders: Record<string, string>, signal?: AbortSignal): Promise<string> {
+async function fetchText(
+  url: string,
+  extraHeaders: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<string> {
   assertPublicHttpUrl(url);
-  const res = await fetch(url, {
-    headers: { 'user-agent': UA, ...extraHeaders },
-    redirect: 'follow',
-    signal: signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`fetch ${url} → HTTP ${res.status}`);
+  const headers = { 'user-agent': UA, ...extraHeaders };
+  // Manual redirect loop: every hop is re-validated against the SSRF guard.
+  // With `redirect: 'follow'` a public URL could 302 to http://127.0.0.1/
+  // (or the cloud-metadata endpoint) and undici would happily fetch it —
+  // the initial URL check alone doesn't protect the redirect chain.
+  let current: URL = assertPublicHttpUrl(url);
+  for (let hops = 0; ; hops++) {
+    if (hops > MAX_REDIRECTS) {
+      throw new Error(`fetch ${current.href} → too many redirects (> ${MAX_REDIRECTS})`);
+    }
+    const res = await fetch(current, {
+      headers,
+      redirect: 'manual',
+      signal: signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) {
+        throw new Error(`fetch ${current.href} → HTTP ${res.status} without a Location header`);
+      }
+      // Drain/cancel the redirect body so the socket is freed for reuse.
+      await res.body?.cancel().catch(() => {});
+      current = assertPublicHttpUrl(new URL(location, current).href);
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`fetch ${current.href} → HTTP ${res.status}`);
+    }
+    return res.text();
   }
-  return res.text();
 }

@@ -36,6 +36,32 @@ cli.command('doctor', 'Diagnose environment').action(async (opts: any) => {
   await runDoctor(ctx);
 });
 
+// Async command actions aren't awaited by cac — a rejection inside one would
+// otherwise surface as a raw unhandled-rejection stack trace (issue #57,
+// finding 20). Route it through the same JSON error envelope as `fail()`.
+process.on('unhandledRejection', (reason: unknown) => {
+  fail('runtime-error', reason instanceof Error ? reason.message : String(reason));
+});
+
+/** Parse a positive-integer CLI option; exits with a clear error on garbage. */
+function intOption(
+  value: unknown,
+  flag: string,
+  opts: { min?: number; max?: number } = {},
+): number {
+  const n = Number(value);
+  if (
+    !Number.isInteger(n) ||
+    (opts.min !== undefined && n < opts.min) ||
+    (opts.max !== undefined && n > opts.max)
+  ) {
+    const range =
+      opts.max !== undefined ? ` between ${opts.min ?? 1} and ${opts.max}` : ` ≥ ${opts.min ?? 1}`;
+    fail('invalid-input', `--${flag} must be an integer${range} (got "${value}")`);
+  }
+  return n;
+}
+
 cli.command('list-engines', 'List installed engine adapters').action(async (opts: any) => {
   setJsonMode(!!opts.json);
   const ctx = await bootstrap({ cwd: opts.cwd });
@@ -55,7 +81,7 @@ cli
       intent: opts.intent,
       aspect: opts.aspect,
       licenseAllow: opts.licenseAllow,
-      top: Number(opts.top),
+      top: intOption(opts.top, 'top', { min: 1 }),
     });
   });
 
@@ -194,8 +220,9 @@ cli
   .option('--port <n>', 'Port (default 3071)', { default: 3071 })
   .action(async (opts: any) => {
     setJsonMode(!!opts.json);
+    const port = intOption(opts.port, 'port', { min: 1, max: 65535 });
     const ctx = await bootstrap({ cwd: opts.cwd });
-    const handle = await startStudioServer(ctx, Number(opts.port));
+    const handle = await startStudioServer(ctx, port);
     ok({
       url: handle.url,
       port: handle.port,
