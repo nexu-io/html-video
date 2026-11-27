@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { TemplateRef, ValidationError, ValidationResult } from '@html-video/core';
 
@@ -27,10 +27,10 @@ export function validate(template: TemplateRef): ValidationResult {
 
   if (!template.sourcePath) {
     errors.push({ code: 'missing-source', message: 'Template has no sourcePath' });
-  } else if (!existsSync(template.sourcePath)) {
+  } else if (!isRegularFile(template.sourcePath)) {
     errors.push({
       code: 'source-not-found',
-      message: `Template source not found: ${template.sourcePath}`,
+      message: `Template source not found (or not a regular file): ${template.sourcePath}`,
       fix: 'Check that the template directory contains the file declared in source_entry',
     });
   }
@@ -46,6 +46,15 @@ export function validate(template: TemplateRef): ValidationResult {
   }
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+/** existsSync() is true for directories too — rendering needs a real file. */
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /** Best-effort, synchronous check that the Remotion renderer can be resolved. */

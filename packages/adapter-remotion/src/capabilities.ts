@@ -11,7 +11,7 @@ import type { EngineCapabilities } from '@html-video/core';
  * when the team already uses React or needs Lambda scale. That honesty is the
  * meta-layer's advantage over a Remotion-only tool — surface it, don't hide it.
  */
-export const capabilities: EngineCapabilities = {
+export const capabilities: EngineCapabilities = Object.freeze<EngineCapabilities>({
   // Phase 1 bridges html-css-gsap frames; Phase 2 (RFC-09) adds react-tsx natives.
   paradigms: ['react-tsx', 'html-css-gsap'],
   outputFormats: ['mp4', 'webm', 'gif', 'png-sequence'],
@@ -45,4 +45,4 @@ export const capabilities: EngineCapabilities = {
     'bundle-overhead',
     'css-gsap-needs-time-driver-bridge',
   ],
-};
+});
