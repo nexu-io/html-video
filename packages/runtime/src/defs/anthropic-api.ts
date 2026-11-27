@@ -107,11 +107,21 @@ export const anthropicApi: AgentDef = {
     // Anthropic SSE format: event: <type>\ndata: <json>\n\n
     // Events we care about:
     //   content_block_delta { delta: { type: 'text_delta', text } } → emit text
-    //   message_stop                                                → done
-    //   error                                                       → emit error
+    //   message_stop                                                → the stream completed cleanly
+    //   error                                                       → emit error + mark failure
+    //
+    // Terminal-state accounting (issue #95): a transport-level EOF does NOT
+    // prove the generation completed. Provider errors, partial streams that
+    // end before `message_stop`, and empty bodies must all surface as a
+    // nonzero exit code — otherwise the studio treats broken output as a
+    // finished reply. Partial text is still emitted as it arrives so callers
+    // can diagnose, but "stream ended" alone no longer means "success".
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let sawMessageStop = false;
+    let sawError = false;
+    let sawSseEvent = false;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -120,17 +130,37 @@ export const anthropicApi: AgentDef = {
         const events = buf.split('\n\n');
         buf = events.pop() ?? '';
         for (const ev of events) {
+          let eventType = '';
           let dataLine = '';
           for (const line of ev.split('\n')) {
-            if (line.startsWith('data:')) dataLine = line.slice(5).trim();
+            if (line.startsWith('event:')) eventType = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataLine = line.slice(5).trim();
           }
           if (!dataLine || dataLine === '[DONE]') continue;
+          sawSseEvent = true;
           try {
-            const parsed = JSON.parse(dataLine) as { type?: string; delta?: { type?: string; text?: string }; error?: { message?: string } };
-            if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta' && parsed.delta.text) {
+            const parsed = JSON.parse(dataLine) as {
+              type?: string;
+              delta?: { type?: string; text?: string };
+              error?: { message?: string };
+            };
+            // Some providers put the type only on the `event:` line; the JSON
+            // payload wins when it carries its own `type`.
+            const type = parsed.type || eventType;
+            if (
+              type === 'content_block_delta' &&
+              parsed.delta?.type === 'text_delta' &&
+              parsed.delta.text
+            ) {
               onEvent({ type: 'text', chunk: parsed.delta.text });
-            } else if (parsed.type === 'error' && parsed.error?.message) {
-              onEvent({ type: 'error', message: parsed.error.message });
+            } else if (type === 'message_stop') {
+              sawMessageStop = true;
+            } else if (type === 'error') {
+              sawError = true;
+              onEvent({
+                type: 'error',
+                message: parsed.error?.message ?? dataLine.slice(0, 400),
+              });
             }
             // ignore message_start / content_block_start / message_delta / ping etc
           } catch {
@@ -145,6 +175,21 @@ export const anthropicApi: AgentDef = {
         onEvent({ type: 'error', message: `stream read failed: ${msg}` });
       }
       return { exitCode: -1 };
+    }
+
+    if (sawError) {
+      // The provider told us the generation failed mid-stream (overload,
+      // content filter, …). The partial text was already emitted for context.
+      return { exitCode: 1 };
+    }
+    if (!sawMessageStop) {
+      onEvent({
+        type: 'error',
+        message: sawSseEvent
+          ? 'stream ended before message_stop — response incomplete (premature EOF)'
+          : 'stream ended without any SSE events (empty response body)',
+      });
+      return { exitCode: 1 };
     }
     return { exitCode: 0 };
   },

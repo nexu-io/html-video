@@ -5,3 +5,4 @@ export { spawnAgent } from './spawn.js';
 export type { SpawnOptions } from './spawn.js';
 export { listAmrModels } from './defs/amr.js';
 export type { AmrModel } from './defs/amr.js';
+export { anthropicApi } from './defs/anthropic-api.js';
