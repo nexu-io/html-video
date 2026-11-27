@@ -4,9 +4,11 @@
  */
 
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import type { Asset, AssetType } from './types/index.js';
 import { HtmlVideoError } from './errors.js';
 
@@ -30,8 +32,12 @@ export class AssetStore {
   }
 
   static async computeId(filePath: string): Promise<string> {
-    const buf = await readFile(filePath);
-    return createHash('sha1').update(buf).digest('hex');
+    // Stream the file into the hash instead of readFile(): video/audio assets
+    // can be hundreds of MB and hashing them must not hold the whole buffer in
+    // memory (issue #57, finding 14).
+    const hash = createHash('sha1');
+    await pipeline(createReadStream(filePath), hash);
+    return hash.digest('hex');
   }
 
   static computeInlineId(content: string): string {
@@ -82,7 +88,9 @@ export class AssetStore {
       await copyFile(sourcePath, destPath);
     }
     const st = await stat(destPath);
-    const filename = sourcePath.split('/').pop() ?? sourcePath;
+    // basename() handles Windows backslash paths too — split('/') returned the
+    // whole path as the filename on win32 (issue #57, finding 26).
+    const filename = basename(sourcePath);
     return {
       id,
       type,
@@ -143,6 +151,16 @@ export class AssetStore {
       throw new HtmlVideoError('invalid-input', 'addBufferAsset: empty buffer');
     }
     const normExt = ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+    // The extension is concatenated into the destination path — a value like
+    // "../../evil" would walk out of the assets dir (issue #57, finding 5).
+    // Allow only short alnum extensions; every known asset type (.png, .mp3,
+    // .webm, …) fits, anything else is a bug at the call site.
+    if (!/^\.[a-z0-9]{1,8}$/.test(normExt)) {
+      throw new HtmlVideoError(
+        'invalid-input',
+        `addBufferAsset: invalid extension ${JSON.stringify(ext)} (expected a short alnum extension like ".mp3")`,
+      );
+    }
     const id = createHash('sha1').update(bytes).digest('hex');
     const { mime, type } = AssetStore.guessMime(`x${normExt}`);
     const dir = this.assetsDir(projectId);
